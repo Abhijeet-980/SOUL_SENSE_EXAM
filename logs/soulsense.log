@@ -36,3 +36,8 @@
 2026-01-06 22:18:41,262 - INFO - Session started | user=Anushka | age=19 | education=Undergraduate | age_group=adult
 2026-01-06 22:18:51,054 - INFO - Application started
 2026-01-06 22:18:51,056 - INFO - Loaded 10 questions from DB
+2026-01-06 22:58:03,368 - INFO - Application started
+2026-01-06 22:58:38,346 - INFO - Session started | user=hi | age=19 | education=Undergraduate | age_group=adult
+2026-01-06 22:59:54,203 - INFO - Application started
+2026-01-06 23:00:03,582 - INFO - Application started
+2026-01-06 23:00:18,783 - INFO - Application started

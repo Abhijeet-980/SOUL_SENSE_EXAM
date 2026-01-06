@@ -46,6 +46,57 @@ ensure_question_bank_schema(cursor)
 
 conn.commit()
 
+
+class SplashScreen:
+    def __init__(self, root):
+        self.root = root
+        self.root.overrideredirect(True)  # remove title bar
+        self.root.geometry("450x300")
+        self.root.configure(bg="#F5F7FA")
+
+        # Center window
+        x = (self.root.winfo_screenwidth() // 2) - 225
+        y = (self.root.winfo_screenheight() // 2) - 150
+        self.root.geometry(f"+{x}+{y}")
+
+        container = tk.Frame(self.root, bg="#F5F7FA")
+        container.pack(expand=True)
+
+        tk.Label(
+            container,
+            text="🧠",
+            font=("Arial", 40),
+            bg="#F5F7FA"
+        ).pack(pady=(10, 5))
+
+        tk.Label(
+            container,
+            text="Soul Sense EQ Test",
+            font=("Arial", 20, "bold"),
+            fg="#2C3E50",
+            bg="#F5F7FA"
+        ).pack(pady=5)
+
+        tk.Label(
+            container,
+            text="Understanding emotions, one step at a time",
+            font=("Arial", 10),
+            fg="#7F8C8D",
+            bg="#F5F7FA"
+        ).pack(pady=5)
+
+        # Simple loading text (safe default)
+        self.loading_label = tk.Label(
+            container,
+            text="Loading...",
+            font=("Arial", 10),
+            fg="#555",
+            bg="#F5F7FA"
+        )
+        self.loading_label.pack(pady=15)
+    def close_after_delay(self, delay_ms, callback):
+        self.root.after(delay_ms, callback)
+
 # ---------------- GUI ----------------
 class SoulSenseApp:
     def __init__(self, root):
@@ -416,7 +467,16 @@ class SoulSenseApp:
 
 # ---------------- MAIN ----------------
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = SoulSenseApp(root)
-    root.protocol("WM_DELETE_WINDOW", app.force_exit)
-    root.mainloop()
+    splash_root = tk.Tk()
+    splash = SplashScreen(splash_root)
+
+    def launch_main_app():
+        splash_root.destroy()
+        main_root = tk.Tk()
+        app = SoulSenseApp(main_root)
+        main_root.protocol("WM_DELETE_WINDOW", app.force_exit)
+        main_root.mainloop()
+
+    splash.close_after_delay(2500, launch_main_app)
+    splash_root.mainloop()
+
