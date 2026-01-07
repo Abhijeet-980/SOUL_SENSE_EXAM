@@ -1,4 +1,3 @@
-import sqlite3
 import tkinter as tk
 from tkinter import ttk
 from datetime import datetime
@@ -167,28 +166,27 @@ class AnalyticsDashboard:
         
     def show_journal_analytics(self, parent):
         """Show journal analytics"""
-        conn = sqlite3.connect("soulsense_db")
-        cursor = conn.cursor()
-        cursor.execute("""
-        SELECT sentiment_score, emotional_patterns 
-        FROM journal_entries WHERE username = ?
-        """, (self.username,))
-        data = cursor.fetchall()
-        conn.close()
+        session = get_session()
+        try:
+            rows = session.query(JournalEntry.sentiment_score, JournalEntry.emotional_patterns)\
+                .filter_by(username=self.username)\
+                .all()
+        finally:
+            session.close()
         
-        if not data:
+        if not rows:
             tk.Label(parent, text="No journal data available", font=("Arial", 14)).pack(pady=50)
             return
             
         tk.Label(parent, text="📝 Journal Analytics", font=("Arial", 14, "bold")).pack(pady=10)
         
-        sentiments = [d[0] for d in data]
+        sentiments = [r[0] for r in rows]
         
         # Stats
         stats_frame = tk.Frame(parent)
         stats_frame.pack(fill=tk.X, padx=20, pady=10)
         
-        tk.Label(stats_frame, text=f"Total Entries: {len(data)}", font=("Arial", 12)).pack(anchor="w")
+        tk.Label(stats_frame, text=f"Total Entries: {len(rows)}", font=("Arial", 12)).pack(anchor="w")
         tk.Label(stats_frame, text=f"Avg Sentiment: {sum(sentiments)/len(sentiments):.1f}", 
                 font=("Arial", 12)).pack(anchor="w")
         tk.Label(stats_frame, text=f"Most Positive: {max(sentiments):.1f}", 
@@ -202,9 +200,9 @@ class AnalyticsDashboard:
                 font=("Arial", 12, "bold")).pack(anchor="w")
         
         all_patterns = []
-        for d in data:
-            if d[1]:
-                all_patterns.extend(d[1].split('; '))
+        for r in rows:
+            if r[1]: # emotional_patterns
+                all_patterns.extend(r[1].split('; '))
         
         pattern_counts = Counter(all_patterns)
         
@@ -212,7 +210,7 @@ class AnalyticsDashboard:
         patterns_text.pack(fill=tk.BOTH, expand=True)
         
         for pattern, count in pattern_counts.most_common(3):
-            percentage = (count / len(data)) * 100
+            percentage = (count / len(rows)) * 100
             patterns_text.insert(tk.END, f"{pattern}: {count} times ({percentage:.1f}%)\n")
         
         patterns_text.config(state=tk.DISABLED)
@@ -235,11 +233,22 @@ class AnalyticsDashboard:
         """Generate insights"""
         insights = []
         
-        # EQ insights
-        conn = sqlite3.connect("soulsense_db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT total_score FROM scores WHERE username = ? ORDER BY id", (self.username,))
-        scores = [row[0] for row in cursor.fetchall()]
+        session = get_session()
+        try:
+            # EQ insights
+            eq_rows = session.query(Score.total_score)\
+                .filter_by(username=self.username)\
+                .order_by(Score.id)\
+                .all()
+            scores = [r[0] for r in eq_rows]
+            
+            # Journal insights
+            j_rows = session.query(JournalEntry.sentiment_score)\
+                .filter_by(username=self.username)\
+                .all()
+            sentiments = [r[0] for r in j_rows]
+        finally:
+            session.close()
         
         if len(scores) > 1:
             improvement = ((scores[-1] - scores[0]) / scores[0]) * 100
@@ -250,10 +259,6 @@ class AnalyticsDashboard:
             else:
                 insights.append("💪 Focus on emotional awareness to boost EQ scores")
         
-        # Journal insights
-        cursor.execute("SELECT sentiment_score FROM journal_entries WHERE username = ?", (self.username,))
-        sentiments = [row[0] for row in cursor.fetchall()]
-        
         if sentiments:
             avg_sentiment = sum(sentiments) / len(sentiments)
             if avg_sentiment > 20:
@@ -262,8 +267,6 @@ class AnalyticsDashboard:
                 insights.append("🤗 Consider stress management techniques for better emotional balance")
             else:
                 insights.append("⚖️ You maintain balanced emotional tone in your reflections")
-        
-        conn.close()
         
         if not insights:
             insights.append("📝 Complete more assessments and journal entries for insights!")

@@ -1,8 +1,8 @@
-from app.db import get_connection
+from app.db import get_session
+from sqlalchemy import text
 
-def test_db_connection(temp_db):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1")
-    assert cursor.fetchone()[0] == 1
-    conn.close()
+def test_db_session(temp_db):
+    session = get_session()
+    result = session.execute(text("SELECT 1"))
+    assert result.scalar() == 1
+    session.close()

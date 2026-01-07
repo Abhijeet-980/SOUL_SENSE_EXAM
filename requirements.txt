@@ -1,5 +1,5 @@
 # Soul Sense EQ Test Requirements
-# This project uses Python built-in libraries with analytics dashboard
+# This project uses Python built-in libraries and Matplotlib for analytics
 
 # Core dependencies (built-in):
 # - tkinter (GUI framework with ttk for tabs)
@@ -7,6 +7,16 @@
 # - datetime (date/time handling)
 # - re (regular expressions)
 # - collections (Counter for analytics)
+# - hashlib (password hashing for authentication)
+
+# External packages (REQUIRED for Graphs):
+matplotlib>=3.5.0
+numpy>=1.21.0
+
+# Testing (optional)
+pytest>=6.0.0
+
+# Python 3.6+ recommended
 
 # External packages for visualization
 matplotlib>=3.5.0

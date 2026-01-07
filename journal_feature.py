@@ -1,32 +1,18 @@
-import sqlite3
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
 from datetime import datetime
 import re
+from sqlalchemy import desc
 from analytics_dashboard import AnalyticsDashboard
+from app.db import get_session
+from app.models import JournalEntry
+import logging
 
 class JournalFeature:
     def __init__(self, parent_root):
         self.parent_root = parent_root
-        self.setup_database()
+        # Database setup is handled efficiently by app.db.check_db_state or migration
         
-    def setup_database(self):
-        """Create journal table if it doesn't exist"""
-        conn = sqlite3.connect("soulsense_db")
-        cursor = conn.cursor()
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS journal_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            entry_date TEXT,
-            content TEXT,
-            sentiment_score REAL,
-            emotional_patterns TEXT
-        )
-        """)
-        conn.commit()
-        conn.close()
-    
     def open_journal_window(self, username):
         """Open the journal window"""
         self.username = username
@@ -134,23 +120,31 @@ class JournalFeature:
         emotional_patterns = self.extract_emotional_patterns(content)
         
         # Save to database
-        conn = sqlite3.connect("soulsense_db")
-        cursor = conn.cursor()
-        
-        entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute("""
-        INSERT INTO journal_entries (username, entry_date, content, sentiment_score, emotional_patterns)
-        VALUES (?, ?, ?, ?, ?)
-        """, (self.username, entry_date, content, sentiment_score, emotional_patterns))
-        
-        conn.commit()
-        conn.close()
-        
-        # Show analysis results
-        self.show_analysis_results(sentiment_score, emotional_patterns)
-        
-        # Clear text area
-        self.text_area.delete("1.0", tk.END)
+        session = get_session()
+        try:
+            entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            entry = JournalEntry(
+                username=self.username,
+                entry_date=entry_date,
+                content=content,
+                sentiment_score=sentiment_score,
+                emotional_patterns=emotional_patterns
+            )
+            session.add(entry)
+            session.commit()
+            
+            # Show analysis results
+            self.show_analysis_results(sentiment_score, emotional_patterns)
+            
+            # Clear text area
+            self.text_area.delete("1.0", tk.END)
+            
+        except Exception as e:
+            logging.error("Failed to save journal entry", exc_info=True)
+            messagebox.showerror("Error", f"Failed to save entry: {e}")
+            session.rollback()
+        finally:
+            session.close()
     
     def show_analysis_results(self, sentiment_score, patterns):
         """Display AI analysis results"""
@@ -200,28 +194,24 @@ class JournalFeature:
                                             font=("Arial", 10))
         text_area.pack(pady=10, padx=20, fill=tk.BOTH, expand=True)
         
-        # Fetch entries from database
-        conn = sqlite3.connect("soulsense_db")
-        cursor = conn.cursor()
-        cursor.execute("""
-        SELECT entry_date, content, sentiment_score, emotional_patterns 
-        FROM journal_entries 
-        WHERE username = ? 
-        ORDER BY entry_date DESC
-        """, (self.username,))
-        
-        entries = cursor.fetchall()
-        conn.close()
-        
-        if not entries:
-            text_area.insert(tk.END, "No journal entries found. Start writing to track your emotional journey!")
-        else:
-            for entry in entries:
-                date, content, sentiment, patterns = entry
-                text_area.insert(tk.END, f"Date: {date}\n")
-                text_area.insert(tk.END, f"Sentiment: {sentiment:.1f} | Patterns: {patterns}\n")
-                text_area.insert(tk.END, f"Entry: {content}\n")
-                text_area.insert(tk.END, "-" * 70 + "\n\n")
+        # Fetch entries from database with ORM
+        session = get_session()
+        try:
+            entries = session.query(JournalEntry)\
+                .filter_by(username=self.username)\
+                .order_by(desc(JournalEntry.entry_date))\
+                .all()
+            
+            if not entries:
+                text_area.insert(tk.END, "No journal entries found. Start writing to track your emotional journey!")
+            else:
+                for entry in entries:
+                    text_area.insert(tk.END, f"Date: {entry.entry_date}\n")
+                    text_area.insert(tk.END, f"Sentiment: {entry.sentiment_score:.1f} | Patterns: {entry.emotional_patterns}\n")
+                    text_area.insert(tk.END, f"Entry: {entry.content}\n")
+                    text_area.insert(tk.END, "-" * 70 + "\n\n")
+        finally:
+            session.close()
         
         text_area.config(state=tk.DISABLED)
         
