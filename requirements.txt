@@ -7,9 +7,13 @@
 # - datetime (date/time handling)
 # - re (regular expressions)
 # - collections (Counter for analytics)
+# - hashlib (password hashing for authentication)
 
 # External packages (REQUIRED for Graphs):
-# - matplotlib
-# - numpy
+matplotlib>=3.5.0
+numpy>=1.21.0
+
+# Testing (optional)
+pytest>=6.0.0
 
 # Python 3.6+ recommended

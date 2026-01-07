@@ -13,10 +13,12 @@ from app.db import get_connection
 from app.models import (
     ensure_scores_schema,
     ensure_responses_schema,
-    ensure_question_bank_schema
+    ensure_question_bank_schema,
+    ensure_users_schema
 )
 from app.questions import load_questions
 from app.utils import compute_age_group
+from app.auth import AuthManager
 
 # ---------------- LOGGING ----------------
 logging.basicConfig(
@@ -43,6 +45,7 @@ CREATE TABLE IF NOT EXISTS scores (
 ensure_scores_schema(cursor)
 ensure_responses_schema(cursor)
 ensure_question_bank_schema(cursor)
+ensure_users_schema(cursor)
 
 conn.commit()
 
@@ -121,7 +124,10 @@ class SoulSenseApp:
         logging.info("User returned to home screen during test")
 
         # ---- GO TO HOME ----
-        self.create_username_screen()
+        if self.auth_manager.is_logged_in():
+            self.create_username_screen()
+        else:
+            self.create_login_screen()
 
     def __init__(self, root):
         self.root = root
@@ -132,15 +138,243 @@ class SoulSenseApp:
         self.age = None
         self.education = None
         self.age_group = None
-
+        self.auth_manager = AuthManager()
 
         self.current_question = 0
         self.total_questions = 0
         self.responses = []
 
-        self.create_username_screen()
+        self.create_login_screen()
 
     # ---------- SCREENS ----------
+    def create_login_screen(self):
+        self.clear_screen()
+        
+        card = tk.Frame(
+            self.root,
+            bg="white",
+            padx=30,
+            pady=25
+        )
+        card.pack(pady=50)
+        
+        tk.Label(
+            card,
+            text="🧠 Soul Sense EQ Test",
+            font=("Arial", 22, "bold"),
+            bg="white",
+            fg="#2C3E50"
+        ).pack(pady=(0, 8))
+        
+        tk.Label(
+            card,
+            text="Please login to continue",
+            font=("Arial", 11),
+            bg="white",
+            fg="#7F8C8D"
+        ).pack(pady=(0, 20))
+        
+        # Username
+        tk.Label(
+            card,
+            text="Username",
+            bg="white",
+            fg="#34495E",
+            font=("Arial", 11, "bold")
+        ).pack(anchor="w", pady=(5, 2))
+        
+        self.login_username_entry = ttk.Entry(card, font=("Arial", 12), width=30)
+        self.login_username_entry.pack(pady=5)
+        
+        # Password
+        tk.Label(
+            card,
+            text="Password",
+            bg="white",
+            fg="#34495E",
+            font=("Arial", 11, "bold")
+        ).pack(anchor="w", pady=(5, 2))
+        
+        self.login_password_entry = ttk.Entry(card, font=("Arial", 12), width=30, show="*")
+        self.login_password_entry.pack(pady=5)
+        
+        # Buttons
+        button_frame = tk.Frame(card, bg="white")
+        button_frame.pack(pady=20)
+        
+        tk.Button(
+            button_frame,
+            text="Login",
+            command=self.handle_login,
+            font=("Arial", 12, "bold"),
+            bg="#4CAF50",
+            fg="white",
+            activebackground="#43A047",
+            activeforeground="white",
+            relief="flat",
+            padx=20,
+            pady=8
+        ).pack(side="left", padx=(0, 10))
+        
+        tk.Button(
+            button_frame,
+            text="Sign Up",
+            command=self.create_signup_screen,
+            font=("Arial", 12),
+            bg="#2196F3",
+            fg="white",
+            activebackground="#1976D2",
+            activeforeground="white",
+            relief="flat",
+            padx=20,
+            pady=8
+        ).pack(side="left")
+    
+    def create_signup_screen(self):
+        self.clear_screen()
+        
+        card = tk.Frame(
+            self.root,
+            bg="white",
+            padx=30,
+            pady=25
+        )
+        card.pack(pady=50)
+        
+        tk.Label(
+            card,
+            text="🧠 Create Account",
+            font=("Arial", 22, "bold"),
+            bg="white",
+            fg="#2C3E50"
+        ).pack(pady=(0, 8))
+        
+        tk.Label(
+            card,
+            text="Join Soul Sense EQ Test",
+            font=("Arial", 11),
+            bg="white",
+            fg="#7F8C8D"
+        ).pack(pady=(0, 20))
+        
+        # Username
+        tk.Label(
+            card,
+            text="Username",
+            bg="white",
+            fg="#34495E",
+            font=("Arial", 11, "bold")
+        ).pack(anchor="w", pady=(5, 2))
+        
+        self.signup_username_entry = ttk.Entry(card, font=("Arial", 12), width=30)
+        self.signup_username_entry.pack(pady=5)
+        
+        # Password
+        tk.Label(
+            card,
+            text="Password",
+            bg="white",
+            fg="#34495E",
+            font=("Arial", 11, "bold")
+        ).pack(anchor="w", pady=(5, 2))
+        
+        self.signup_password_entry = ttk.Entry(card, font=("Arial", 12), width=30, show="*")
+        self.signup_password_entry.pack(pady=5)
+        
+        # Confirm Password
+        tk.Label(
+            card,
+            text="Confirm Password",
+            bg="white",
+            fg="#34495E",
+            font=("Arial", 11, "bold")
+        ).pack(anchor="w", pady=(5, 2))
+        
+        self.signup_confirm_entry = ttk.Entry(card, font=("Arial", 12), width=30, show="*")
+        self.signup_confirm_entry.pack(pady=5)
+        
+        # Buttons
+        button_frame = tk.Frame(card, bg="white")
+        button_frame.pack(pady=20)
+        
+        tk.Button(
+            button_frame,
+            text="Create Account",
+            command=self.handle_signup,
+            font=("Arial", 12, "bold"),
+            bg="#4CAF50",
+            fg="white",
+            activebackground="#43A047",
+            activeforeground="white",
+            relief="flat",
+            padx=20,
+            pady=8
+        ).pack(side="left", padx=(0, 10))
+        
+        tk.Button(
+            button_frame,
+            text="Back to Login",
+            command=self.create_login_screen,
+            font=("Arial", 12),
+            bg="#757575",
+            fg="white",
+            activebackground="#616161",
+            activeforeground="white",
+            relief="flat",
+            padx=20,
+            pady=8
+        ).pack(side="left")
+    
+    def handle_login(self):
+        username = self.login_username_entry.get().strip()
+        password = self.login_password_entry.get()
+        
+        if not username or not password:
+            messagebox.showwarning("Input Error", "Please enter both username and password.")
+            return
+        
+        success, message = self.auth_manager.login_user(username, password)
+        
+        if success:
+            self.username = username
+            logging.info(f"User logged in: {username}")
+            self.create_username_screen()
+        else:
+            messagebox.showerror("Login Failed", message)
+    
+    def handle_signup(self):
+        username = self.signup_username_entry.get().strip()
+        password = self.signup_password_entry.get()
+        confirm_password = self.signup_confirm_entry.get()
+        
+        if not username or not password or not confirm_password:
+            messagebox.showwarning("Input Error", "Please fill in all fields.")
+            return
+        
+        if password != confirm_password:
+            messagebox.showwarning("Input Error", "Passwords do not match.")
+            return
+        
+        success, message = self.auth_manager.register_user(username, password)
+        
+        if success:
+            messagebox.showinfo("Success", "Account created successfully! Please login.")
+            self.create_login_screen()
+        else:
+            messagebox.showerror("Registration Failed", message)
+    
+    def handle_logout(self):
+        confirm = messagebox.askyesno(
+            "Logout",
+            "Are you sure you want to logout?"
+        )
+        
+        if confirm:
+            self.auth_manager.logout_user()
+            self.username = ""
+            logging.info("User logged out")
+            self.create_login_screen()
+    
     def create_username_screen(self):
         self.clear_screen()
 
@@ -168,6 +402,32 @@ class SoulSenseApp:
             bg="white",
             fg="#7F8C8D"
         ).pack(pady=(0, 20))
+
+        # Logout button
+        logout_frame = tk.Frame(card, bg="white")
+        logout_frame.pack(fill="x", pady=(0, 10))
+        
+        tk.Label(
+            logout_frame,
+            text=f"Logged in as: {self.auth_manager.current_user}",
+            bg="white",
+            fg="#7F8C8D",
+            font=("Arial", 10)
+        ).pack(side="left")
+        
+        tk.Button(
+            logout_frame,
+            text="Logout",
+            command=self.handle_logout,
+            font=("Arial", 10),
+            bg="#E74C3C",
+            fg="white",
+            activebackground="#C0392B",
+            activeforeground="white",
+            relief="flat",
+            padx=15,
+            pady=5
+        ).pack(side="right")
 
 
         # Name
@@ -319,6 +579,18 @@ class SoulSenseApp:
             text="🏠 Home",
             command=self.return_to_home
         ).pack(side="right")
+        
+        tk.Button(
+            progress_frame,
+            text="Logout",
+            command=self.handle_logout,
+            font=("Arial", 10),
+            bg="#E74C3C",
+            fg="white",
+            relief="flat",
+            padx=10,
+            pady=5
+        ).pack(side="right", padx=(0, 5))
 
 
         max_val = self.total_questions if self.total_questions > 0 else 10
@@ -472,7 +744,31 @@ class SoulSenseApp:
         tk.Label(left_frame, text=f"Empathy: {cat2_score}/12").pack()
         tk.Label(left_frame, text=f"Social Skills: {cat3_score}/16").pack()
 
-        tk.Button(left_frame, text="Exit", command=self.force_exit, font=("Arial", 12), bg="#ffcccc").pack(pady=40)
+        button_frame = tk.Frame(left_frame)
+        button_frame.pack(pady=40)
+        
+        tk.Button(
+            button_frame,
+            text="Logout",
+            command=self.handle_logout,
+            font=("Arial", 12),
+            bg="#E74C3C",
+            fg="white",
+            relief="flat",
+            padx=20,
+            pady=8
+        ).pack(side="left", padx=(0, 10))
+        
+        tk.Button(
+            button_frame,
+            text="Exit",
+            command=self.force_exit,
+            font=("Arial", 12),
+            bg="#ffcccc",
+            relief="flat",
+            padx=20,
+            pady=8
+        ).pack(side="left")
 
         # Right Side: Graph
         right_frame = tk.Frame(self.root, bg="white")

@@ -7,6 +7,11 @@ It provides an interactive self-reflection test, persists results locally, and i
 
 ## ✨ Features
 
+- **User Authentication System**
+  - Secure user registration and login
+  - Password hashing with SHA-256
+  - Session management with logout functionality
+  - User-specific data tracking
 - Interactive Tkinter-based GUI
 - SQLite-backed persistence for questions, responses, and scores
 - Questions loaded once into the database, then read-only at runtime
@@ -15,6 +20,7 @@ It provides an interactive self-reflection test, persists results locally, and i
   - Per-question responses
   - Final EQ score
   - Optional age and age group
+  - User authentication data
 - Backward-compatible database schema migrations
 - Pytest-based test suite with isolated temporary databases
 - Daily emotional journal with AI sentiment analysis
@@ -154,16 +160,33 @@ pip install -r requirements.txt -->
 
 ## ▶️ How to Run
 
-Load questions into the database (one-time step):
+**First Time Setup:**
 
+1. Load questions into the database (one-time step):
 ```bash
-    python -m scripts.load_questions
+python -m scripts.load_questions
 ```
-Start the application:
 
+2. Start the application:
 ```bash
-    python -m app.main
+python -m app.main
 ```
+
+**Authentication Flow:**
+
+1. **First-time users:** Click "Sign Up" to create an account
+   - Choose a username (minimum 3 characters)
+   - Set a password (minimum 4 characters)
+   - Confirm your password
+
+2. **Returning users:** Enter your username and password to login
+
+3. **During the test:** Use the logout button to switch users or exit securely
+
+**Security Features:**
+- Passwords are hashed using SHA-256 encryption
+- User sessions are managed securely
+- Each user's data is isolated and protected
 ---
 
 ## 🧪 Running Tests
