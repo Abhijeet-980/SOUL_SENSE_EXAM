@@ -25,6 +25,7 @@ class Score(Base):
     total_score = Column(Integer)
     age = Column(Integer)
     detailed_age_group = Column(String)
+    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat())
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
 
     user = relationship("User", back_populates="scores")

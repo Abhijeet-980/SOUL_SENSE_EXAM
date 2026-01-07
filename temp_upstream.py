@@ -1,4 +1,4 @@
-import tkinter as tk
+﻿import tkinter as tk
 from tkinter import messagebox
 import logging
 import sys
@@ -8,7 +8,11 @@ import os
 import random
 
 from app.db import get_connection
-
+from app.models import (
+    ensure_scores_schema,
+    ensure_responses_schema,
+    ensure_question_bank_schema
+)
 from app.questions import load_questions
 from app.utils import compute_age_group
 
@@ -102,6 +106,10 @@ CREATE TABLE IF NOT EXISTS scores (
 )
 """)
 
+ensure_scores_schema(cursor)
+ensure_responses_schema(cursor)
+ensure_question_bank_schema(cursor)
+
 conn.commit()
 
 # ---------------- LOAD QUESTIONS FROM DB ----------------
@@ -132,54 +140,54 @@ class SoulSenseApp:
         # Define color schemes
         self.color_schemes = {
             "light": {
-                "bg": "#FFFFFF", # Pure white for max contrast
+                "bg": "#f0f0f0",
                 "fg": "#000000",
-                "button_bg": "#E0E0E0",
+                "button_bg": "#e0e0e0",
                 "button_fg": "#000000",
-                "entry_bg": "#FFFFFF",
+                "entry_bg": "#ffffff",
                 "entry_fg": "#000000",
-                "radiobutton_bg": "#FFFFFF",
+                "radiobutton_bg": "#f0f0f0",
                 "radiobutton_fg": "#000000",
-                "label_bg": "#FFFFFF",
+                "label_bg": "#f0f0f0",
                 "label_fg": "#000000",
-                "frame_bg": "#FFFFFF",
-                "chart_bg": "#FFFFFF",
+                "frame_bg": "#f0f0f0",
+                "chart_bg": "#ffffff",
                 "chart_fg": "#000000",
-                "improvement_good": "#2E7D32", # Darker green
-                "improvement_bad": "#C62828", # Darker red
-                "improvement_neutral": "#F9A825", # Darker yellow
-                "excellent": "#1565C0", # Darker blue
-                "good": "#2E7D32",
-                "average": "#EF6C00", # Darker orange
-                "needs_work": "#C62828",
-                "benchmark_better": "#2E7D32",
-                "benchmark_worse": "#C62828",
-                "benchmark_same": "#F9A825"
+                "improvement_good": "#4CAF50",
+                "improvement_bad": "#F44336",
+                "improvement_neutral": "#FFC107",
+                "excellent": "#2196F3",
+                "good": "#4CAF50",
+                "average": "#FF9800",
+                "needs_work": "#F44336",
+                "benchmark_better": "#4CAF50",
+                "benchmark_worse": "#F44336",
+                "benchmark_same": "#FFC107"
             },
             "dark": {
-                "bg": "#121212", # Hard dark
-                "fg": "#FFFFFF",
-                "button_bg": "#333333",
-                "button_fg": "#FFFFFF",
-                "entry_bg": "#000000",
-                "entry_fg": "#FFFFFF",
-                "radiobutton_bg": "#121212",
-                "radiobutton_fg": "#FFFFFF",
-                "label_bg": "#121212",
-                "label_fg": "#FFFFFF",
-                "frame_bg": "#121212",
-                "chart_bg": "#1E1E1E",
-                "chart_fg": "#FFFFFF",
-                "improvement_good": "#66BB6A", # Lighter green
-                "improvement_bad": "#EF5350", # Lighter red
-                "improvement_neutral": "#FFEE58", # Lighter yellow
-                "excellent": "#42A5F5", # Lighter blue
-                "good": "#66BB6A",
-                "average": "#FFA726", # Lighter orange
-                "needs_work": "#EF5350",
-                "benchmark_better": "#66BB6A",
-                "benchmark_worse": "#EF5350",
-                "benchmark_same": "#FFEE58"
+                "bg": "#2e2e2e",
+                "fg": "#ffffff",
+                "button_bg": "#4a4a4a",
+                "button_fg": "#ffffff",
+                "entry_bg": "#3a3a3a",
+                "entry_fg": "#ffffff",
+                "radiobutton_bg": "#2e2e2e",
+                "radiobutton_fg": "#ffffff",
+                "label_bg": "#2e2e2e",
+                "label_fg": "#ffffff",
+                "frame_bg": "#2e2e2e",
+                "chart_bg": "#2e2e2e",
+                "chart_fg": "#ffffff",
+                "improvement_good": "#4CAF50",
+                "improvement_bad": "#F44336",
+                "improvement_neutral": "#FFC107",
+                "excellent": "#2196F3",
+                "good": "#4CAF50",
+                "average": "#FF9800",
+                "needs_work": "#F44336",
+                "benchmark_better": "#4CAF50",
+                "benchmark_worse": "#F44336",
+                "benchmark_same": "#FFC107"
             }
         }
         
@@ -225,37 +233,6 @@ class SoulSenseApp:
         self.root.option_add("*Radiobutton.Foreground", self.colors["radiobutton_fg"])
         self.root.option_add("*Radiobutton.selectColor", self.colors["bg"])
         self.root.option_add("*Frame.Background", self.colors["frame_bg"])
-
-    def toggle_tooltip(self, event, text):
-        """Toggle tooltip visibility on click/enter"""
-        if hasattr(self, 'tooltip_win') and self.tooltip_win:
-            self.tooltip_win.destroy()
-            self.tooltip_win = None
-            return
-
-        x, y, _, _ = event.widget.bbox("insert")
-        x += event.widget.winfo_rootx() + 25
-        y += event.widget.winfo_rooty() + 25
-
-        self.tooltip_win = tk.Toplevel(self.root)
-        self.tooltip_win.wm_overrideredirect(True)
-        self.tooltip_win.wm_geometry(f"+{x}+{y}")
-
-        label = tk.Label(
-            self.tooltip_win,
-            text=text,
-            justify='left',
-            background="#ffffe0", # Light yellow for tooltip
-            foreground="#000000",
-            relief='solid',
-            borderwidth=1,
-            font=("Arial", 10)
-        )
-        label.pack(ipadx=1)
-        
-        # Auto-hide after 3 seconds
-        self.root.after(3000, lambda: self.tooltip_win.destroy() if hasattr(self, 'tooltip_win') and self.tooltip_win else None)
-
 
     def create_widget(self, widget_type, *args, **kwargs):
         """Create a widget with current theme colors"""
@@ -303,7 +280,7 @@ class SoulSenseApp:
             tk.Label,
             self.root,
             text="Welcome to Soul Sense EQ Test",
-            font=("Arial", 22, "bold")
+            font=("Arial", 18, "bold")
         )
         title.pack(pady=20)
         
@@ -312,7 +289,7 @@ class SoulSenseApp:
             tk.Label,
             self.root,
             text="Assess your Emotional Intelligence\nwith our comprehensive questionnaire",
-            font=("Arial", 12)
+            font=("Arial", 11)
         )
         desc.pack(pady=10)
         
@@ -331,9 +308,9 @@ class SoulSenseApp:
         settings_text = self.create_widget(
             tk.Label,
             settings_frame,
-            text=f"• Questions: {len(self.questions)}\n" +
-                 f"• Theme: {self.settings.get('theme', 'light').title()}\n" +
-                 f"• Sound: {'On' if self.settings.get('sound_effects', True) else 'Off'}",
+            text=f"ΓÇó Questions: {len(self.questions)}\n" +
+                 f"ΓÇó Theme: {self.settings.get('theme', 'light').title()}\n" +
+                 f"ΓÇó Sound: {'On' if self.settings.get('sound_effects', True) else 'Off'}",
             font=("Arial", 10),
             justify="left"
         )
@@ -416,7 +393,7 @@ class SoulSenseApp:
         qcount_label = tk.Label(
             qcount_frame,
             text="Number of Questions:",
-            font=("Arial", 12),
+            font=("Arial", 11),
             bg=self.colors["bg"],
             fg=self.colors["fg"]
         )
@@ -428,7 +405,7 @@ class SoulSenseApp:
             from_=5,
             to=min(50, len(all_questions)),
             textvariable=self.qcount_var,
-            font=("Arial", 12),
+            font=("Arial", 11),
             width=10,
             bg=self.colors["entry_bg"],
             fg=self.colors["entry_fg"],
@@ -443,7 +420,7 @@ class SoulSenseApp:
         theme_label = tk.Label(
             theme_frame,
             text="Theme:",
-            font=("Arial", 12),
+            font=("Arial", 11),
             bg=self.colors["bg"],
             fg=self.colors["fg"]
         )
@@ -524,7 +501,7 @@ class SoulSenseApp:
             btn_frame,
             text="Apply",
             command=apply_settings,
-            font=("Arial", 12),
+            font=("Arial", 11),
             bg=self.colors["button_bg"],
             fg=self.colors["button_fg"],
             width=10,
@@ -536,7 +513,7 @@ class SoulSenseApp:
             btn_frame,
             text="Cancel",
             command=settings_win.destroy,
-            font=("Arial", 12),
+            font=("Arial", 11),
             bg=self.colors["button_bg"],
             fg=self.colors["button_fg"],
             width=10,
@@ -594,7 +571,6 @@ class SoulSenseApp:
             font=("Arial", 14)
         )
         self.age_entry.pack(pady=5)
-        self.root.bind("<Return>", self._enter_start)
         
         # Profession (optional, for benchmarking)
         self.create_widget(
@@ -647,13 +623,6 @@ class SoulSenseApp:
         except ValueError:
             return False, None, "Age must be numeric."
 
-            return True, age, None
-        except ValueError:
-            return False, None, "Age must be numeric."
-    
-    def _enter_start(self, event):
-        self.start_test()
-
     def start_test(self):
         self.username = self.name_entry.get().strip()
         age_str = self.age_entry.get().strip()
@@ -693,36 +662,16 @@ class SoulSenseApp:
             tk.Label,
             self.root,
             text=f"Question {self.current_question + 1} of {len(self.questions)}",
-            font=("Arial", 12)
+            font=("Arial", 10)
         ).pack(pady=5)
-        
-        q_frame = self.create_widget(tk.Frame, self.root)
-        q_frame.pack(pady=20)
         
         self.create_widget(
             tk.Label,
-            q_frame,
+            self.root,
             text=f"Q{self.current_question + 1}: {q}",
             wraplength=400,
-            font=("Arial", 12)
-        ).pack(side="left")
-        
-        # Tooltip Icon
-        info_btn = tk.Button(
-            q_frame,
-            text="ℹ️",
-            font=("Arial", 12),
-            bg=self.colors["bg"],
-            fg=self.colors["fg"],
-            relief="flat",
-            command=lambda: None # Placeholder, real action via bind
-        )
-        info_btn.pack(side="left", padx=5)
-        info_btn.bind("<Button-1>", lambda e: self.toggle_tooltip(e, "Select the option that best describes you.\nThere are no right or wrong answers."))
-        info_btn.bind("<Return>", lambda e: self.toggle_tooltip(e, "Select the option that best describes you.\nThere are no right or wrong answers."))
-
-        # Bind Enter to Next
-        self.root.bind("<Return>", lambda e: self.save_answer())
+            font=("Arial", 11)
+        ).pack(pady=20)
 
         self.answer_var = tk.IntVar()
 
@@ -1050,7 +999,7 @@ class SoulSenseApp:
             tk.Label,
             header_frame,
             text=f"Test Results for {self.username}",
-            font=("Arial", 22, "bold")
+            font=("Arial", 18, "bold")
         ).pack()
         
         # Score Summary
@@ -1156,7 +1105,7 @@ class SoulSenseApp:
                 self.create_widget(
                     tk.Label,
                     interpretation_frame,
-                    text=f"• {interpretation}",
+                    text=f"ΓÇó {interpretation}",
                     font=("Arial", 10),
                     anchor="w"
                 ).pack(anchor="w", pady=2)
@@ -1173,10 +1122,10 @@ class SoulSenseApp:
             comp = comparisons["global"]
             stats_text = f"""
             Global Comparison:
-            • Your Score: {comp['your_score']}
-            • Global Average: {comp['avg_score']} (based on {comp['sample_size']:,} people)
-            • Difference: {comp['difference']:+.1f}
-            • Percentile Rank: {comp['percentile']:.1f}th percentile
+            ΓÇó Your Score: {comp['your_score']}
+            ΓÇó Global Average: {comp['avg_score']} (based on {comp['sample_size']:,} people)
+            ΓÇó Difference: {comp['difference']:+.1f}
+            ΓÇó Percentile Rank: {comp['percentile']:.1f}th percentile
             """
             
             self.create_widget(
@@ -1231,11 +1180,11 @@ class SoulSenseApp:
         
         summary_text = f"""
         Test Summary:
-        • Questions Answered: {len(self.responses)}/{len(self.questions)}
-        • Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}
-        • Age Group: {self.age_group if self.age_group else 'Not specified'}
-        • Profession: {self.profession if self.profession else 'Not specified'}
-        • Average Response: {self.current_score/len(self.responses):.1f} out of 4
+        ΓÇó Questions Answered: {len(self.responses)}/{len(self.questions)}
+        ΓÇó Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+        ΓÇó Age Group: {self.age_group if self.age_group else 'Not specified'}
+        ΓÇó Profession: {self.profession if self.profession else 'Not specified'}
+        ΓÇó Average Response: {self.current_score/len(self.responses):.1f} out of 4
         """
         
         self.create_widget(
@@ -1264,7 +1213,7 @@ class SoulSenseApp:
                 button_frame,
                 text="Compare with Previous Tests",
                 command=self.show_comparison_screen,
-                font=("Arial", 12),
+                font=("Arial", 11),
                 width=25
             ).pack(side="left", padx=10)
         
@@ -1273,7 +1222,7 @@ class SoulSenseApp:
             button_frame,
             text="View History",
             command=self.show_history_screen,
-            font=("Arial", 12),
+            font=("Arial", 11),
             width=15
         ).pack(side="left", padx=10)
         
@@ -1282,7 +1231,7 @@ class SoulSenseApp:
             button_frame,
             text="Take Another Test",
             command=self.reset_test,
-            font=("Arial", 12),
+            font=("Arial", 11),
             width=15
         ).pack(side="left", padx=10)
         
@@ -1291,7 +1240,7 @@ class SoulSenseApp:
             button_frame,
             text="Main Menu",
             command=self.create_welcome_screen,
-            font=("Arial", 12),
+            font=("Arial", 11),
             width=15
         ).pack(side="left", padx=10)
         
@@ -1310,7 +1259,7 @@ class SoulSenseApp:
         self.create_widget(
             tk.Button,
             header_frame,
-            text="← Back",
+            text="ΓåÉ Back",
             command=self.create_welcome_screen,
             font=("Arial", 10)
         ).pack(side="left", padx=10)
@@ -1368,7 +1317,7 @@ class SoulSenseApp:
                     user_frame,
                     text=username,
                     command=lambda u=username: self.view_user_history(u),
-                    font=("Arial", 12),
+                    font=("Arial", 11),
                     width=20
                 )
                 user_btn.pack(pady=5)
@@ -1406,7 +1355,7 @@ class SoulSenseApp:
         self.create_widget(
             tk.Button,
             header_frame,
-            text="← Back",
+            text="ΓåÉ Back",
             command=self.show_history_screen,
             font=("Arial", 10)
         ).pack(side="left", padx=10)
@@ -1574,7 +1523,7 @@ class SoulSenseApp:
         self.create_widget(
             tk.Button,
             header_frame,
-            text="← Back",
+            text="ΓåÉ Back",
             command=self.show_history_screen,
             font=("Arial", 10)
         ).pack(side="left", padx=10)
@@ -1698,7 +1647,7 @@ class SoulSenseApp:
             tk.Label,
             right_frame,
             text=stats_text.strip(),
-            font=("Arial", 12),
+            font=("Arial", 11),
             justify="left"
         )
         stats_label.pack(pady=10, padx=20, anchor="w")
@@ -1708,7 +1657,7 @@ class SoulSenseApp:
         improvement_frame.pack(pady=20, padx=20, fill="x")
         
         improvement_color = self.colors["improvement_good"] if improvement > 0 else self.colors["improvement_bad"] if improvement < 0 else self.colors["improvement_neutral"]
-        improvement_symbol = "↑" if improvement > 0 else "↓" if improvement < 0 else "→"
+        improvement_symbol = "Γåæ" if improvement > 0 else "Γåô" if improvement < 0 else "ΓåÆ"
         
         self.create_widget(
             tk.Label,
@@ -1834,41 +1783,8 @@ class SoulSenseApp:
             w.destroy()
 
 # ---------------- MAIN ----------------
-class SplashScreen:
-    def __init__(self, root):
-        self.root = root
-        self.root.overrideredirect(True)
-        self.root.geometry("400x300")
-        
-        # Center Window
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        x = (screen_width - 400) // 2
-        y = (screen_height - 300) // 2
-        self.root.geometry(f"+{x}+{y}")
-        
-        self.root.configure(bg="#2C3E50")
-        
-        tk.Label(self.root, text="Soul Sense", font=("Arial", 30, "bold"), bg="#2C3E50", fg="white").pack(expand=True, pady=(50, 10))
-        tk.Label(self.root, text="Emotional Intelligence Exam", font=("Arial", 14), bg="#2C3E50", fg="#BDC3C7").pack(expand=True, pady=(0, 50))
-        
-        self.loading_label = tk.Label(self.root, text="Initializing...", font=("Arial", 10), bg="#2C3E50", fg="#BDC3C7")
-        self.loading_label.pack(side="bottom", pady=20)
-
-    def close_after_delay(self, delay, callback):
-        self.root.after(delay, callback)
-
-# ---------------- MAIN ----------------
 if __name__ == "__main__":
-    splash_root = tk.Tk()
-    splash = SplashScreen(splash_root)
-    
-    def launch_main_app():
-        splash.root.destroy()
-        root = tk.Tk()
-        app = SoulSenseApp(root)
-        root.protocol("WM_DELETE_WINDOW", app.force_exit)
-        root.mainloop()
-
-    splash.close_after_delay(2000, launch_main_app)
-    splash_root.mainloop()
+    root = tk.Tk()
+    app = SoulSenseApp(root)
+    root.protocol("WM_DELETE_WINDOW", app.force_exit)
+    root.mainloop()

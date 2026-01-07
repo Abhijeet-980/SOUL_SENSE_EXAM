@@ -61,6 +61,7 @@ def upgrade() -> None:
             sa.Column('total_score', sa.Integer(), nullable=True),
             sa.Column('age', sa.Integer(), nullable=True),
             sa.Column('detailed_age_group', sa.String(), nullable=True),
+            sa.Column('timestamp', sa.String(), nullable=True),
             sa.Column('user_id', sa.Integer(), nullable=True),
             sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
             sa.PrimaryKeyConstraint('id')
@@ -116,6 +117,7 @@ def upgrade() -> None:
             sa.Column('max_age', sa.Integer(), default=120),
             sa.Column('weight', sa.Float(), default=1.0),
             sa.Column('is_active', sa.Integer(), default=1),
+            sa.Column('tooltip', sa.Text(), nullable=True),
             sa.Column('created_at', sa.String(), nullable=True),
             sa.PrimaryKeyConstraint('id')
         )
