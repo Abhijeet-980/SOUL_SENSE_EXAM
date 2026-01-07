@@ -50,3 +50,10 @@
 2026-01-07 01:07:39,563 - INFO - Session started | user=Anushka | age=18 | education=Postgraduate | age_group=adult
 2026-01-07 01:07:43,565 - INFO - User returned to home screen during test
 2026-01-07 01:07:53,051 - INFO - Session started | user=Anu | age=18 | education=Postgraduate | age_group=adult
+2026-01-07 08:40:03,604 - INFO - Application started
+2026-01-07 08:40:43,219 - INFO - Session started | user=GOPI | age=21 | education=Undergraduate | age_group=adult
+2026-01-07 08:46:33,737 - INFO - Application started
+2026-01-07 08:46:33,739 - INFO - Migrating scores table: adding user_id column
+2026-01-07 08:46:33,746 - INFO - Migrating responses table: adding user_id column
+2026-01-07 08:47:02,579 - INFO - User logged in: DGC
+2026-01-07 08:47:23,625 - INFO - Session started | user=DGC | age=21 | education=Undergraduate | age_group=adult

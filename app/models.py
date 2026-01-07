@@ -16,6 +16,11 @@ def ensure_scores_schema(cursor):
     if cols and "detailed_age_group" not in cols:
         logging.info("Migrating scores table: adding detailed_age_group column")
         cursor.execute("ALTER TABLE scores ADD COLUMN detailed_age_group TEXT")
+    
+    # Add user_id column for linking scores to authenticated users
+    if cols and "user_id" not in cols:
+        logging.info("Migrating scores table: adding user_id column")
+        cursor.execute("ALTER TABLE scores ADD COLUMN user_id INTEGER")
 
 
 def ensure_responses_schema(cursor):
@@ -56,6 +61,13 @@ def ensure_responses_schema(cursor):
             logging.info("Migrating responses table: adding detailed_age_group column")
             cursor.execute("ALTER TABLE responses ADD COLUMN detailed_age_group TEXT")
 
+    # Add user_id column for linking responses to authenticated users
+    cursor.execute("PRAGMA table_info(responses)")
+    cols = [c[1] for c in cursor.fetchall()]
+    if "user_id" not in cols:
+        logging.info("Migrating responses table: adding user_id column")
+        cursor.execute("ALTER TABLE responses ADD COLUMN user_id INTEGER")
+
 
 def ensure_question_bank_schema(cursor):
     cursor.execute("""
@@ -64,5 +76,19 @@ def ensure_question_bank_schema(cursor):
         question_text TEXT NOT NULL,
         is_active INTEGER DEFAULT 1,
         created_at TEXT
+    )
+    """)
+
+def ensure_users_schema(cursor):
+    """
+    Ensure users table exists for authentication.
+    """
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_login TEXT
     )
     """)
