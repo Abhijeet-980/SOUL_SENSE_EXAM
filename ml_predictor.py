@@ -184,6 +184,9 @@ class SoulSenseMLPredictor:
             prediction, probabilities, feature_dict, feature_importance
         )
         
+        # Get recommendations
+        recommendations = self.get_recommendations(prediction, feature_dict)
+        
         return {
             'prediction': int(prediction),
             'prediction_label': self.class_names[prediction],
@@ -191,8 +194,47 @@ class SoulSenseMLPredictor:
             'confidence': float(probabilities[prediction]),
             'features': feature_dict,
             'feature_importance': feature_importance,
-            'explanation': explanation
+            'explanation': explanation,
+            'recommendations': recommendations
         }
+    
+    def get_recommendations(self, prediction, features):
+        """Generate actionable advice based on specific feature deficits"""
+        advice = []
+        
+        # General Advice based on Risk Level
+        if prediction == 2: # High Risk
+            advice.append("Consider consulting a mental health professional for personalized support.")
+            advice.append("Reach out to a trusted friend or family member to share your feelings.")
+        elif prediction == 1: # Moderate Risk
+            advice.append("Try setting aside 10 minutes daily for mindfulness or meditation.")
+            advice.append("Focus on maintaining a regular sleep schedule.")
+
+        # Specific Advice based on Low Scores
+        # Emotional Regulation (Q3)
+        if features.get('emotional_regulation', 5) <= 2:
+            advice.append("Practice 'Box Breathing': Inhale 4s, Hold 4s, Exhale 4s, Hold 4s.")
+            advice.append("Identify your triggers: Write down what situations cause strong reactions.")
+            
+        # Social Awareness (Q5)
+        if features.get('social_awareness', 5) <= 2:
+            advice.append("Active Listening: Focus entirely on the speaker without planning your response.")
+            advice.append("Observe Body Language: Notice non-verbal cues in your next conversation.")
+            
+        # Emotional Understanding (Q2)
+        if features.get('emotional_understanding', 5) <= 2:
+            advice.append("Emotion Labeling: paused to specifically name what you are feeling (e.g., 'Frustrated').")
+            
+        # Emotional Recognition (Q1)
+        if features.get('emotional_recognition', 5) <= 2:
+            advice.append("Body Scan: Close your eyes and notice where you feel tension in your body.")
+
+        # Fallback
+        if not advice:
+            advice.append("Continue engaging in hobbies that bring you joy.")
+            advice.append("Maintain your current healthy emotional habits!")
+            
+        return advice[:5] # Limit to top 5 tips
     
     def get_feature_importance(self, features):
         """Get feature importance for this specific prediction"""

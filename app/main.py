@@ -1400,61 +1400,122 @@ class SoulSenseApp:
                 self.current_score
             )
             
-            # 2. Create Popup
+            # 2. Create Layout
             popup = tk.Toplevel(self.root)
             popup.title("🤖 SoulSense AI Analysis")
-            popup.geometry("600x700")
-            popup.configure(bg="white")
+            popup.geometry("650x750")
+            popup.configure(bg="#F5F5F5")
+
+            # Main Scrollable Frame
+            canvas = tk.Canvas(popup, bg="#F5F5F5")
+            scrollbar = tk.Scrollbar(popup, orient="vertical", command=canvas.yview)
+            scrollable_frame = tk.Frame(canvas, bg="#F5F5F5")
+
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+
+            # --- CARD 1: OVERVIEW ---
+            risk_color = "#D32F2F" if result['prediction'] == 2 else "#FBC02D" if result['prediction'] == 1 else "#388E3C"
+            bg_color = "#FFEBEE" if result['prediction'] == 2 else "#FFFDE7" if result['prediction'] == 1 else "#E8F5E9"
             
-            # 3. Header
-            tk.Label(
-                popup, 
-                text=f"{result['prediction_label']}", 
-                font=("Arial", 24, "bold"),
-                bg="white",
-                fg="#D32F2F" if result['prediction'] == 2 else 
-                   "#FBC02D" if result['prediction'] == 1 else "#388E3C"
-            ).pack(pady=20)
+            card1 = tk.Frame(scrollable_frame, bg="white", bd=1, relief="solid")
+            card1.pack(fill="x", padx=20, pady=10)
+            
+            # Header
+            header_frame = tk.Frame(card1, bg=risk_color, height=80)
+            header_frame.pack(fill="x")
             
             tk.Label(
-                popup,
+                header_frame, 
+                text=result['prediction_label'].upper(), 
+                font=("Arial", 18, "bold"),
+                bg=risk_color,
+                fg="white"
+            ).pack(pady=10)
+            
+            tk.Label(
+                header_frame,
                 text=f"Confidence: {result['confidence']:.1%}",
                 font=("Arial", 12),
+                bg=risk_color,
+                fg="white"
+            ).pack(pady=(0, 10))
+
+            tk.Label(
+                card1, 
+                text="Based on your inputs, the AI model suggests:", 
+                font=("Arial", 11, "italic"),
                 bg="white",
-                fg="#666"
-            ).pack()
+                fg="#555"
+            ).pack(pady=15)
+
+            # --- CARD 2: ACTION PLAN ---
+            tk.Label(scrollable_frame, text="✅ RECOMMENDED ACTIONS", font=("Arial", 14, "bold"), bg="#F5F5F5", fg="#333").pack(anchor="w", padx=25, pady=(15,5))
             
-            # 4. Scrollable Explanation Text
-            text_frame = tk.Frame(popup, bg="white")
-            text_frame.pack(fill="both", expand=True, padx=20, pady=20)
+            card2 = tk.Frame(scrollable_frame, bg="white", bd=0, highlightbackground="#ddd", highlightthickness=1)
+            card2.pack(fill="x", padx=20)
+
+            if 'recommendations' in result and result['recommendations']:
+                for tip in result['recommendations']:
+                    row = tk.Frame(card2, bg="white")
+                    row.pack(fill="x", pady=10, padx=15)
+                    
+                    tk.Label(row, text="🔹", font=("Arial", 12), bg="white", fg=risk_color).pack(side="left", anchor="n")
+                    tk.Label(
+                        row, 
+                        text=tip, 
+                        font=("Arial", 11), 
+                        bg="white", 
+                        fg="#333", 
+                        wraplength=500, 
+                        justify="left"
+                    ).pack(side="left", padx=10)
+            else:
+                tk.Label(card2, text="No specific recommendations available.", bg="white").pack(pady=20)
+
+            # --- CARD 3: TOP FACTORS ---
+            tk.Label(scrollable_frame, text="🔍 INFLUENCING FACTORS", font=("Arial", 14, "bold"), bg="#F5F5F5", fg="#333").pack(anchor="w", padx=25, pady=(20,5))
             
-            scrollbar = tk.Scrollbar(text_frame)
-            scrollbar.pack(side="right", fill="y")
+            card3 = tk.Frame(scrollable_frame, bg="white", bd=0, highlightbackground="#ddd", highlightthickness=1)
+            card3.pack(fill="x", padx=20, padding=10)
+
+            sorted_features = sorted(result['features'].items(), key=lambda x: result['feature_importance'].get(x[0], 0), reverse=True)[:3]
             
-            text_widget = tk.Text(
-                text_frame, 
-                wrap="word", 
-                font=("Courier New", 11),
-                yscrollcommand=scrollbar.set,
-                bd=0,
-                padx=10,
-                pady=10
-            )
-            text_widget.pack(side="left", fill="both", expand=True)
-            scrollbar.config(command=text_widget.yview)
-            
-            # Insert explanation
-            text_widget.insert("1.0", result['explanation'])
-            text_widget.config(state="disabled") # Read-only
-            
-            # 5. Close Button
+            for feature, value in sorted_features:
+                imp = result['feature_importance'].get(feature, 0)
+                f_name = feature.replace('_', ' ').title()
+                
+                f_row = tk.Frame(card3, bg="white")
+                f_row.pack(fill="x", pady=5, padx=15)
+                
+                tk.Label(f_row, text=f"{f_name} ({value:.1f}/5)", font=("Arial", 11, "bold"), bg="white").pack(anchor="w")
+                
+                # Simple progress bar using a frame
+                bar_bg = tk.Frame(f_row, bg="#eee", height=8, width=400)
+                bar_bg.pack(anchor="w", pady=2)
+                bar_bg.pack_propagate(False)
+                
+                fill_width = int(400 * imp * 3) # Magnify importance for visibility
+                fill_width = min(fill_width, 400)
+                tk.Frame(bar_bg, bg="#2196F3", height=8, width=fill_width).pack(side="left")
+
+            # Close Button
             tk.Button(
-                popup,
-                text="Close",
+                scrollable_frame,
+                text="Close Analysis",
                 command=popup.destroy,
-                font=("Arial", 11),
+                font=("Arial", 12),
+                bg="#eee",
                 width=20
-            ).pack(pady=20)
+            ).pack(pady=30)
             
         except Exception as e:
             logging.error("AI Analysis failed", exc_info=True)
