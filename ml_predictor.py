@@ -9,6 +9,7 @@ import pickle
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 import warnings
@@ -127,7 +128,38 @@ class SoulSenseMLPredictor:
         print(f"   Training accuracy: {train_acc:.2%}")
         print(f"   Test accuracy: {test_acc:.2%}")
         
+        # Detailed Evaluation
+        print("\n📊 Detailed Classification Report:")
+        report = classification_report(y_test, self.model.predict(X_test_scaled), target_names=self.class_names)
+        print(report)
+        
+        # Save artifacts
+        self.save_evaluation_artifacts(y_test, self.model.predict(X_test_scaled), report)
+        
         return self.model
+
+    def save_evaluation_artifacts(self, y_true, y_pred, report):
+        """Save confusion matrix plot and metrics text"""
+        # 1. Save Metrics Text
+        with open('model_metrics.txt', 'w', encoding='utf-8') as f:
+            f.write("SoulSense ML Model Evaluation\n")
+            f.write("=============================\n\n")
+            f.write(report)
+        print("📝 Metrics saved to model_metrics.txt")
+        
+        # 2. Save Confusion Matrix Plot
+        cm = confusion_matrix(y_true, y_pred)
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                    xticklabels=self.class_names,
+                    yticklabels=self.class_names)
+        plt.title('Confusion Matrix - Depression Risk Prediction')
+        plt.ylabel('True Label')
+        plt.xlabel('Predicted Label')
+        plt.tight_layout()
+        plt.savefig('confusion_matrix.png')
+        plt.close()
+        print("📉 Confusion matrix saved to confusion_matrix.png")
     
     def predict_with_explanation(self, q_scores, age, total_score):
         """Make prediction with XAI explanations"""
