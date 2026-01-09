@@ -12,6 +12,12 @@ It provides an interactive self-reflection test, persists results locally, and i
   - Password hashing with SHA-256
   - Session management with logout functionality
   - User-specific data tracking
+- **Outlier Detection & Data Quality**
+  - Statistical outlier detection using multiple methods (Z-score, IQR, MAD, Modified Z-score)
+  - Ensemble outlier detection with consensus voting
+  - Inconsistency pattern detection for users
+  - Age-group and global analysis capabilities
+  - Comprehensive data quality reporting
 - Interactive Tkinter-based GUI
 - SQLite-backed persistence for questions, responses, and scores
 - Questions loaded once into the database, then read-only at runtime
@@ -216,6 +222,71 @@ From the project root:
 
 Tests use temporary SQLite databases and do not affect production data.
 
+### Running Outlier Detection Tests
+
+```bash
+    python -m pytest tests/test_outlier_detection.py -v
+```
+
+---
+
+## 📊 Outlier Detection Feature
+
+### Overview
+
+The outlier detection module identifies extreme or inconsistent emotional intelligence scores using advanced statistical methods.
+
+**Supported Methods:**
+- **Z-Score**: Identifies scores deviating significantly from mean
+- **IQR (Interquartile Range)**: Robust method for skewed distributions
+- **Modified Z-Score**: Uses median/MAD for robustness
+- **MAD (Median Absolute Deviation)**: Resistant to extreme values
+- **Ensemble**: Consensus-based approach combining multiple methods
+
+### Command Line Usage
+
+```bash
+# Analyze user scores
+python scripts/outlier_analysis.py --user john_doe --method ensemble
+
+# Analyze age group
+python scripts/outlier_analysis.py --age-group "18-25" --method iqr
+
+# Global analysis
+python scripts/outlier_analysis.py --global --method zscore
+
+# Check inconsistency patterns
+python scripts/outlier_analysis.py --inconsistency john_doe --days 30
+
+# Get statistics
+python scripts/outlier_analysis.py --stats --age-group "26-35"
+
+# Output as JSON
+python scripts/outlier_analysis.py --user john_doe --format json
+```
+
+### Python API
+
+```python
+from app.db import get_session
+from app.outlier_detection import OutlierDetector
+
+detector = OutlierDetector()
+session = get_session()
+
+# Detect outliers for user
+result = detector.detect_outliers_for_user(session, "john_doe", method="ensemble")
+
+# Detect by age group
+result = detector.detect_outliers_by_age_group(session, "18-25", method="iqr")
+
+# Global analysis
+result = detector.detect_outliers_global(session, method="zscore")
+
+# Inconsistency analysis
+result = detector.detect_inconsistency_patterns(session, "john_doe", time_window_days=30)
+```
+
 ---
 
 ## 🧱 Design Notes
@@ -223,7 +294,8 @@ Tests use temporary SQLite databases and do not affect production data.
 - Database schemas are created and migrated safely at runtime
 - Question loading is idempotent and separated from application logic
 - Core logic is decoupled from the GUI to enable testing
-- Refactor preserves original application behavior while improving structure
+- Outlier detection uses NumPy for efficient statistical computations
+- All methods are fully tested with comprehensive edge case coverage
 
 ---
 

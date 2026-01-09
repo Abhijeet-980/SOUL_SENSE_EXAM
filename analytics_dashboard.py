@@ -50,6 +50,11 @@ class AnalyticsDashboard:
         notebook.add(eq_frame, text="📈 EQ Trends")
         self.show_eq_trends(eq_frame)
         
+        # Time-Based Analysis
+        time_frame = ttk.Frame(notebook)
+        notebook.add(time_frame, text="Time-Based Analysis")
+        self.show_time_based_analysis(time_frame)
+        
         # Journal Analytics
         journal_frame = ttk.Frame(notebook)
         notebook.add(journal_frame, text="📝 Journal Analytics")
@@ -416,7 +421,124 @@ class AnalyticsDashboard:
             
             tk.Label(trend_frame, text=trend_msg, 
                     font=("Arial", 10), bg="#e3f2fd", wraplength=500).pack(pady=5)
+
+    def show_time_based_analysis(self, parent):
+        """Show time-based analysis of responses for returning users"""
+        tk.Label(parent, text="⏰ Time-Based Response Analysis", 
+                font=("Arial", 14, "bold")).pack(pady=10)
         
+        # Get score trends
+        trend_data = time_analyzer.analyze_score_trends(self.username)
+        
+        if "error" in trend_data:
+            tk.Label(parent, text="No data available for time-based analysis", 
+                    font=("Arial", 12)).pack(pady=50)
+            return
+        
+        # Create scrollable frame for stats
+        canvas = tk.Canvas(parent)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Stats Frame 1 - Basic Statistics
+        stats1_frame = tk.Frame(scrollable_frame, bg="#f0f0f0", relief=tk.RIDGE, bd=2)
+        stats1_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        tk.Label(stats1_frame, text="📊 Score Statistics", 
+                font=("Arial", 11, "bold"), bg="#f0f0f0").pack(anchor="w", padx=10, pady=5)
+        
+        stats_text1 = tk.Text(stats1_frame, height=7, width=50, font=("Arial", 10), bg="#f0f0f0")
+        stats_text1.pack(padx=10, pady=5)
+        
+        stats_text1.insert(tk.END, f"Total Attempts: {trend_data.get('total_attempts', 0)}\n")
+        stats_text1.insert(tk.END, f"First Score: {trend_data.get('first_score', 'N/A')}\n")
+        stats_text1.insert(tk.END, f"Latest Score: {trend_data.get('last_score', 'N/A')}\n")
+        stats_text1.insert(tk.END, f"Average Score: {trend_data.get('average_score', 0):.1f}\n")
+        stats_text1.insert(tk.END, f"Highest Score: {trend_data.get('max_score', 'N/A')}\n")
+        stats_text1.insert(tk.END, f"Lowest Score: {trend_data.get('min_score', 'N/A')}\n")
+        stats_text1.insert(tk.END, f"Score Standard Deviation: {trend_data.get('score_std_dev', 0):.2f}\n")
+        stats_text1.config(state=tk.DISABLED)
+        
+        # Stats Frame 2 - Trend Information
+        stats2_frame = tk.Frame(scrollable_frame, bg="#e3f2fd", relief=tk.RIDGE, bd=2)
+        stats2_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        tk.Label(stats2_frame, text="📈 Trend Analysis", 
+                font=("Arial", 11, "bold"), bg="#e3f2fd").pack(anchor="w", padx=10, pady=5)
+        
+        stats_text2 = tk.Text(stats2_frame, height=5, width=50, font=("Arial", 10), bg="#e3f2fd")
+        stats_text2.pack(padx=10, pady=5)
+        
+        stats_text2.insert(tk.END, f"Total Improvement: {trend_data.get('total_improvement', 0):+d} points\n")
+        stats_text2.insert(tk.END, f"Improvement %: {trend_data.get('improvement_percentage', 0):+.1f}%\n")
+        stats_text2.insert(tk.END, f"Trend Direction: {trend_data.get('trend_direction', 'Unknown')}\n")
+        stats_text2.insert(tk.END, f"First Attempt: {trend_data.get('first_attempt_date', 'N/A')}\n")
+        stats_text2.insert(tk.END, f"Latest Attempt: {trend_data.get('last_attempt_date', 'N/A')}\n")
+        stats_text2.config(state=tk.DISABLED)
+        
+        # Response Pattern Analysis
+        response_patterns = time_analyzer.analyze_response_patterns_over_time(self.username)
+        
+        if "error" not in response_patterns:
+            stats3_frame = tk.Frame(scrollable_frame, bg="#f5f5f5", relief=tk.RIDGE, bd=2)
+            stats3_frame.pack(fill=tk.X, padx=10, pady=5)
+            
+            tk.Label(stats3_frame, text="🔄 Response Pattern Changes", 
+                    font=("Arial", 11, "bold"), bg="#f5f5f5").pack(anchor="w", padx=10, pady=5)
+            
+            pattern_summary = f"Total Responses: {response_patterns.get('total_responses', 0)}\n"
+            pattern_summary += f"Unique Questions Answered: {response_patterns.get('unique_questions_answered', 0)}\n"
+            pattern_summary += f"Overall Response Average: {response_patterns.get('overall_average_response', 0):.2f}\n"
+            pattern_summary += f"Response Consistency (Std Dev): {response_patterns.get('overall_response_std_dev', 0):.2f}\n"
+            
+            stats_text3 = tk.Text(stats3_frame, height=4, width=50, font=("Arial", 10), bg="#f5f5f5")
+            stats_text3.pack(padx=10, pady=5)
+            stats_text3.insert(tk.END, pattern_summary)
+            stats_text3.config(state=tk.DISABLED)
+        
+        # Comparative Analysis (Last 30 days vs historical)
+        comparative = time_analyzer.get_comparative_analysis(self.username, lookback_days=30)
+        
+        if "error" not in comparative:
+            stats4_frame = tk.Frame(scrollable_frame, bg="#fff3e0", relief=tk.RIDGE, bd=2)
+            stats4_frame.pack(fill=tk.X, padx=10, pady=5)
+            
+            tk.Label(stats4_frame, text="📅 Recent vs Historical (Last 30 Days)", 
+                    font=("Arial", 11, "bold"), bg="#fff3e0").pack(anchor="w", padx=10, pady=5)
+            
+            comp_text = tk.Text(stats4_frame, height=6, width=50, font=("Arial", 10), bg="#fff3e0")
+            comp_text.pack(padx=10, pady=5)
+            
+            if "historical" in comparative:
+                hist = comparative["historical"]
+                comp_text.insert(tk.END, f"Historical Avg Score: {hist.get('average_score', 0):.1f}\n")
+                comp_text.insert(tk.END, f"Historical Attempts: {hist.get('attempts', 0)}\n\n")
+            
+            if "recent" in comparative:
+                recent = comparative["recent"]
+                comp_text.insert(tk.END, f"Recent Avg Score (30d): {recent.get('average_score', 0):.1f}\n")
+                comp_text.insert(tk.END, f"Recent Attempts: {recent.get('attempts', 0)}\n")
+            
+            if "performance_change" in comparative:
+                change = comparative["performance_change"]
+                change_pct = comparative.get("performance_change_percentage", 0)
+                color_indicator = "📈" if change > 0 else "📉" if change < 0 else "⚖️"
+                comp_text.insert(tk.END, f"\n{color_indicator} Performance Change: {change:+.1f} ({change_pct:+.1f}%)")
+            
+            comp_text.config(state=tk.DISABLED)
+
     def show_journal_analytics(self, parent):
         """Show journal analytics"""
         conn = sqlite3.connect("soulsense_db")
