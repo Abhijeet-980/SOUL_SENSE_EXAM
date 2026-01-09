@@ -119,3 +119,8 @@ soulsesne_db
 *.pkl
 *.png
 model_metrics.txt
+
+###  registry data and experiment logs
+
+models/registry/
+experiments/
