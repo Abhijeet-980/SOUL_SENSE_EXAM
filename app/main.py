@@ -37,19 +37,19 @@ from app.questions import load_questions
 
 # Try importing optional features
 try:
-    from journal_feature import JournalFeature
+    from app.ui.journal import JournalFeature
 except ImportError:
     logging.warning("Could not import JournalFeature")
     JournalFeature = None
 
 try:
-    from ml_predictor import SoulSenseMLPredictor
+    from app.ml.predictor import SoulSenseMLPredictor
 except ImportError:
     logging.warning("Could not import SoulSenseMLPredictor")
     SoulSenseMLPredictor = None
 
 try:
-    from analytics_dashboard import AnalyticsDashboard
+    from app.ui.dashboard import AnalyticsDashboard
 except ImportError:
     logging.warning("Could not import AnalyticsDashboard")
     AnalyticsDashboard = None

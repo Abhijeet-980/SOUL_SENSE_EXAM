@@ -34,6 +34,25 @@ try:
             missing.append(attr)
     
     print(f"INFO: Missing managers: {missing}")
+    
+    # Check new module locations
+    try:
+        from app.ml.predictor import SoulSenseMLPredictor
+        print("SUCCESS: Imported app.ml.predictor")
+    except ImportError:
+        print("FAILURE: Could not import app.ml.predictor")
+        
+    try:
+        from app.ui.dashboard import AnalyticsDashboard
+        print("SUCCESS: Imported app.ui.dashboard")
+    except ImportError:
+        print("FAILURE: Could not import app.ui.dashboard")
+        
+    try:
+        from app.ui.journal import JournalFeature
+        print("SUCCESS: Imported app.ui.journal")
+    except ImportError:
+        print("FAILURE: Could not import app.ui.journal")
 
     root.destroy()
     sys.exit(0)

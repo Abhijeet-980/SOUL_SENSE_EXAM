@@ -13,7 +13,7 @@ import json
 import os
 import sqlite3
 
-from i18n_manager import get_i18n
+from app.i18n_manager import get_i18n
 
 # REMOVE THIS LINE - it's causing the error
 # from app.models import get_session, Score, JournalEntry
@@ -23,7 +23,7 @@ from app.time_based_analysis import time_analyzer
 
 # Import emotional profile clustering
 try:
-    from emotional_profile_clustering import (
+    from app.ml.clustering import (
         EmotionalProfileClusterer,
         ClusteringVisualizer,
         EMOTIONAL_PROFILES,

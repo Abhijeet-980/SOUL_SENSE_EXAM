@@ -16,7 +16,7 @@ import seaborn as sns
 import warnings
 warnings.filterwarnings('ignore')
 from app.data_cleaning import DataCleaner
-from model_versioning import ModelVersioningManager, create_versioning_manager
+from .versioning import ModelVersioningManager, create_versioning_manager
 import logging
 
 logger = logging.getLogger(__name__)

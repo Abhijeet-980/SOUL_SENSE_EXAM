@@ -1087,3 +1087,44 @@ TypeError: 'Response' object is not subscriptable
 2026-01-10 17:46:29,871 - root - INFO - Reloaded 9 questions based on settings
 2026-01-10 17:46:37,448 - root - INFO - Reloaded 9 questions based on settings
 2026-01-10 17:47:20,173 - root - INFO - Session started | user=rohan | age=20 | age_group=adult | profession=Professional | questions=9
+2026-01-10 18:11:20,440 - root - INFO - Logging initialized.
+2026-01-10 18:11:20,447 - root - INFO - Application started
+2026-01-10 18:11:20,458 - root - INFO - Loaded 10 total questions from DB
+2026-01-10 18:11:20,833 - root - ERROR - Failed to initialize ML Predictor: 'NoneType' object is not callable
+2026-01-10 18:13:38,731 - root - INFO - Logging initialized.
+2026-01-10 18:13:38,760 - root - INFO - Application started
+2026-01-10 18:13:38,780 - root - INFO - Loaded 10 total questions from DB
+2026-01-10 18:13:39,123 - root - ERROR - Failed to initialize ML Predictor: 'NoneType' object is not callable
+2026-01-10 18:16:57,163 - root - INFO - Logging initialized.
+2026-01-10 18:16:57,185 - root - INFO - Application started
+2026-01-10 18:16:57,204 - root - INFO - Loaded 10 total questions from DB
+2026-01-10 18:16:57,460 - root - INFO - ML Predictor initialized successfully
+2026-01-10 18:21:58,996 - root - INFO - Logging initialized.
+2026-01-10 18:21:58,999 - root - INFO - Application started
+2026-01-10 18:21:59,020 - root - INFO - Loaded 10 total questions from DB
+2026-01-10 18:21:59,281 - root - INFO - ML Predictor initialized successfully
+2026-01-10 18:25:58,609 - root - INFO - Logging initialized.
+2026-01-10 18:25:58,645 - root - INFO - Application started
+2026-01-10 18:25:58,786 - root - INFO - Loaded 10 total questions from DB
+2026-01-10 18:25:59,507 - root - INFO - ML Predictor initialized successfully
+2026-01-10 18:25:59,593 - root - INFO - SentimentIntensityAnalyzer initialized successfully
+2026-01-10 18:25:59,593 - root - INFO - Using 9 questions based on settings
+2026-01-10 18:29:09,472 - root - INFO - Logging initialized.
+2026-01-10 18:29:09,484 - root - INFO - Application started
+2026-01-10 18:29:09,488 - root - INFO - Loaded 10 total questions from DB
+2026-01-10 18:29:11,884 - root - INFO - ML Predictor initialized successfully
+2026-01-10 18:29:11,923 - root - INFO - SentimentIntensityAnalyzer initialized successfully
+2026-01-10 18:29:11,939 - root - INFO - Using 9 questions based on settings
+2026-01-10 18:29:25,235 - root - INFO - Session started | user=rohan | age=20 | age_group=adult | profession=Student | questions=9
+2026-01-10 18:30:49,322 - app.db - ERROR - Unexpected error in DB context: 'Response' object is not subscriptable
+Traceback (most recent call last):
+  File "B:\Open_Source\soul_sence_Exam\SOUL_SENSE_EXAM\app\db.py", line 32, in safe_db_context
+    yield session
+  File "B:\Open_Source\soul_sence_Exam\SOUL_SENSE_EXAM\app\time_based_analysis.py", line 218, in analyze_response_patterns_over_time
+    all_values = [r["response_value"] for r in responses]
+                  ~^^^^^^^^^^^^^^^^^^
+TypeError: 'Response' object is not subscriptable
+2026-01-10 18:30:49,377 - app.time_based_analysis - ERROR - Error analyzing response patterns for rohan: An unexpected database error occurred.
+2026-01-10 18:30:49,554 - app.ml.clustering - WARNING - Model not fitted. Call fit() first.
+2026-01-10 18:31:20,570 - root - INFO - Reloaded 9 questions based on settings
+2026-01-10 18:31:25,591 - root - INFO - Reloaded 9 questions based on settings

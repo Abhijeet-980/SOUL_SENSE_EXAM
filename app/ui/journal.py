@@ -5,33 +5,16 @@ from datetime import datetime
 import sqlite3
 
 import logging
-from i18n_manager import get_i18n
+from app.i18n_manager import get_i18n
 
 from sqlalchemy import desc
-import logging
+from app.models import JournalEntry
+from app.db import get_session
 
-# Change this import line:
-# from app.models import JournalEntry
-# to:
 try:
-
-    from sqlalchemy import desc
-    from app.models import JournalEntry, get_session
-    from analytics_dashboard import AnalyticsDashboard
-
-    from app.models import JournalEntry
-    from app.db import get_session
-
+    from app.ui.dashboard import AnalyticsDashboard
 except ImportError:
-    # Fallback/Error handling
-    JournalEntry = None
-    get_session = None
-
     AnalyticsDashboard = None
-    desc = None
-
-
-from analytics_dashboard import AnalyticsDashboard
 
 import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
@@ -280,7 +263,7 @@ class JournalFeature:
     def open_dashboard(self):
         """Open analytics dashboard"""
         try:
-            from analytics_dashboard import AnalyticsDashboard
+            from app.ui.dashboard import AnalyticsDashboard
             dashboard = AnalyticsDashboard(self.journal_window, self.username)
             dashboard.open_dashboard()
         except ImportError:
