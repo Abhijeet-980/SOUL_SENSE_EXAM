@@ -19,12 +19,8 @@ bcrypt>=4.0.0
 # Testing (optional)
 pytest>=6.0.0
 
-# Python 3.6+ recommended
-
-# External packages for visualization
-matplotlib>=3.5.0
-
-# Python 3.6+ recommended
+# PDF Generation
+reportlab>=3.6.0
 
 # ML Dependencies
 scikit-learn>=1.0.0

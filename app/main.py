@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox, simpledialog, filedialog
 import logging
 import threading
 import time
@@ -9,6 +9,12 @@ import webbrowser
 import os
 import sys
 import random # For random tips
+
+try:
+    from app.pdf_generator import PDFReportGenerator
+except ImportError:
+    logging.warning("PDF generator could not be imported")
+    PDFReportGenerator = None
 
 # NLTK (optional) - import defensively so app can run without it
 try:
@@ -1685,13 +1691,29 @@ class SoulSenseApp:
             width=16
         ).pack(side="left", padx=5)
         
-        # Row 2: Standard Actions
-        row2_frame = tk.Frame(button_frame)
-        row2_frame.grid(row=2, column=0, columnspan=2, pady=5)
+        # Row 2: Export Options
+        if PDFReportGenerator:
+            row_export = tk.Frame(button_frame)
+            row_export.grid(row=2, column=0, columnspan=2, pady=5)
+            
+            self.create_widget(
+                tk.Button,
+                row_export,
+                text="📄 Export to PDF",
+                command=self.export_pdf_report,
+                font=("Arial", 11, "bold"),
+                bg="#FF9800", # Orange
+                fg="black",
+                width=20
+            ).pack()
+
+        # Row 3: Standard Actions
+        row3_frame = tk.Frame(button_frame)
+        row3_frame.grid(row=3, column=0, columnspan=2, pady=5)
 
         self.create_widget(
             tk.Button,
-            row2_frame,
+            row3_frame,
             text="Take Another",
             command=self.reset_test,
             font=("Arial", 11),
@@ -1700,7 +1722,7 @@ class SoulSenseApp:
         
         self.create_widget(
             tk.Button,
-            row2_frame,
+            row3_frame,
             text="Main Menu",
             command=self.create_welcome_screen,
             font=("Arial", 11),
@@ -1710,6 +1732,69 @@ class SoulSenseApp:
         # Pack canvas and scrollbar (unchanged)
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+
+    def export_pdf_report(self):
+        """Generate and save PDF report"""
+        if not PDFReportGenerator:
+            messagebox.showerror("Error", "PDF Generator not available")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF Documents", "*.pdf")],
+            initialfile=f"SoulSense_Report_{self.username}_{datetime.now().strftime('%Y%m%d')}.pdf"
+        )
+        
+        if not file_path:
+            return
+            
+        try:
+            # 1. Gather Data
+            score_data = {
+                "total_score": self.current_score,
+                "max_score": self.current_max_score
+            }
+            
+            # 2. Get AI Insights (if available)
+            insights = []
+            if self.ml_predictor:
+                try:
+                    result = self.ml_predictor.predict_with_explanation(
+                        self.responses,
+                        self.age,
+                        self.current_score,
+                        sentiment_score=getattr(self, 'sentiment_score', 0)
+                    )
+                    # Extract insights from result text or raw list
+                    # The predict_with_explanation returns a dict with 'recommendations'
+                    if isinstance(result, dict) and 'recommendations' in result:
+                        insights = result['recommendations']
+                except Exception as e:
+                    logging.error(f"Error getting insights for PDF: {e}")
+                    insights = ["AI Insights currently unavailable."]
+            
+            # 3. Generate
+            generator = PDFReportGenerator(file_path)
+            success = generator.generate(
+                self.username,
+                score_data,
+                insights,
+                getattr(self, 'sentiment_score', 0)
+            )
+            
+            if success:
+                messagebox.showinfo("Success", f"Report saved to:\n{file_path}")
+                # Optional: Open the file
+                try:
+                    os.startfile(file_path)
+                except:
+                    pass
+            else:
+                messagebox.showerror("Error", "Failed to generate report.")
+                
+        except Exception as e:
+            logging.error(f"Export error: {e}", exc_info=True)
+            messagebox.showerror("Error", f"An error occurred: {str(e)}")
 
     def show_ml_analysis(self):
         """Show AI-powered analysis in a popup window"""
