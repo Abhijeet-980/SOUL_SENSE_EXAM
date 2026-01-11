@@ -23,15 +23,25 @@ class ExamManager:
 
     def start_test(self):
         """Initialize test state and start the exam"""
-        # Reset test state
+        from app.services.exam_service import ExamSession
+        
+        # Init or Reset ExamSession
+        # We need to pass the current set of questions to the session
+        # Ensure questions are in the format expected by ExamSession: (id, text, tooltip, min, max) or (text, tooltip)
+        # self.app.questions is [(id, text, tooltip, min, max)...] or [(text, tooltip)...]
+        
+        self.session = ExamSession(
+            username=self.app.username,
+            age=self.app.age,
+            age_group=self.app.age_group,
+            questions=self.app.questions
+        )
+        self.session.start_exam()
+        
+        # Sync simple state for UI if needed (though we should read from session)
         self.app.current_question = 0
         self.app.responses = []
-        self.app.response_times = []  # Track time per question
-        self.app.current_score = 0
-        self.app.sentiment_score = 0.0
-        self.app.reflection_text = ""
         
-        # User info should already be set by AuthManager
         self.show_question()
 
     def show_question(self):
@@ -40,14 +50,17 @@ class ExamManager:
         
         colors = self.app.colors
         
-        # Check if test is complete
-        if self.app.current_question >= len(self.app.questions):
+        # Check if test is complete using Session
+        if self.session.is_finished():
             self.show_reflection_screen()
             return
         
-        q_data = self.app.questions[self.app.current_question]
-        q_text = q_data[0] if isinstance(q_data, tuple) else q_data
-        q_tooltip = q_data[1] if isinstance(q_data, tuple) and len(q_data) > 1 else None
+        # Get data from Session
+        q_text, q_tooltip = self.session.get_current_question()
+        current_idx, total_count, progress_pct = self.session.get_progress()
+        
+        # Update app state for backward compat
+        self.app.current_question = current_idx - 1
         
         # Main container
         main_frame = tk.Frame(self.root, bg=colors["bg"])
@@ -64,7 +77,7 @@ class ExamManager:
         # Question Counter
         counter_label = tk.Label(
             progress_inner,
-            text=f"Question {self.app.current_question + 1} of {len(self.app.questions)}",
+            text=f"Question {current_idx} of {total_count}",
             font=("Segoe UI", 12, "bold"),
             bg=colors.get("bg_secondary", "#F1F5F9"),
             fg=colors.get("text_primary", "#0F172A")
@@ -72,7 +85,6 @@ class ExamManager:
         counter_label.pack(side="left")
         
         # Progress percentage
-        progress_pct = ((self.app.current_question) / len(self.app.questions)) * 100
         pct_label = tk.Label(
             progress_inner,
             text=f"{int(progress_pct)}% Complete",
@@ -123,9 +135,6 @@ class ExamManager:
         q_header_frame = tk.Frame(card_inner, bg=colors.get("surface", "#FFFFFF"))
         q_header_frame.pack(fill="x")
         
-        # Start timing for this question
-        self.start_time = time.time()
-        
         question_label = tk.Label(
             q_header_frame,
             text=q_text,
@@ -138,7 +147,7 @@ class ExamManager:
         question_label.pack(side="left", anchor="w")
         
         # Tooltip Icon
-        tooltip_text = q_tooltip if q_tooltip else "Select the option that best describes you."
+        tooltip_val = q_tooltip if q_tooltip else "Select the option that best describes you."
         
         info_btn = tk.Button(
             q_header_frame,
@@ -151,7 +160,7 @@ class ExamManager:
             activeforeground=colors.get("primary", "#3B82F6"),
             bd=0,
             cursor="hand2",
-            command=lambda: self._show_tooltip(tooltip_text)
+            command=lambda: self._show_tooltip(tooltip_val)
         )
         info_btn.pack(side="right", padx=5)
         
@@ -217,7 +226,7 @@ class ExamManager:
         nav_frame.pack(pady=20)
         
         # Back Button (if not first question)
-        if self.app.current_question > 0:
+        if current_idx > 1:
             back_btn = tk.Button(
                 nav_frame,
                 text="← Previous",
@@ -239,7 +248,7 @@ class ExamManager:
             back_btn.bind("<Leave>", lambda e: back_btn.configure(bg=colors.get("surface", "#FFFFFF")))
         
         # Next/Finish Button
-        is_last = self.app.current_question >= len(self.app.questions) - 1
+        is_last = current_idx >= total_count
         next_text = "Finish →" if is_last else "Next →"
         
         next_btn = tk.Button(
@@ -270,8 +279,7 @@ class ExamManager:
 
     def previous_question(self):
         """Go to previous question"""
-        if self.app.current_question > 0:
-            self.app.current_question -= 1
+        if self.session.go_back():
             self.show_question()
 
     def save_answer(self):
@@ -281,42 +289,11 @@ class ExamManager:
             messagebox.showwarning("Select an Answer", "Please select an option before continuing.")
             return
         
-        # Calculate time taken
-        if hasattr(self, 'start_time'):
-            duration = time.time() - self.start_time
-            if self.app.current_question < len(self.app.response_times):
-                self.app.response_times[self.app.current_question] = duration
-            else:
-                self.app.response_times.append(duration)
-
-        # Save or update response
-        if self.app.current_question < len(self.app.responses):
-            self.app.responses[self.app.current_question] = ans
-        else:
-            self.app.responses.append(ans)
-        
-        # Save to database
-        conn = get_connection()
-        cursor = conn.cursor()
-        
-        qid = self.app.current_question + 1
-        ts = datetime.utcnow().isoformat()
-        
         try:
-            cursor.execute(
-                """
-                INSERT INTO responses
-                (username, question_id, response_value, age_group, timestamp)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (self.app.username, qid, ans, self.app.age_group, ts)
-            )
-            conn.commit()
-        except Exception:
-            logging.error("Failed to store response", exc_info=True)
-        
-        self.app.current_question += 1
-        self.show_question()
+            self.session.submit_answer(ans)
+            self.show_question()
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
 
     def show_reflection_screen(self):
         """Show premium reflection screen"""
@@ -426,8 +403,7 @@ class ExamManager:
 
     def _skip_reflection(self):
         """Skip reflection and finish test"""
-        self.app.sentiment_score = 0.0
-        self.app.reflection_text = ""
+        self.session.reflection_text = ""
         self.finish_test()
 
     def submit_reflection(self):
@@ -437,68 +413,28 @@ class ExamManager:
         if not text:
             if not messagebox.askyesno("Skip?", "You haven't written anything. Do you want to skip?"):
                 return
-            self.app.sentiment_score = 0.0
-            self.app.reflection_text = ""
+            self.session.submit_reflection("")
         else:
-            self.app.reflection_text = text
-            # Analyze sentiment
-            try:
-                if hasattr(self.app, 'sia') and self.app.sia:
-                    scores = self.app.sia.polarity_scores(text)
-                    self.app.sentiment_score = scores['compound'] * 100
-                else:
-                    self.app.sentiment_score = 0.0
-            except Exception as e:
-                logging.error(f"Error analyzing sentiment: {e}")
-                self.app.sentiment_score = 0.0
+            # Use main app's analyzer if available
+            analyzer = getattr(self.app, 'sia', None)
+            self.session.submit_reflection(text, analyzer)
         
         self.finish_test()
 
     def finish_test(self):
         """Calculate final score and save to database"""
-        self.app.current_score = sum(self.app.responses)
-        self.app.current_max_score = len(self.app.responses) * 4
+        success = self.session.finish_exam()
+        
+        if not success:
+            messagebox.showerror("Error", "Failed to save exam results.")
+        
+        # Sync back to Main App for compatibility with ResultsManager
+        self.app.current_score = self.session.score
+        self.app.responses = self.session.responses
+        self.app.response_times = self.session.response_times
+        self.app.current_max_score = len(self.session.responses) * 4
         self.app.current_percentage = (self.app.current_score / self.app.current_max_score) * 100 if self.app.current_max_score > 0 else 0
-        
-        conn = get_connection()
-        cursor = conn.cursor()
-        
-        is_rushed = False
-        is_inconsistent = False
-
-        try:
-            # 1. Rushed Detection
-            if hasattr(self.app, 'response_times') and self.app.response_times:
-                avg_time = statistics.mean(self.app.response_times)
-                if avg_time < 2.0:  # Threshold: 2 seconds per question
-                    is_rushed = True
-            
-            # 2. Inconsistent Detection (Within Session)
-            if len(self.app.responses) > 1:
-                variance = statistics.variance(self.app.responses)
-                if variance > 2.0:  # Threshold: High variance in answers
-                    is_inconsistent = True
-            
-            # 3. Inconsistent Detection (Across Sessions)
-            if not is_inconsistent:
-                cursor.execute(
-                    "SELECT total_score FROM scores WHERE username = ? ORDER BY timestamp DESC LIMIT 10", 
-                    (self.app.username,)
-                )
-                past_scores = [row[0] for row in cursor.fetchall()]
-                if past_scores:
-                    avg_past_score = statistics.mean(past_scores)
-                    # If current score differs by more than 20% from average
-                    if avg_past_score > 0 and abs(self.app.current_score - avg_past_score) / avg_past_score > 0.2:
-                        is_inconsistent = True
-        
-        try:
-            cursor.execute(
-                "INSERT INTO scores (username, age, total_score, sentiment_score, reflection_text, is_rushed, is_inconsistent, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (self.app.username, self.app.age, self.app.current_score, self.app.sentiment_score, self.app.reflection_text, is_rushed, is_inconsistent, datetime.utcnow().isoformat())
-            )
-            conn.commit()
-        except Exception:
-            logging.error("Failed to store final score", exc_info=True)
+        self.app.sentiment_score = self.session.sentiment_score
+        self.app.reflection_text = self.session.reflection_text
         
         self.app.results.show_visual_results()
