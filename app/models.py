@@ -26,6 +26,8 @@ class Score(Base):
     total_score = Column(Integer, index=True)  # Added index
     sentiment_score = Column(Float, default=0.0)  # New: NLTK Sentiment Score
     reflection_text = Column(Text, nullable=True) # New: Open-ended response
+    is_rushed = Column(Boolean, default=False) # Behavioral pattern: Rushed answering
+    is_inconsistent = Column(Boolean, default=False) # Behavioral pattern: Inconsistent answering
     age = Column(Integer, index=True)  # Added index
     detailed_age_group = Column(String, index=True)  # Added index
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)  # Added index

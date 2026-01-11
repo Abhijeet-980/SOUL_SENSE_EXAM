@@ -6,7 +6,9 @@ Premium UI with modern question cards and progress tracking
 import tkinter as tk
 from tkinter import ttk, messagebox
 import logging
+import time
 from datetime import datetime
+import statistics
 from app.db import get_connection
 from app.utils import compute_age_group
 
@@ -24,6 +26,7 @@ class ExamManager:
         # Reset test state
         self.app.current_question = 0
         self.app.responses = []
+        self.app.response_times = []  # Track time per question
         self.app.current_score = 0
         self.app.sentiment_score = 0.0
         self.app.reflection_text = ""
@@ -119,6 +122,9 @@ class ExamManager:
         # Question Header with tooltip
         q_header_frame = tk.Frame(card_inner, bg=colors.get("surface", "#FFFFFF"))
         q_header_frame.pack(fill="x")
+        
+        # Start timing for this question
+        self.start_time = time.time()
         
         question_label = tk.Label(
             q_header_frame,
@@ -275,6 +281,14 @@ class ExamManager:
             messagebox.showwarning("Select an Answer", "Please select an option before continuing.")
             return
         
+        # Calculate time taken
+        if hasattr(self, 'start_time'):
+            duration = time.time() - self.start_time
+            if self.app.current_question < len(self.app.response_times):
+                self.app.response_times[self.app.current_question] = duration
+            else:
+                self.app.response_times.append(duration)
+
         # Save or update response
         if self.app.current_question < len(self.app.responses):
             self.app.responses[self.app.current_question] = ans
@@ -449,10 +463,39 @@ class ExamManager:
         conn = get_connection()
         cursor = conn.cursor()
         
+        is_rushed = False
+        is_inconsistent = False
+
+        try:
+            # 1. Rushed Detection
+            if hasattr(self.app, 'response_times') and self.app.response_times:
+                avg_time = statistics.mean(self.app.response_times)
+                if avg_time < 2.0:  # Threshold: 2 seconds per question
+                    is_rushed = True
+            
+            # 2. Inconsistent Detection (Within Session)
+            if len(self.app.responses) > 1:
+                variance = statistics.variance(self.app.responses)
+                if variance > 2.0:  # Threshold: High variance in answers
+                    is_inconsistent = True
+            
+            # 3. Inconsistent Detection (Across Sessions)
+            if not is_inconsistent:
+                cursor.execute(
+                    "SELECT total_score FROM scores WHERE username = ? ORDER BY timestamp DESC LIMIT 10", 
+                    (self.app.username,)
+                )
+                past_scores = [row[0] for row in cursor.fetchall()]
+                if past_scores:
+                    avg_past_score = statistics.mean(past_scores)
+                    # If current score differs by more than 20% from average
+                    if avg_past_score > 0 and abs(self.app.current_score - avg_past_score) / avg_past_score > 0.2:
+                        is_inconsistent = True
+        
         try:
             cursor.execute(
-                "INSERT INTO scores (username, age, total_score, sentiment_score, reflection_text, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                (self.app.username, self.app.age, self.app.current_score, self.app.sentiment_score, self.app.reflection_text, datetime.utcnow().isoformat())
+                "INSERT INTO scores (username, age, total_score, sentiment_score, reflection_text, is_rushed, is_inconsistent, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (self.app.username, self.app.age, self.app.current_score, self.app.sentiment_score, self.app.reflection_text, is_rushed, is_inconsistent, datetime.utcnow().isoformat())
             )
             conn.commit()
         except Exception:

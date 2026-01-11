@@ -91,6 +91,8 @@ def create_tables_directly():
                 total_score INTEGER,
                 sentiment_score REAL DEFAULT 0.0,
                 reflection_text TEXT,
+                is_rushed BOOLEAN DEFAULT 0,
+                is_inconsistent BOOLEAN DEFAULT 0,
                 timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
                 detailed_age_group TEXT,
                 user_id INTEGER
