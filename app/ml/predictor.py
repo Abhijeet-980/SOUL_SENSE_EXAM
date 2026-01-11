@@ -11,8 +11,15 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score, precision_score, recall_score
-import matplotlib.pyplot as plt
-import seaborn as sns
+try:
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    PLOTTING_AVAILABLE = True
+except ImportError:
+    plt = None
+    sns = None
+    PLOTTING_AVAILABLE = False
+
 import warnings
 warnings.filterwarnings('ignore')
 from app.analysis.data_cleaning import DataCleaner
@@ -240,19 +247,25 @@ class SoulSenseMLPredictor:
         print(f"📝 Metrics saved to {metrics_path}")
         
         # 2. Save Confusion Matrix Plot
-        cm = confusion_matrix(y_true, y_pred)
-        plt.figure(figsize=(8, 6))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                    xticklabels=self.class_names,
-                    yticklabels=self.class_names)
-        plt.title('Confusion Matrix - Depression Risk Prediction')
-        plt.ylabel('True Label')
-        plt.xlabel('Predicted Label')
-        plt.tight_layout()
-        cm_path = os.path.join(DATA_DIR, 'confusion_matrix.png')
-        plt.savefig(cm_path)
-        plt.close()
-        print(f"📉 Confusion matrix saved to {cm_path}")
+        if PLOTTING_AVAILABLE and sns and plt:
+            try:
+                cm = confusion_matrix(y_true, y_pred)
+                plt.figure(figsize=(8, 6))
+                sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                            xticklabels=self.class_names,
+                            yticklabels=self.class_names)
+                plt.title('Confusion Matrix - Depression Risk Prediction')
+                plt.ylabel('True Label')
+                plt.xlabel('Predicted Label')
+                plt.tight_layout()
+                cm_path = os.path.join(DATA_DIR, 'confusion_matrix.png')
+                plt.savefig(cm_path)
+                plt.close()
+                print(f"📉 Confusion matrix saved to {cm_path}")
+            except Exception as e:
+                logger.warning(f"Could not save confusion matrix plot: {e}")
+        else:
+            logger.warning("Skipping confusion matrix plot (plotting libraries not available)")
     
     def predict_with_explanation(self, q_scores, age, total_score, sentiment_score=0.0):
         """Make prediction with XAI explanations"""
