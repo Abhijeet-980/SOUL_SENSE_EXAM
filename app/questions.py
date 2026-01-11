@@ -102,7 +102,7 @@ def _load_from_disk_cache(age: Optional[int] = None):
         if cache_data.get("age_filter") != age:
             return None
         
-        questions = [(int(q[0]), q[1], q[2]) for q in cache_data["questions"]]
+        questions = [(int(q[0]), q[1], q[2], int(q[3]), int(q[4])) for q in cache_data["questions"]]
         logger.debug(f"Loaded {len(questions)} questions from disk cache (age filter: {age})")
         return questions
     except Exception as e:

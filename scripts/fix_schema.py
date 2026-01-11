@@ -1,91 +1,43 @@
 
 import sqlite3
 import os
-import sys
-from pathlib import Path
-
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 from app.config import DB_PATH
 
-def check_schema():
+def check_and_fix_schema():
+    print(f"Checking schema for {DB_PATH}...")
     if not os.path.exists(DB_PATH):
-        print(f"❌ DB not found at {DB_PATH}")
+        print("DB file not found. It will be created fresh.")
         return
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    print("Checking schema for 'journal_entries'...")
-    try:
-        cursor.execute("PRAGMA table_info(journal_entries)")
-        columns = cursor.fetchall()
-        col_names = [col[1] for col in columns]
-        
-        if 'user_id' not in col_names:
-            print("❌ 'user_id' column is MISSING!")
-            print("🔧 Attempting to add 'user_id' column...")
-            cursor.execute("ALTER TABLE journal_entries ADD COLUMN user_id INTEGER REFERENCES users(id)")
-            conn.commit()
-            print("✅ 'user_id' column added.")
-        else:
-            print("✅ 'user_id' column exists.")
-            
-    except Exception as e:
-        print(f"❌ Error checking journal_entries: {e}")
-
-    print("\nChecking schema for 'question_cache'...")
-    try:
-        cursor.execute("PRAGMA table_info(question_cache)")
-        columns = cursor.fetchall()
-        col_names = [col[1] for col in columns]
-        
-        needed_cols = {
-            'min_age': 'INTEGER DEFAULT 0',
-            'max_age': 'INTEGER DEFAULT 120'
-        }
-        
-        for col_name, col_def in needed_cols.items():
-            if col_name not in col_names:
-                print(f"❌ '{col_name}' column is MISSING!")
-                print(f"🔧 Attempting to add '{col_name}' column...")
-                cursor.execute(f"ALTER TABLE question_cache ADD COLUMN {col_name} {col_def}")
-                conn.commit()
-                print(f"✅ '{col_name}' column added.")
-            else:
-                print(f"✅ '{col_name}' column exists.")
-
-    except Exception as e:
-        print(f"❌ Error checking question_cache: {e}")
-
-    print("\nChecking schema for 'question_bank'...")
-    try:
-        cursor.execute("PRAGMA table_info(question_bank)")
-        columns = cursor.fetchall()
-        col_names = [col[1] for col in columns]
-        
-        needed_cols = {
-            'min_age': 'INTEGER DEFAULT 0',
-            'max_age': 'INTEGER DEFAULT 120'
-        }
-        
-        for col_name, col_def in needed_cols.items():
-            if col_name not in col_names:
-                print(f"❌ '{col_name}' column is MISSING!")
-                print(f"🔧 Attempting to add '{col_name}' column...")
-                cursor.execute(f"ALTER TABLE question_bank ADD COLUMN {col_name} {col_def}")
-                conn.commit()
-                print(f"✅ '{col_name}' column added.")
-            else:
-                print(f"✅ '{col_name}' column exists.")
-
-    except Exception as e:
-        print(f"❌ Error checking question_bank: {e}")
-
+    # Get columns for scores
+    cursor.execute("PRAGMA table_info(scores)")
+    columns = [row[1] for row in cursor.fetchall()]
+    print(f"Columns in scores: {columns}")
+    
+    needed_columns = {
+        "sentiment_score": "REAL DEFAULT 0.0",
+        "reflection_text": "TEXT",
+        "is_rushed": "BOOLEAN DEFAULT 0",
+        "is_inconsistent": "BOOLEAN DEFAULT 0",
+        "detailed_age_group": "TEXT",
+        "user_id": "INTEGER"
+    }
+    
+    for col, definition in needed_columns.items():
+        if col not in columns:
+            print(f"Missing column '{col}'. Adding...")
+            try:
+                cursor.execute(f"ALTER TABLE scores ADD COLUMN {col} {definition}")
+                print(f"Added {col}.")
+            except Exception as e:
+                print(f"Failed to add {col}: {e}")
+                
+    conn.commit()
     conn.close()
+    print("Schema check complete.")
 
 if __name__ == "__main__":
-    check_schema()
-
-if __name__ == "__main__":
-    check_schema()
+    check_and_fix_schema()
