@@ -1,36 +1,40 @@
-name: Auto-assign reviewers on PR open
+name: Auto-assign reviewer on PR open
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened]
 
 permissions:
   pull-requests: write
 
 jobs:
-  assign-reviewers:
+  assign-reviewer:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Assign reviewers to new PR
+      - name: Request review from repo owner
         uses: actions/github-script@v7
         with:
           script: |
-            const pr = context.payload.pull_request;
+            const owner = "nupurmadaan04";
+            const repo = context.repo.repo;
+            const prNumber = context.payload.pull_request.number;
+            const prAuthor = context.payload.pull_request.user.login;
 
-            // List of reviewers to assign (configure as needed)
-            const reviewers = ["reviewer1", "reviewer2"];
-
-            if (!reviewers.length) {
-              console.log("No reviewers configured.");
+            // Do not assign reviewer if she opened the PR herself
+            if (prAuthor === owner) {
+              console.log("PR opened by nupur, skipping reviewer assignment.");
               return;
             }
 
-            await github.rest.pulls.requestReviewers({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: pr.number,
-              reviewers: reviewers
-            });
-
-            console.log(`Assigned reviewers [${reviewers.join(", ")}] to PR #${pr.number}`);
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner: owner,
+                repo: repo,
+                pull_number: prNumber,
+                reviewers: [owner],
+              });
+              console.log("Reviewer assigned: nupurmadaan04");
+            } catch (error) {
+              console.log("Reviewer assignment failed:", error.message);
+            }
