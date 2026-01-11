@@ -23,6 +23,10 @@ def test_ml_predictor_initialization_mocked(mocker):
     mocker.patch("joblib.load")
     mocker.patch("joblib.dump")
     
+    # Mock pickle and open to prevent file writes and pickling errors
+    mocker.patch("pickle.dump")
+    mocker.patch("builtins.open", new_callable=mocker.mock_open)
+    
     # Mock Versioning Manager to avoid 'models/metadata.json' reads
     mocker.patch("app.ml.predictor.create_versioning_manager", return_value=MagicMock())
     
@@ -39,25 +43,37 @@ def test_predict_smoke(mocker):
     mocker.patch("os.path.exists", return_value=True) # Pretend model exists
     mocker.patch("app.ml.predictor.create_versioning_manager", return_value=MagicMock())
     
-    # Mock joblib load to return a dummy model
-    mock_model = MagicMock()
-    mock_model.predict.return_value = ["High Risk"]
-    mock_model.predict_proba.return_value = [[0.1, 0.9]]
-    mock_model.classes_ = ['Low Risk', 'High Risk'] # Needed for proba mapping
+    # Mock joblib load (unused but good practice if mixed)
+    mocker.patch("joblib.load")
     
-    # When joblib.load is called (for model, unique_users, scalers), return distinct mocks?
-    # Simpler: return the mock_model. logic might behave weirdly if scaler is also this mock, 
-    # but for a smoke test it might pass if methods exist.
-    # Better: use side_effect to return different mocks for different calls, or just one permissive mock.
-    mocker.patch("joblib.load", return_value=mock_model)
+    # Mock pickle load to return a dummy model dictionary
+    mock_model = MagicMock()
+    mock_model.predict.return_value = [1] # Moderate Risk (index 1)
+    mock_model.predict_proba.return_value = [[0.1, 0.8, 0.1]]
+    mock_model.classes_ = ['Low Risk', 'Moderate Risk', 'High Risk']
+    
+    mock_scaler = MagicMock()
+    mock_scaler.transform.return_value = [[0]*9] # 9 features
+    
+    dummy_model_data = {
+        'model': mock_model,
+        'scaler': mock_scaler,
+        'feature_names': [
+            'emotional_recognition', 'emotional_understanding', 'emotional_regulation',
+            'emotional_reflection', 'social_awareness', 'total_score', 'age',
+            'average_score', 'sentiment_score'
+        ],
+        'class_names': ['Low Risk', 'Moderate Risk', 'High Risk'],
+        'version': '0.1.0'
+    }
+    
+    mocker.patch("pickle.load", return_value=dummy_model_data)
+    mocker.patch("builtins.open", new_callable=mocker.mock_open)
     
     predictor = SoulSenseMLPredictor(use_versioning=False)
-    # Manually check if predictor.model was set, or if it trained a new one.
-    # If we mocked os.path.exists=True, it called load_model.
     
-    # Force the model to be our mock (in case load logic was complex)
-    predictor.model = mock_model
-    predictor.classes_ = ['Low Risk', 'High Risk']
+    # Verify model was loaded from our mock
+    assert predictor.model == mock_model
     
     # Dummy input
     result = predictor.prepare_features([3,3,3,3,3], 25, 15)
