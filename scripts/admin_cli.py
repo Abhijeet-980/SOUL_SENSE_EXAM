@@ -9,6 +9,11 @@ from admin_interface import QuestionDatabase
 import getpass
 from tabulate import tabulate
 import numpy as np
+
+# Add parent directory to path to allow importing app
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from app.db import get_connection
 
 
@@ -318,10 +323,14 @@ def main():
     
     cli = AdminCLI()
     
-    # Authentication (skip for create-admin if --no-auth is set)
-    if args.command == 'create-admin' and args.no_auth:
-        cli.create_admin_user()
-        return
+    # Authentication (skip for create-admin or stats if --no-auth is set)
+    if args.no_auth and (args.command == 'create-admin' or args.command == 'stats'):
+        if args.command == 'create-admin':
+            cli.create_admin_user()
+            return
+        elif args.command == 'stats':
+            cli.show_stats(args.visual)
+            return
     
     if not cli.authenticate():
         sys.exit(1)

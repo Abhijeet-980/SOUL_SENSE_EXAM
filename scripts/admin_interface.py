@@ -22,6 +22,10 @@ try:
 except ImportError:
     PLOTTING_AVAILABLE = False
 
+# Add parent directory to path to allow importing app
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 class QuestionDatabase:
     """Handles database operations for questions"""
