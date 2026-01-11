@@ -860,54 +860,64 @@ class AdminInterface:
             summary_frame.grid_columnconfigure(2, weight=1)
             
             # --- Chart 1: Score Distribution ---
-            cursor.execute("SELECT total_score FROM scores WHERE total_score IS NOT NULL")
-            scores = [r[0] for r in cursor.fetchall()]
-            
-            if scores:
-                fig1 = Figure(figsize=(6, 4), dpi=100)
-                ax1 = fig1.add_subplot(111)
-                sns.histplot(scores, bins=10, kde=True, ax=ax1, color='skyblue')
-                ax1.set_title("Score Distribution")
-                ax1.set_xlabel("Score")
-                ax1.set_ylabel("Count")
+            try:
+                cursor.execute("SELECT total_score FROM scores WHERE total_score IS NOT NULL")
+                scores = [r[0] for r in cursor.fetchall()]
                 
-                chart1_frame = tk.Frame(parent_frame)
-                chart1_frame.pack(fill=tk.X, pady=10)
-                canvas1 = FigureCanvasTkAgg(fig1, master=chart1_frame)
-                canvas1.draw()
-                canvas1.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+                if scores:
+                    fig1 = Figure(figsize=(6, 4), dpi=100)
+                    ax1 = fig1.add_subplot(111)
+                    # Use standard matplotlib hist for robustness (no scipy dependency for KDE)
+                    ax1.hist(scores, bins=10, color='skyblue', edgecolor='black')
+                    ax1.set_title("Score Distribution")
+                    ax1.set_xlabel("Score")
+                    ax1.set_ylabel("Count")
+                    
+                    chart1_frame = tk.Frame(parent_frame)
+                    chart1_frame.pack(fill=tk.X, pady=10)
+                    canvas1 = FigureCanvasTkAgg(fig1, master=chart1_frame)
+                    canvas1.draw()
+                    canvas1.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            except Exception as e:
+                print(f"DEBUG: Chart 1 Error: {e}")
+                tk.Label(parent_frame, text=f"Error loading Histogram: {e}", fg="red").pack()
 
             # --- Chart 2: Age Demographics ---
-            cursor.execute("SELECT age FROM scores WHERE age IS NOT NULL")
-            ages = [r[0] for r in cursor.fetchall()]
-            
-            if ages:
-                age_groups = {'Child': 0, 'Teen': 0, 'Adult': 0, 'Senior': 0}
-                for age in ages:
-                    if age < 13: age_groups['Child'] += 1
-                    elif age < 20: age_groups['Teen'] += 1
-                    elif age < 60: age_groups['Adult'] += 1
-                    else: age_groups['Senior'] += 1
+            try:
+                cursor.execute("SELECT age FROM scores WHERE age IS NOT NULL")
+                ages = [r[0] for r in cursor.fetchall()]
                 
-                # Filter zero values
-                labels = [k for k, v in age_groups.items() if v > 0]
-                values = [v for k, v in age_groups.items() if v > 0]
-                
-                if values:
-                    fig2 = Figure(figsize=(6, 4), dpi=100)
-                    ax2 = fig2.add_subplot(111)
-                    ax2.pie(values, labels=labels, autopct='%1.1f%%', startangle=90)
-                    ax2.set_title("User Age Demographics")
+                if ages:
+                    age_groups = {'Child': 0, 'Teen': 0, 'Adult': 0, 'Senior': 0}
+                    for age in ages:
+                        if age < 13: age_groups['Child'] += 1
+                        elif age < 20: age_groups['Teen'] += 1
+                        elif age < 60: age_groups['Adult'] += 1
+                        else: age_groups['Senior'] += 1
                     
-                    chart2_frame = tk.Frame(parent_frame)
-                    chart2_frame.pack(fill=tk.X, pady=10)
-                    canvas2 = FigureCanvasTkAgg(fig2, master=chart2_frame)
-                    canvas2.draw()
-                    canvas2.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+                    # Filter zero values
+                    labels = [k for k, v in age_groups.items() if v > 0]
+                    values = [v for k, v in age_groups.items() if v > 0]
+                    
+                    if values:
+                        fig2 = Figure(figsize=(6, 4), dpi=100)
+                        ax2 = fig2.add_subplot(111)
+                        ax2.pie(values, labels=labels, autopct='%1.1f%%', startangle=90)
+                        ax2.set_title("User Age Demographics")
+                        
+                        chart2_frame = tk.Frame(parent_frame)
+                        chart2_frame.pack(fill=tk.X, pady=10)
+                        canvas2 = FigureCanvasTkAgg(fig2, master=chart2_frame)
+                        canvas2.draw()
+                        canvas2.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            except Exception as e:
+                 print(f"DEBUG: Chart 2 Error: {e}")
+                 tk.Label(parent_frame, text=f"Error loading Pie Chart: {e}", fg="red").pack()
 
             conn.close()
 
         except Exception as e:
+            print(f"DEBUG: General Analytics Error: {e}")
             tk.Label(parent_frame, text=f"Error loading analytics: {e}", fg="red").pack(pady=20)
 
 
