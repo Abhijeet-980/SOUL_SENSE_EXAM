@@ -2,6 +2,7 @@ import sqlite3
 import tkinter as tk
 from tkinter import messagebox
 import time
+import sys
 
 #BUTTON ANIMATION
 def animated_button(parent, text, command,
@@ -40,6 +41,20 @@ CREATE TABLE IF NOT EXISTS scores (
 """)
 conn.commit()
 
+def cleanup_and_exit(root=None):
+    try:
+        conn.close()
+        print("Database connection closed.")
+    except Exception:
+        pass
+
+    if root:
+        root.destroy()
+    else:
+        sys.exit(0)
+
+
+
 #QUESTIONS
 questions = [
     {"text": "You can recognize your emotions as they happen.", "age_min": 12, "age_max": 25},
@@ -72,6 +87,7 @@ def compute_analytics(responses, time_taken, total):
 #SPLASH SCREEN
 def show_splash():
     splash = tk.Tk()
+    splash.protocol("WM_DELETE_WINDOW", lambda: cleanup_and_exit(splash))
     splash.title("SoulSense")
     splash.geometry("500x300")
     splash.configure(bg="#1E1E2F")
@@ -99,6 +115,7 @@ def show_splash():
 # USER DETAILS (Updated for Feature 1)
 def show_user_details():
     root = tk.Tk()
+    root.protocol("WM_DELETE_WINDOW", lambda: cleanup_and_exit(root))
     root.title("SoulSense - User Details")
     root.geometry("450x450") # Increased height to fit new field
     root.resizable(False, False)
@@ -156,6 +173,7 @@ def start_quiz(username, age, user_stressors):
     is_overwhelmed = len(user_stressors) > 0
     
     quiz = tk.Tk()
+    quiz.protocol("WM_DELETE_WINDOW", lambda: cleanup_and_exit(quiz))
     quiz.title("SoulSense Quiz")
     quiz.geometry("750x680") # Increased height slightly for the banner
     quiz.resizable(False, False)
