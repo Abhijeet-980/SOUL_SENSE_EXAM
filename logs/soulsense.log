@@ -602,3 +602,48 @@ sqlite3.OperationalError: no such column: sentiment_score
 2026-01-09 20:21:44,461 - root - INFO - Using 10 questions based on settings
 2026-01-09 20:23:20,676 - root - INFO - Session started | user=rohan | age=20 | age_group=adult | profession=Student | questions=10
 2026-01-09 20:24:36,882 - root - INFO - Session started | user=rohan | age=20 | age_group=adult | profession=Student | questions=10
+2026-01-13 17:03:32,670 - root - INFO - Logging initialized.
+2026-01-13 17:03:32,670 - root - INFO - Application started
+2026-01-13 17:03:32,671 - root - INFO - Loaded 10 total questions from DB
+2026-01-13 17:03:35,074 - model_versioning - INFO - ✅ Loaded model: soulsense_predictor v1.0.0
+2026-01-13 17:03:35,074 - ml_predictor - INFO - ML model loaded from registry (v1.0.0)
+2026-01-13 17:03:35,074 - ml_predictor - INFO - Loaded existing ML model
+2026-01-13 17:03:35,074 - root - INFO - ML Predictor initialized successfully
+2026-01-13 17:03:35,101 - root - INFO - SentimentIntensityAnalyzer initialized successfully
+2026-01-13 17:03:35,101 - root - INFO - Using 10 questions based on settings
+2026-01-13 17:10:30,292 - root - INFO - Logging initialized.
+2026-01-13 17:10:30,293 - root - INFO - Application started
+2026-01-13 17:10:30,294 - root - INFO - Loaded 10 total questions from DB
+2026-01-13 17:10:34,149 - root - ERROR - Failed to initialize ML Predictor: 'NoneType' object is not callable
+2026-01-13 17:10:34,149 - root - CRITICAL - Unhandled exception in GUI
+Traceback (most recent call last):
+  File "C:\Users\DELL\AppData\Local\Programs\Python\Python313\Lib\tkinter\__init__.py", line 2074, in __call__
+    return self.func(*args)
+           ~~~~~~~~~^^^^^^^
+  File "C:\Users\DELL\AppData\Local\Programs\Python\Python313\Lib\tkinter\__init__.py", line 862, in callit
+    func(*args)
+    ~~~~^^^^^^^
+  File "C:\Users\DELL\OneDrive\Documents\GitHub\SOUL_SENSE_EXAM\app\main.py", line 2516, in launch_main_app
+    app = SoulSenseApp(root)
+  File "C:\Users\DELL\OneDrive\Documents\GitHub\SOUL_SENSE_EXAM\app\main.py", line 201, in __init__
+    self.journal_feature = JournalFeature(self.root)
+                           ~~~~~~~~~~~~~~^^^^^^^^^^^
+TypeError: 'NoneType' object is not callable
+2026-01-13 17:10:34,198 - root - ERROR - Unexpected Error: An unexpected error occurred.
+2026-01-13 17:11:55,218 - root - INFO - Logging initialized.
+2026-01-13 17:11:55,219 - root - INFO - Application started
+2026-01-13 17:11:55,221 - root - INFO - Loaded 10 total questions from DB
+2026-01-13 17:11:57,614 - model_versioning - INFO - ✅ Loaded model: soulsense_predictor v1.0.0
+2026-01-13 17:11:57,615 - ml_predictor - INFO - ML model loaded from registry (v1.0.0)
+2026-01-13 17:11:57,615 - ml_predictor - INFO - Loaded existing ML model
+2026-01-13 17:11:57,615 - root - INFO - ML Predictor initialized successfully
+2026-01-13 17:11:57,657 - root - INFO - SentimentIntensityAnalyzer initialized successfully
+2026-01-13 17:11:57,657 - root - INFO - Using 10 questions based on settings
+2026-01-13 17:12:36,632 - root - INFO - Logging initialized.
+2026-01-13 17:12:36,633 - root - INFO - Application started
+2026-01-13 17:12:36,634 - root - INFO - Loaded 10 total questions from DB
+2026-01-13 17:12:38,849 - root - INFO - Using 10 questions based on settings
+2026-01-13 17:30:50,495 - root - INFO - Logging initialized.
+2026-01-13 17:30:50,497 - root - INFO - Application started
+2026-01-13 17:30:50,499 - root - INFO - Loaded 10 total questions from DB
+2026-01-13 17:30:52,813 - root - INFO - Using 10 questions based on settings

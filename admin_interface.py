@@ -14,7 +14,7 @@ import hashlib
 class QuestionDatabase:
     """Handles database operations for questions"""
     
-    def __init__(self, db_path="soulsense_db"):
+    def __init__(self, db_path="db/soulsense.db"):
         self.db_path = db_path
         self.init_database()
     
