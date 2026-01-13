@@ -4829,393 +4829,86 @@ KeyError: 'features'
 2026-01-13 02:24:42,794 - app.services.exam_service - INFO - Exam session started for user: rohan
 2026-01-13 02:24:57,544 - app.services.exam_service - INFO - Exam saved. Score: 8, Sentiment: 52.669999999999995
 2026-01-13 02:25:05,051 - app.ml.clustering - INFO - Model loaded from B:\Open_Source\soul_sence_Exam\SOUL_SENSE_EXAM\app\ml\models\clustering\emotional_profile_model.pkl
-2026-01-13 12:07:15,975 - root - INFO - Logging initialized.
-2026-01-13 12:07:15,975 - root - INFO - Application started
-2026-01-13 12:07:15,992 - root - INFO - Loaded 10 total questions from DB
-2026-01-13 12:07:18,243 - root - WARNING - No ML models found in models. Using fallback logic.
-2026-01-13 12:07:18,243 - root - INFO - ML Predictor initialized successfully
-2026-01-13 12:07:18,285 - root - INFO - SentimentIntensityAnalyzer initialized successfully
-2026-01-13 12:07:18,285 - root - ERROR - 
+2026-01-13 12:15:27,179 - root - INFO - Logging initialized.
+2026-01-13 12:15:27,267 - root - INFO - Application started
+2026-01-13 12:15:27,279 - root - INFO - Loaded 10 total questions from DB
+2026-01-13 12:15:30,527 - root - INFO - Loading ML Model: models\risk_model_v20260111_223056.pkl
+2026-01-13 12:15:30,649 - root - INFO - ML Predictor initialized successfully
+2026-01-13 12:15:30,696 - root - INFO - SentimentIntensityAnalyzer initialized successfully
+2026-01-13 12:15:30,705 - root - ERROR - 
 
 >>> APP INITIALIZED V2.1 <<<
 
-2026-01-13 12:07:18,286 - root - INFO - Using 10 questions based on settings
-2026-01-13 12:07:40,931 - root - INFO - Reloaded 10 questions based on settings
-2026-01-13 12:07:45,265 - root - INFO - Reloaded 10 questions based on settings
-2026-01-13 12:53:42,799 - root - INFO - Logging initialized.
-2026-01-13 12:53:42,799 - root - INFO - Application started
-2026-01-13 12:53:42,801 - root - INFO - Loaded 10 total questions from DB
-2026-01-13 12:53:44,960 - root - WARNING - No ML models found in models. Using fallback logic.
-2026-01-13 12:53:44,960 - root - INFO - ML Predictor initialized successfully
-2026-01-13 12:53:44,969 - root - CRITICAL - Unhandled exception in GUI
-Traceback (most recent call last):
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1921, in __call__
-    return self.func(*args)
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 839, in callit
-    func(*args)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\main.py", line 684, in launch_main_app
-    app = SoulSenseApp(root)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\main.py", line 235, in __init__
-    self.apply_theme(self.settings.get("theme", "light"))
-AttributeError: 'SoulSenseApp' object has no attribute 'apply_theme'
-2026-01-13 12:53:44,973 - root - ERROR - Unexpected Error: An unexpected error occurred.
-2026-01-13 12:59:42,620 - root - INFO - Logging initialized.
-2026-01-13 12:59:42,621 - root - INFO - Application started
-2026-01-13 12:59:42,622 - root - INFO - Loaded 10 total questions from DB
-2026-01-13 12:59:44,765 - root - WARNING - No ML models found in models. Using fallback logic.
-2026-01-13 12:59:44,765 - root - INFO - ML Predictor initialized successfully
-2026-01-13 12:59:44,773 - root - CRITICAL - Unhandled exception in GUI
-Traceback (most recent call last):
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1921, in __call__
-    return self.func(*args)
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 839, in callit
-    func(*args)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\main.py", line 684, in launch_main_app
-    root.protocol("WM_DELETE_WINDOW", app.force_exit)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\main.py", line 235, in __init__
-    self.apply_theme(self.settings.get("theme", "light"))
-AttributeError: 'SoulSenseApp' object has no attribute 'apply_theme'
-2026-01-13 12:59:44,776 - root - ERROR - Unexpected Error: An unexpected error occurred.
-2026-01-13 13:05:49,498 - root - INFO - Logging initialized.
-2026-01-13 13:05:49,498 - root - INFO - Application started
-2026-01-13 13:05:49,500 - root - INFO - Loaded 10 total questions from DB
-2026-01-13 13:05:51,635 - root - WARNING - No ML models found in models. Using fallback logic.
-2026-01-13 13:05:51,635 - root - INFO - ML Predictor initialized successfully
-2026-01-13 13:05:51,649 - root - INFO - SentimentIntensityAnalyzer initialized successfully
-2026-01-13 13:05:51,649 - root - ERROR - 
+2026-01-13 12:15:30,715 - root - INFO - Using 10 questions based on settings
+2026-01-13 12:19:32,341 - root - INFO - Session started | user=rohan | age=20 | age_group=adult | profession=Student | questions=10
+2026-01-13 12:19:32,774 - root - INFO - Loaded settings for user 4: {'theme': 'dark', 'question_count': 5, 'sound_enabled': True, 'notifications_enabled': True, 'language': 'en'}
+2026-01-13 12:19:32,775 - root - INFO - Reloaded 5 questions based on settings
+2026-01-13 12:19:33,892 - root - ERROR - Failed to open profile: cannot import name 'ApplyTheme' from 'app.ui.styles' (B:\Open_Source\soul_sence_Exam\SOUL_SENSE_EXAM\app\ui\styles.py)
+2026-01-13 12:21:36,727 - root - INFO - Logging initialized.
+2026-01-13 12:21:36,743 - root - INFO - Application started
+2026-01-13 12:21:36,745 - root - INFO - Loaded 10 total questions from DB
+2026-01-13 12:21:39,107 - root - INFO - Loading ML Model: models\risk_model_v20260111_223056.pkl
+2026-01-13 12:21:39,243 - root - INFO - ML Predictor initialized successfully
+2026-01-13 12:21:39,279 - root - INFO - SentimentIntensityAnalyzer initialized successfully
+2026-01-13 12:21:39,280 - root - ERROR - 
 
 >>> APP INITIALIZED V2.1 <<<
 
-2026-01-13 13:05:51,650 - root - INFO - Using 10 questions based on settings
-2026-01-13 13:06:00,595 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:06:00,597 - root - ERROR - >>> DEBUG: self.current_user_id = None
-2026-01-13 13:06:00,597 - root - ERROR - >>> DEBUG: GOING TO FORM (ID Missing)
-2026-01-13 13:06:12,543 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:06:12,543 - root - ERROR - >>> DEBUG: self.current_user_id = None
-2026-01-13 13:06:12,544 - root - ERROR - >>> DEBUG: GOING TO FORM (ID Missing)
-2026-01-13 13:06:20,502 - root - INFO - Session started | user=neeru | age=20 | age_group=adult | profession=Student | questions=10
-2026-01-13 13:06:20,523 - root - INFO - Loaded settings for user 1: {'theme': 'light', 'question_count': 10, 'sound_enabled': True, 'notifications_enabled': True, 'language': 'en'}
-2026-01-13 13:06:20,524 - root - INFO - Reloaded 10 questions based on settings
-2026-01-13 13:06:26,494 - root - INFO - Reloaded 10 questions based on settings
-2026-01-13 13:06:29,513 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:06:29,514 - root - ERROR - >>> DEBUG: self.current_user_id = 1
-2026-01-13 13:06:29,514 - root - ERROR - >>> DEBUG: GOING TO EXAM
-2026-01-13 13:06:29,525 - app.services.exam_service - INFO - Exam session started for user: neeru
-2026-01-13 13:06:48,116 - app.services.exam_service - INFO - Exam saved. Score: 40, Sentiment: 0.0
-2026-01-13 13:06:48,117 - root - CRITICAL - Unhandled exception in GUI
-Traceback (most recent call last):
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1921, in __call__
-    return self.func(*args)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 422, in submit_reflection
-    self.finish_test()
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 440, in finish_test
-    self.app.results.show_visual_results()
-AttributeError: 'ResultsManager' object has no attribute 'show_visual_results'
-2026-01-13 13:06:48,120 - root - ERROR - Unexpected Error: An unexpected error occurred.
-2026-01-13 13:06:50,379 - app.services.exam_service - INFO - Exam saved. Score: 40, Sentiment: 0.0
-2026-01-13 13:06:50,381 - root - CRITICAL - Unhandled exception in GUI
-Traceback (most recent call last):
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1921, in __call__
-    return self.func(*args)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 422, in submit_reflection
-    self.finish_test()
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 440, in finish_test
-    self.app.results.show_visual_results()
-AttributeError: 'ResultsManager' object has no attribute 'show_visual_results'
-2026-01-13 13:06:50,381 - root - ERROR - Unexpected Error: An unexpected error occurred.
-2026-01-13 13:07:10,365 - app.services.exam_service - INFO - Exam saved. Score: 40, Sentiment: 0.0
-2026-01-13 13:07:10,366 - root - CRITICAL - Unhandled exception in GUI
-Traceback (most recent call last):
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1921, in __call__
-    return self.func(*args)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 422, in submit_reflection
-    self.finish_test()
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 440, in finish_test
-    self.app.results.show_visual_results()
-AttributeError: 'ResultsManager' object has no attribute 'show_visual_results'
-2026-01-13 13:07:10,368 - root - ERROR - Unexpected Error: An unexpected error occurred.
-2026-01-13 13:07:12,831 - app.services.exam_service - INFO - Exam saved. Score: 40, Sentiment: 0.0
-2026-01-13 13:07:12,831 - root - CRITICAL - Unhandled exception in GUI
-Traceback (most recent call last):
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1921, in __call__
-    return self.func(*args)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 402, in <lambda>
-    skip_label.bind("<Button-1>", lambda e: self._skip_reflection())
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 407, in _skip_reflection
-    self.finish_test()
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 440, in finish_test
-    self.app.results.show_visual_results()
-AttributeError: 'ResultsManager' object has no attribute 'show_visual_results'
-2026-01-13 13:07:12,831 - root - ERROR - Unexpected Error: An unexpected error occurred.
-2026-01-13 13:10:28,823 - root - INFO - Logging initialized.
-2026-01-13 13:10:28,824 - root - INFO - Application started
-2026-01-13 13:10:28,825 - root - INFO - Loaded 10 total questions from DB
-2026-01-13 13:10:30,977 - root - WARNING - No ML models found in models. Using fallback logic.
-2026-01-13 13:10:30,977 - root - INFO - ML Predictor initialized successfully
-2026-01-13 13:10:30,990 - root - INFO - SentimentIntensityAnalyzer initialized successfully
-2026-01-13 13:10:30,991 - root - ERROR - 
+2026-01-13 12:21:39,286 - root - INFO - Using 10 questions based on settings
+2026-01-13 12:21:58,597 - root - INFO - Session started | user=rohan | age=20 | age_group=adult | profession=Student | questions=10
+2026-01-13 12:21:58,747 - root - INFO - Loaded settings for user 4: {'theme': 'dark', 'question_count': 5, 'sound_enabled': True, 'notifications_enabled': True, 'language': 'en'}
+2026-01-13 12:21:58,748 - root - INFO - Reloaded 5 questions based on settings
+2026-01-13 12:21:59,965 - root - ERROR - Failed to open profile: 'SoulSenseApp' object has no attribute 'i18n'
+2026-01-13 12:24:09,697 - root - INFO - Logging initialized.
+2026-01-13 12:24:09,710 - root - INFO - Application started
+2026-01-13 12:24:09,712 - root - INFO - Loaded 10 total questions from DB
+2026-01-13 12:24:12,158 - root - INFO - Loading ML Model: models\risk_model_v20260111_223056.pkl
+2026-01-13 12:24:12,207 - root - INFO - ML Predictor initialized successfully
+2026-01-13 12:24:12,281 - root - INFO - SentimentIntensityAnalyzer initialized successfully
+2026-01-13 12:24:12,296 - root - ERROR - 
 
 >>> APP INITIALIZED V2.1 <<<
 
-2026-01-13 13:10:30,991 - root - INFO - Using 10 questions based on settings
-2026-01-13 13:10:34,263 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:10:34,264 - root - ERROR - >>> DEBUG: self.current_user_id = None
-2026-01-13 13:10:34,265 - root - ERROR - >>> DEBUG: GOING TO FORM (ID Missing)
-2026-01-13 13:10:41,829 - root - INFO - Session started | user=neeru | age=20 | age_group=adult | profession=Student | questions=10
-2026-01-13 13:10:41,847 - root - INFO - Loaded settings for user 1: {'theme': 'dark', 'question_count': 10, 'sound_enabled': True, 'notifications_enabled': True, 'language': 'en'}
-2026-01-13 13:10:41,847 - root - INFO - Reloaded 10 questions based on settings
-2026-01-13 13:10:43,116 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:10:43,116 - root - ERROR - >>> DEBUG: self.current_user_id = 1
-2026-01-13 13:10:43,117 - root - ERROR - >>> DEBUG: GOING TO EXAM
-2026-01-13 13:10:43,118 - app.services.exam_service - INFO - Exam session started for user: neeru
-2026-01-13 13:10:56,994 - app.services.exam_service - INFO - Exam saved. Score: 40, Sentiment: 0.0
-2026-01-13 13:10:58,717 - root - ERROR - Error showing results: 'SoulSenseApp' object has no attribute 'show_main_menu'
-2026-01-13 13:10:59,540 - root - CRITICAL - Unhandled exception in GUI
-Traceback (most recent call last):
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 457, in finish_test
-    self.app.show_main_menu()
-AttributeError: 'SoulSenseApp' object has no attribute 'show_main_menu'
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1921, in __call__
-    return self.func(*args)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 402, in <lambda>
-    skip_label.bind("<Button-1>", lambda e: self._skip_reflection())
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 407, in _skip_reflection
-    self.finish_test()
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 463, in finish_test
-    self.app.show_main_menu()
-AttributeError: 'SoulSenseApp' object has no attribute 'show_main_menu'
-2026-01-13 13:10:59,547 - root - ERROR - Unexpected Error: An unexpected error occurred.
-2026-01-13 13:11:03,310 - app.services.exam_service - INFO - Exam saved. Score: 40, Sentiment: 0.0
-2026-01-13 13:11:04,378 - root - ERROR - Error showing results: 'SoulSenseApp' object has no attribute 'show_main_menu'
-2026-01-13 13:11:04,945 - root - CRITICAL - Unhandled exception in GUI
-Traceback (most recent call last):
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 457, in finish_test
-    self.app.show_main_menu()
-AttributeError: 'SoulSenseApp' object has no attribute 'show_main_menu'
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1921, in __call__
-    return self.func(*args)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 422, in submit_reflection
-    self.finish_test()
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 463, in finish_test
-    self.app.show_main_menu()
-AttributeError: 'SoulSenseApp' object has no attribute 'show_main_menu'
-2026-01-13 13:11:04,951 - root - ERROR - Unexpected Error: An unexpected error occurred.
-2026-01-13 13:16:41,066 - root - INFO - Logging initialized.
-2026-01-13 13:16:41,067 - root - INFO - Application started
-2026-01-13 13:16:41,069 - root - INFO - Loaded 10 total questions from DB
-2026-01-13 13:16:43,375 - root - WARNING - No ML models found in models. Using fallback logic.
-2026-01-13 13:16:43,376 - root - INFO - ML Predictor initialized successfully
-2026-01-13 13:16:43,405 - root - INFO - SentimentIntensityAnalyzer initialized successfully
-2026-01-13 13:16:43,406 - root - ERROR - 
+2026-01-13 12:24:12,303 - root - INFO - Using 10 questions based on settings
+2026-01-13 12:24:25,804 - root - INFO - Session started | user=rohan | age=20 | age_group=adult | profession=Student | questions=10
+2026-01-13 12:24:27,145 - root - INFO - Loaded settings for user 4: {'theme': 'dark', 'question_count': 5, 'sound_enabled': True, 'notifications_enabled': True, 'language': 'en'}
+2026-01-13 12:24:27,146 - root - INFO - Reloaded 5 questions based on settings
+2026-01-13 12:39:00,507 - root - INFO - Logging initialized.
+2026-01-13 12:39:00,521 - root - INFO - Application started
+2026-01-13 12:39:00,523 - root - INFO - Loaded 10 total questions from DB
+2026-01-13 12:39:02,956 - root - INFO - Loading ML Model: models\risk_model_v20260111_223056.pkl
+2026-01-13 12:39:03,020 - root - INFO - ML Predictor initialized successfully
+2026-01-13 12:39:03,074 - root - INFO - SentimentIntensityAnalyzer initialized successfully
+2026-01-13 12:39:03,075 - root - ERROR - 
 
 >>> APP INITIALIZED V2.1 <<<
 
-2026-01-13 13:16:43,406 - root - INFO - Using 10 questions based on settings
-2026-01-13 13:16:48,286 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:16:48,286 - root - ERROR - >>> DEBUG: self.current_user_id = None
-2026-01-13 13:16:48,287 - root - ERROR - >>> DEBUG: GOING TO FORM (ID Missing)
-2026-01-13 13:16:53,067 - root - INFO - Session started | user=neeru | age=20 | age_group=adult | profession=Student | questions=10
-2026-01-13 13:16:53,109 - root - INFO - Loaded settings for user 1: {'theme': 'dark', 'question_count': 10, 'sound_enabled': True, 'notifications_enabled': True, 'language': 'en'}
-2026-01-13 13:16:53,109 - root - INFO - Reloaded 10 questions based on settings
-2026-01-13 13:16:54,002 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:16:54,003 - root - ERROR - >>> DEBUG: self.current_user_id = 1
-2026-01-13 13:16:54,003 - root - ERROR - >>> DEBUG: GOING TO EXAM
-2026-01-13 13:16:54,007 - app.services.exam_service - INFO - Exam session started for user: neeru
-2026-01-13 13:17:12,179 - app.services.exam_service - INFO - Exam saved. Score: 40, Sentiment: 0.0
-2026-01-13 13:17:13,690 - root - ERROR - Error showing results: 'SoulSenseApp' object has no attribute 'show_main_menu'
-2026-01-13 13:17:14,555 - root - CRITICAL - Unhandled exception in GUI
-Traceback (most recent call last):
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 457, in finish_test
-    if hasattr(self.app.results, 'show_results'):
-AttributeError: 'SoulSenseApp' object has no attribute 'show_main_menu'
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1921, in __call__
-    return self.func(*args)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 402, in <lambda>
-    skip_label.bind("<Button-1>", lambda e: self._skip_reflection())
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 407, in _skip_reflection
-    self.finish_test()
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 463, in finish_test
-    elif hasattr(self.app.results, 'display_results'):
-AttributeError: 'SoulSenseApp' object has no attribute 'show_main_menu'
-2026-01-13 13:17:14,563 - root - ERROR - Unexpected Error: An unexpected error occurred.
-2026-01-13 13:17:20,196 - app.services.exam_service - INFO - Exam saved. Score: 40, Sentiment: 0.0
-2026-01-13 13:17:21,360 - root - ERROR - Error showing results: 'SoulSenseApp' object has no attribute 'show_main_menu'
-2026-01-13 13:17:21,889 - root - CRITICAL - Unhandled exception in GUI
-Traceback (most recent call last):
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 457, in finish_test
-    if hasattr(self.app.results, 'show_results'):
-AttributeError: 'SoulSenseApp' object has no attribute 'show_main_menu'
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1921, in __call__
-    return self.func(*args)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 422, in submit_reflection
-    self.finish_test()
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\exam.py", line 463, in finish_test
-    elif hasattr(self.app.results, 'display_results'):
-AttributeError: 'SoulSenseApp' object has no attribute 'show_main_menu'
-2026-01-13 13:17:21,898 - root - ERROR - Unexpected Error: An unexpected error occurred.
-2026-01-13 13:23:11,898 - root - INFO - Logging initialized.
-2026-01-13 13:23:11,899 - root - INFO - Application started
-2026-01-13 13:23:11,901 - root - INFO - Loaded 10 total questions from DB
-2026-01-13 13:23:14,158 - root - WARNING - No ML models found in models. Using fallback logic.
-2026-01-13 13:23:14,159 - root - INFO - ML Predictor initialized successfully
-2026-01-13 13:23:14,178 - root - INFO - SentimentIntensityAnalyzer initialized successfully
-2026-01-13 13:23:14,179 - root - ERROR - 
+2026-01-13 12:39:03,076 - root - INFO - Using 10 questions based on settings
+2026-01-13 12:39:24,084 - root - INFO - Session started | user=rohan | age=20 | age_group=adult | profession=Student | questions=10
+2026-01-13 12:39:24,242 - root - INFO - Loaded settings for user 4: {'theme': 'dark', 'question_count': 5, 'sound_enabled': True, 'notifications_enabled': True, 'language': 'en'}
+2026-01-13 12:39:24,244 - root - INFO - Reloaded 5 questions based on settings
+2026-01-13 12:40:43,005 - app.ml.clustering - INFO - Model loaded from B:\Open_Source\soul_sence_Exam\SOUL_SENSE_EXAM\app\ml\models\clustering\emotional_profile_model.pkl
+2026-01-13 12:40:52,712 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2026-01-13 12:40:52,712 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2026-01-13 12:40:59,218 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2026-01-13 12:40:59,315 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2026-01-13 12:40:59,853 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2026-01-13 12:40:59,854 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2026-01-13 12:41:00,551 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2026-01-13 12:41:00,552 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2026-01-13 12:41:01,180 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2026-01-13 12:41:01,181 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2026-01-13 12:44:15,971 - root - INFO - Logging initialized.
+2026-01-13 12:44:15,992 - root - INFO - Application started
+2026-01-13 12:44:15,993 - root - INFO - Loaded 10 total questions from DB
+2026-01-13 12:44:18,286 - root - INFO - Loading ML Model: models\risk_model_v20260111_223056.pkl
+2026-01-13 12:44:18,402 - root - INFO - ML Predictor initialized successfully
+2026-01-13 12:44:18,438 - root - INFO - SentimentIntensityAnalyzer initialized successfully
+2026-01-13 12:44:18,438 - root - ERROR - 
 
 >>> APP INITIALIZED V2.1 <<<
 
-2026-01-13 13:23:14,179 - root - INFO - Using 10 questions based on settings
-2026-01-13 13:23:17,387 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:23:17,387 - root - ERROR - >>> DEBUG: self.current_user_id = None
-2026-01-13 13:23:17,387 - root - ERROR - >>> DEBUG: GOING TO FORM (ID Missing)
-2026-01-13 13:23:25,432 - root - INFO - Session started | user=neeru | age=20 | age_group=adult | profession=Student | questions=10
-2026-01-13 13:23:25,452 - root - INFO - Loaded settings for user 1: {'theme': 'dark', 'question_count': 10, 'sound_enabled': True, 'notifications_enabled': True, 'language': 'en'}
-2026-01-13 13:23:25,453 - root - INFO - Reloaded 10 questions based on settings
-2026-01-13 13:23:28,297 - root - CRITICAL - Unhandled exception in GUI
-Traceback (most recent call last):
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1921, in __call__
-    return self.func(*args)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\main.py", line 534, in open_dashboard_flow
-    dashboard.open_dashboard()
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\dashboard.py", line 122, in open_dashboard
-    self.show_wellbeing_analytics(wellbeing_frame)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\dashboard.py", line 1101, in show_wellbeing_analytics
-    cursor.execute("""
-sqlite3.OperationalError: no such column: sleep_hours
-2026-01-13 13:23:28,303 - root - ERROR - Unexpected Error: An unexpected error occurred.
-2026-01-13 13:23:31,349 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:23:31,349 - root - ERROR - >>> DEBUG: self.current_user_id = 1
-2026-01-13 13:23:31,349 - root - ERROR - >>> DEBUG: GOING TO EXAM
-2026-01-13 13:23:31,351 - app.services.exam_service - INFO - Exam session started for user: neeru
-2026-01-13 13:23:50,658 - app.services.exam_service - INFO - Exam saved. Score: 37, Sentiment: 0.0
-2026-01-13 13:23:59,147 - root - ERROR - Failed to show satisfaction survey: I18nManager.get() takes 2 positional arguments but 3 were given
-2026-01-13 13:23:59,148 - root - ERROR - Error creating ResultsManager: ResultsManager.__init__() takes 2 positional arguments but 3 were given
-2026-01-13 13:35:45,564 - root - INFO - Logging initialized.
-2026-01-13 13:35:45,565 - root - INFO - Application started
-2026-01-13 13:35:45,566 - root - INFO - Loaded 10 total questions from DB
-2026-01-13 13:35:47,916 - root - WARNING - No ML models found in models. Using fallback logic.
-2026-01-13 13:35:47,917 - root - INFO - ML Predictor initialized successfully
-2026-01-13 13:35:47,946 - root - INFO - SentimentIntensityAnalyzer initialized successfully
-2026-01-13 13:35:47,947 - root - ERROR - 
-
->>> APP INITIALIZED V2.1 <<<
-
-2026-01-13 13:35:47,948 - root - INFO - Using 10 questions based on settings
-2026-01-13 13:35:52,145 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:35:52,145 - root - ERROR - >>> DEBUG: self.current_user_id = None
-2026-01-13 13:35:52,146 - root - ERROR - >>> DEBUG: GOING TO FORM (ID Missing)
-2026-01-13 13:35:57,904 - root - INFO - Session started | user=neeru | age=20 | age_group=adult | profession=Student | questions=10
-2026-01-13 13:35:57,926 - root - INFO - Loaded settings for user 1: {'theme': 'dark', 'question_count': 10, 'sound_enabled': True, 'notifications_enabled': True, 'language': 'en'}
-2026-01-13 13:35:57,927 - root - INFO - Reloaded 10 questions based on settings
-2026-01-13 13:35:58,990 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:35:58,991 - root - ERROR - >>> DEBUG: self.current_user_id = 1
-2026-01-13 13:35:58,991 - root - ERROR - >>> DEBUG: GOING TO EXAM
-2026-01-13 13:35:58,993 - app.services.exam_service - INFO - Exam session started for user: neeru
-2026-01-13 13:36:13,110 - app.services.exam_service - INFO - Exam saved. Score: 40, Sentiment: 0.0
-2026-01-13 13:36:14,444 - root - ERROR - Failed to show satisfaction survey: I18nManager.get() takes 2 positional arguments but 3 were given
-2026-01-13 13:36:14,445 - root - ERROR - Error creating ResultsManager: ResultsManager.__init__() takes 2 positional arguments but 3 were given
-2026-01-13 13:36:20,037 - app.services.exam_service - INFO - Exam saved. Score: 40, Sentiment: 0.0
-2026-01-13 13:36:21,555 - root - ERROR - Failed to show satisfaction survey: I18nManager.get() takes 2 positional arguments but 3 were given
-2026-01-13 13:36:21,555 - root - ERROR - Error creating ResultsManager: ResultsManager.__init__() takes 2 positional arguments but 3 were given
-2026-01-13 13:39:29,140 - root - INFO - Logging initialized.
-2026-01-13 13:39:29,141 - root - INFO - Application started
-2026-01-13 13:39:29,143 - root - INFO - Loaded 10 total questions from DB
-2026-01-13 13:39:31,406 - root - WARNING - No ML models found in models. Using fallback logic.
-2026-01-13 13:39:31,407 - root - INFO - ML Predictor initialized successfully
-2026-01-13 13:39:31,436 - root - INFO - SentimentIntensityAnalyzer initialized successfully
-2026-01-13 13:39:31,437 - root - ERROR - 
-
->>> APP INITIALIZED V2.1 <<<
-
-2026-01-13 13:39:31,438 - root - INFO - Using 10 questions based on settings
-2026-01-13 13:39:34,209 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:39:34,210 - root - ERROR - >>> DEBUG: self.current_user_id = None
-2026-01-13 13:39:34,210 - root - ERROR - >>> DEBUG: GOING TO FORM (ID Missing)
-2026-01-13 13:39:39,783 - root - INFO - Session started | user=nnh | age=23 | age_group=adult | profession=Student | questions=10
-2026-01-13 13:39:39,799 - root - INFO - Created new user for settings: nnh
-2026-01-13 13:39:39,809 - root - INFO - Loaded settings for user 2: {'theme': 'light', 'question_count': 10, 'sound_enabled': True, 'notifications_enabled': True, 'language': 'en'}
-2026-01-13 13:39:39,810 - root - INFO - Reloaded 10 questions based on settings
-2026-01-13 13:39:40,902 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:39:40,903 - root - ERROR - >>> DEBUG: self.current_user_id = 2
-2026-01-13 13:39:40,903 - root - ERROR - >>> DEBUG: GOING TO EXAM
-2026-01-13 13:39:40,905 - app.services.exam_service - INFO - Exam session started for user: nnh
-2026-01-13 13:39:56,862 - app.services.exam_service - INFO - Exam saved. Score: 38, Sentiment: 0.0
-2026-01-13 13:40:02,865 - root - ERROR - Failed to show satisfaction survey: 'SatisfactionSurvey' object has no attribute 'root'
-2026-01-13 13:45:57,971 - root - INFO - Logging initialized.
-2026-01-13 13:45:57,972 - root - INFO - Application started
-2026-01-13 13:45:57,974 - root - INFO - Loaded 10 total questions from DB
-2026-01-13 13:46:00,243 - root - WARNING - No ML models found in models. Using fallback logic.
-2026-01-13 13:46:00,245 - root - INFO - ML Predictor initialized successfully
-2026-01-13 13:46:00,264 - root - INFO - SentimentIntensityAnalyzer initialized successfully
-2026-01-13 13:46:00,264 - root - ERROR - 
-
->>> APP INITIALIZED V2.1 <<<
-
-2026-01-13 13:46:00,265 - root - INFO - Using 10 questions based on settings
-2026-01-13 13:46:50,646 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:46:50,647 - root - ERROR - >>> DEBUG: self.current_user_id = None
-2026-01-13 13:46:50,648 - root - ERROR - >>> DEBUG: GOING TO FORM (ID Missing)
-2026-01-13 13:46:54,454 - root - INFO - Session started | user=gff | age=23 | age_group=adult | profession=Student | questions=10
-2026-01-13 13:46:54,474 - root - INFO - Created new user for settings: gff
-2026-01-13 13:46:54,488 - root - INFO - Loaded settings for user 3: {'theme': 'light', 'question_count': 10, 'sound_enabled': True, 'notifications_enabled': True, 'language': 'en'}
-2026-01-13 13:46:54,488 - root - INFO - Reloaded 10 questions based on settings
-2026-01-13 13:46:55,877 - root - ERROR - 
-
->>> DEBUG: Start Test Clicked! (New Handler)
-2026-01-13 13:46:55,878 - root - ERROR - >>> DEBUG: self.current_user_id = 3
-2026-01-13 13:46:55,879 - root - ERROR - >>> DEBUG: GOING TO EXAM
-2026-01-13 13:46:55,881 - app.services.exam_service - INFO - Exam session started for user: gff
-2026-01-13 13:47:09,560 - app.services.exam_service - INFO - Exam saved. Score: 40, Sentiment: 0.0
-2026-01-13 13:47:11,986 - root - CRITICAL - Unhandled exception in GUI
-Traceback (most recent call last):
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1921, in __call__
-    return self.func(*args)
-  File "C:\Users\neeru\OneDrive\Desktop\soulsense\SOUL_SENSE_EXAM\app\ui\satisfaction.py", line 76, in _on_mousewheel
-    canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-  File "C:\Users\neeru\AppData\Local\Programs\Python\Python310\lib\tkinter\__init__.py", line 1967, in yview_scroll
-    self.tk.call(self._w, 'yview', 'scroll', number, what)
-_tkinter.TclError: invalid command name ".!toplevel.!canvas"
-2026-01-13 13:47:11,987 - root - ERROR - Interface Error: A graphical interface error occurred.
+2026-01-13 12:44:18,438 - root - INFO - Using 10 questions based on settings
+2026-01-13 12:45:09,114 - root - INFO - Session started | user=rohan | age=20 | age_group=adult | profession=Student | questions=10
+2026-01-13 12:45:09,727 - root - INFO - Loaded settings for user 4: {'theme': 'dark', 'question_count': 5, 'sound_enabled': True, 'notifications_enabled': True, 'language': 'en'}
+2026-01-13 12:45:09,727 - root - INFO - Reloaded 5 questions based on settings

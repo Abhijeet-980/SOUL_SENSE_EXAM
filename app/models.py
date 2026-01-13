@@ -27,6 +27,7 @@ class User(Base):
     scores = relationship("Score", back_populates="user", cascade="all, delete-orphan")
     responses = relationship("Response", back_populates="user", cascade="all, delete-orphan")
     settings = relationship("UserSettings", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    medical_profile = relationship("MedicalProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
 
 class UserSettings(Base):
     __tablename__ = 'user_settings'
@@ -41,6 +42,24 @@ class UserSettings(Base):
     updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
     user = relationship("User", back_populates="settings")
+
+class MedicalProfile(Base):
+    __tablename__ = 'medical_profiles'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
+    
+    blood_type = Column(String, nullable=True)
+    allergies = Column(Text, nullable=True)        # Store as JSON string or plain text
+    medications = Column(Text, nullable=True)      # Store as JSON string or plain text
+    medical_conditions = Column(Text, nullable=True) # Store as JSON string or plain text
+    
+    emergency_contact_name = Column(String, nullable=True)
+    emergency_contact_phone = Column(String, nullable=True)
+    
+    last_updated = Column(String, default=lambda: datetime.utcnow().isoformat())
+
+    user = relationship("User", back_populates="medical_profile")
 
 class Score(Base):
     __tablename__ = 'scores'

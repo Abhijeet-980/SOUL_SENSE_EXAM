@@ -112,6 +112,17 @@ class ColorSchemes:
         "radiobutton_bg": "#F8FAFC",
         "radiobutton_fg": "#0F172A",
         "frame_bg": "#F8FAFC",
+        
+        # Modern Layout Tokens
+        "sidebar_bg": "#3B82F6", # Brand Blue
+        "sidebar_fg": "#FFFFFF",
+        "sidebar_hover": "#2563EB", # Darker Blue
+        "sidebar_active": "#1D4ED8", # Even Darker
+        "sidebar_divider": "#60A5FA",
+        
+        "card_bg": "#FFFFFF",
+        "card_border": "#E2E8F0",
+        "card_shadow": "#94A3B833", # Semi-transparent slate
     }
     
     DARK = {
@@ -178,6 +189,17 @@ class ColorSchemes:
         "radiobutton_bg": "#0F172A",
         "radiobutton_fg": "#F8FAFC",
         "frame_bg": "#0F172A",
+        
+        # Modern Layout Tokens
+        "sidebar_bg": "#1E293B", # Dark Slate
+        "sidebar_fg": "#F8FAFC",
+        "sidebar_hover": "#334155",
+        "sidebar_active": "#475569",
+        "sidebar_divider": "#334155",
+        
+        "card_bg": "#1E293B",
+        "card_border": "#334155",
+        "card_shadow": "#00000066",
     }
 
 

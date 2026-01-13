@@ -118,5 +118,27 @@
   "settings": {
     "language": "Language",
     "select_language": "Select Language"
+  },
+
+  "profile": {
+    "title": "Your Profile",
+    "header": "{name}'s Profile",
+    "tab_medical": "🏥 Medical Info",
+    "section_general": "General Information",
+    "section_contact": "Emergency Contact",
+    "section_details": "Medical Details",
+    "blood_type": "Blood Type",
+    "contact_name": "Name",
+    "contact_phone": "Phone Number",
+    "allergies": "Allergies",
+    "medications": "Medications",
+    "conditions": "Medical Conditions",
+    "privacy_note": "🔒 Your data is stored locally on this device only.",
+    "save": "Save Changes",
+    "success_title": "Success",
+    "success_msg": "Medical profile updated successfully!",
+    "error_title": "Error",
+    "error_msg": "Failed to save profile.",
+    "validation_phone": "Please enter a valid phone number (digits only)."
   }
 }

@@ -176,8 +176,27 @@ class AuthManager:
             borderwidth=0
         )
         dashboard_btn.pack(side="left", padx=5)
-        dashboard_btn.bind("<Enter>", lambda e: dashboard_btn.configure(bg=colors.get("secondary_hover", "#7C3AED")))
         dashboard_btn.bind("<Leave>", lambda e: dashboard_btn.configure(bg=colors.get("secondary", "#8B5CF6")))
+        
+        # Profile Button (New)
+        profile_btn = tk.Button(
+            secondary_frame,
+            text="👤 Profile",
+            command=self.app.open_profile_flow,
+            font=("Segoe UI", 11),
+            bg=colors.get("primary", "#3B82F6"),
+            fg=colors.get("text_inverse", "#FFFFFF"),
+            activebackground=colors.get("primary_hover", "#2563EB"),
+            activeforeground=colors.get("text_inverse", "#FFFFFF"),
+            relief="flat",
+            cursor="hand2",
+            width=14,
+            pady=8,
+            borderwidth=0
+        )
+        profile_btn.pack(side="left", padx=5)
+        profile_btn.bind("<Enter>", lambda e: profile_btn.configure(bg=colors.get("primary_hover", "#2563EB")))
+        profile_btn.bind("<Leave>", lambda e: profile_btn.configure(bg=colors.get("primary", "#3B82F6")))
         
         # Tertiary Actions Row
         tertiary_frame = tk.Frame(buttons_frame, bg=colors["bg"])
