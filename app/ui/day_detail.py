@@ -57,17 +57,18 @@ class DayDetailPopup:
         """Render the popup content"""
         colors = self.colors
         
-        # --- Scrollable Container ---
+        # --- Scrollable Container (Hidden scrollbar - mousewheel only) ---
         canvas = tk.Canvas(self.window, bg=colors.get("bg", "#f5f5f5"), highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self.window, orient="vertical", command=canvas.yview)
         main_frame = tk.Frame(canvas, bg=colors.get("bg", "#f5f5f5"))
         
         main_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=main_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(fill="both", expand=True)
         
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        # Enable mousewheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
         
         # --- Header ---
         header = tk.Frame(main_frame, bg=colors.get("surface", "#fff"), pady=15)
@@ -85,6 +86,9 @@ class DayDetailPopup:
         # --- Gauge Charts ---
         if MATPLOTLIB_AVAILABLE:
             self._render_gauge_charts(main_frame)
+        
+        # --- Satisfaction Factors Analysis ---
+        self._render_satisfaction_factors(main_frame)
         
         # --- Daily Schedule ---
         self._render_section(main_frame, "🗓️ Daily Schedule", 
@@ -248,12 +252,73 @@ class DayDetailPopup:
         tk.Label(section, text=title, font=("Segoe UI", 12, "bold"),
                 bg=colors.get("surface", "#fff"), 
                 fg=colors.get("text_primary", "#000")).pack(anchor="w", padx=15, pady=(10, 5))
-        
         content_lbl = tk.Label(section, text=content, font=("Segoe UI", 10),
                               bg=colors.get("surface", "#fff"), 
                               fg=colors.get("text_secondary", "#555"),
                               wraplength=600, justify="left")
         content_lbl.pack(anchor="w", padx=15, pady=(0, 10))
+    
+    def _render_satisfaction_factors(self, parent):
+        """Render satisfaction factor analysis with visual bars"""
+        colors = self.colors
+        
+        section = tk.Frame(parent, bg=colors.get("surface", "#fff"))
+        section.pack(fill="x", padx=15, pady=10)
+        
+        tk.Label(section, text="📊 Factors Affecting Today's Wellbeing", font=("Segoe UI", 12, "bold"),
+                bg=colors.get("surface", "#fff"), 
+                fg=colors.get("text_primary", "#000")).pack(anchor="w", padx=15, pady=(10, 10))
+        
+        # Calculate factor impacts
+        factors = []
+        stress = self.entry.stress_level or 0
+        sleep = self.entry.sleep_hours or 0
+        screen = (self.entry.screen_time_mins or 0) / 60
+        energy = self.entry.energy_level or 0
+        work = getattr(self.entry, 'work_hours', 0) or 0
+        
+        # Stress impact (inverted: high stress = negative impact)
+        stress_impact = (10 - stress) * 10  # 0-100 scale
+        factors.append(("Stress Level", stress_impact, "#EF4444" if stress > 6 else "#22C55E", f"{stress}/10"))
+        
+        # Sleep impact
+        sleep_impact = min(sleep / 8 * 100, 100)
+        factors.append(("Sleep Quality", sleep_impact, "#8B5CF6" if sleep >= 7 else "#9333EA", f"{sleep:.1f}h"))
+        
+        # Screen time impact (inverted: high screen = negative)
+        screen_impact = max(0, 100 - (screen / 6 * 100))
+        factors.append(("Screen Balance", screen_impact, "#3B82F6" if screen < 4 else "#F97316", f"{screen:.1f}h"))
+        
+        # Energy impact
+        energy_impact = energy * 10
+        factors.append(("Energy Level", energy_impact, "#22C55E" if energy >= 7 else "#F59E0B", f"{energy}/10"))
+        
+        # Work-life balance (moderate work is good)
+        work_impact = 100 if 6 <= work <= 9 else max(0, 100 - abs(work - 8) * 15)
+        factors.append(("Work Balance", work_impact, "#0EA5E9" if 6 <= work <= 9 else "#DC2626", f"{work:.1f}h"))
+        
+        # Draw factor bars
+        for name, impact, color, value in factors:
+            row = tk.Frame(section, bg=colors.get("surface", "#fff"))
+            row.pack(fill="x", padx=15, pady=3)
+            
+            # Label
+            tk.Label(row, text=name, font=("Segoe UI", 10), width=15, anchor="w",
+                    bg=colors.get("surface", "#fff"), 
+                    fg=colors.get("text_secondary", "#666")).pack(side="left")
+            
+            # Progress bar container
+            bar_bg = tk.Frame(row, bg="#e0e0e0", height=12, width=200)
+            bar_bg.pack(side="left", padx=5)
+            bar_bg.pack_propagate(False)
+            
+            # Filled bar
+            bar_fill = tk.Frame(bar_bg, bg=color, height=12, width=int(impact * 2))
+            bar_fill.pack(side="left", fill="y")
+            
+            # Value
+            tk.Label(row, text=value, font=("Segoe UI", 9, "bold"),
+                    bg=colors.get("surface", "#fff"), fg=color).pack(side="left", padx=5)
     
     def _render_ai_insight(self, parent):
         """Render AI insight for this specific day"""

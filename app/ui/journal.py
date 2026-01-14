@@ -425,63 +425,61 @@ class JournalFeature:
         tk.Button(entries_window, text="📅 Calendar View", command=open_history_view,
                  bg=self.colors.get("secondary", "#8B5CF6"), fg="white", 
                  relief="flat", padx=10).pack(pady=5)
-        
 
-        # --- Modern Filter Bar ---
+
+        # --- Modern Filter Bar (No search, Month + Type filters) ---
         filter_frame = tk.Frame(entries_window, bg=self.colors.get("surface", "#fff"), pady=12)
         filter_frame.pack(fill="x", padx=20, pady=(0, 10))
         
-        # Search box with placeholder styling
-        search_container = tk.Frame(filter_frame, bg=self.colors.get("surface", "#fff"))
-        search_container.pack(side="left", padx=(10, 15))
+        # Month filter
+        month_container = tk.Frame(filter_frame, bg=self.colors.get("surface", "#fff"))
+        month_container.pack(side="left", padx=(10, 15))
         
-        tk.Label(search_container, text="🔍", font=("Segoe UI", 12),
-                bg=self.colors.get("surface", "#fff")).pack(side="left")
+        tk.Label(month_container, text="📅 Month:", font=("Segoe UI", 10, "bold"),
+                bg=self.colors.get("surface", "#fff"), 
+                fg=self.colors.get("text_secondary", "#666")).pack(side="left")
         
-        search_var = tk.StringVar()
-        search_entry = tk.Entry(search_container, textvariable=search_var, width=25,
-                               font=("Segoe UI", 11), relief="flat", 
-                               bg=self.colors.get("bg", "#f0f0f0"),
-                               fg=self.colors.get("text_primary", "#000"),
-                               insertbackground=self.colors.get("text_primary", "#000"))
-        search_entry.pack(side="left", padx=5, ipady=6)
-        search_entry.insert(0, "Search entries...")
-        search_entry.bind("<FocusIn>", lambda e: search_entry.delete(0, tk.END) if search_entry.get() == "Search entries..." else None)
-        search_entry.bind("<FocusOut>", lambda e: search_entry.insert(0, "Search entries...") if not search_entry.get() else None)
+        # Generate month options
+        from datetime import datetime
+        current_month = datetime.now()
+        month_options = ["All Months"]
+        for i in range(12):
+            month_date = datetime(current_month.year if current_month.month - i > 0 else current_month.year - 1,
+                                 ((current_month.month - i - 1) % 12) + 1, 1)
+            month_options.append(month_date.strftime("%B %Y"))
         
-        # Filter dropdown with modern styling
+        month_var = tk.StringVar(value="All Months")
+        month_combo = ttk.Combobox(month_container, textvariable=month_var, 
+                                  values=month_options, state="readonly", width=15)
+        month_combo.pack(side="left", padx=5)
+        
+        # Type filter
         filter_container = tk.Frame(filter_frame, bg=self.colors.get("surface", "#fff"))
         filter_container.pack(side="left", padx=10)
         
-        tk.Label(filter_container, text="Filter:", font=("Segoe UI", 10, "bold"),
+        tk.Label(filter_container, text="Type:", font=("Segoe UI", 10, "bold"),
                 bg=self.colors.get("surface", "#fff"), 
                 fg=self.colors.get("text_secondary", "#666")).pack(side="left")
         
         type_var = tk.StringVar(value="All Entries")
-        style = ttk.Style()
-        style.configure("Modern.TCombobox", padding=5)
         type_combo = ttk.Combobox(filter_container, textvariable=type_var, 
-                                 values=["All Entries", "🔴 High Stress (>7)", "✨ Great Days (Energy > 7)", "😴 Bad Sleep (<6h)"], 
-                                 state="readonly", width=22, style="Modern.TCombobox")
+                                 values=["All Entries", "High Stress", "Great Days", "Bad Sleep"], 
+                                 state="readonly", width=15)
         type_combo.pack(side="left", padx=5)
         
         # Clear button
         def clear_filters():
-            search_var.set("")
-            search_entry.delete(0, tk.END)
-            search_entry.insert(0, "Search entries...")
+            month_var.set("All Months")
             type_var.set("All Entries")
             render_entries()
         
-        tk.Button(filter_frame, text="✕ Clear", command=clear_filters,
-                 font=("Segoe UI", 9), bg=self.colors.get("bg", "#f0f0f0"), 
-                 fg=self.colors.get("text_secondary", "#666"),
-                 relief="flat", padx=8).pack(side="right", padx=10)
+        tk.Button(filter_frame, text="Reset", command=clear_filters,
+                 font=("Segoe UI", 9), bg=self.colors.get("primary", "#8B5CF6"), fg="white",
+                 relief="flat", padx=12, pady=4).pack(side="right", padx=10)
         
-        # Scrollable Area
-        canvas = tk.Canvas(entries_window, bg=self.colors["bg"], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(entries_window, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg=self.colors["bg"])
+        # Scrollable Area (Hidden scrollbar - mousewheel only)
+        canvas = tk.Canvas(entries_window, bg=self.colors.get("bg", "#f0f0f0"), highlightthickness=0)
+        scrollable_frame = tk.Frame(canvas, bg=self.colors.get("bg", "#f0f0f0"))
         
         scrollable_frame.bind(
             "<Configure>",
@@ -489,17 +487,19 @@ class JournalFeature:
         )
         
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(fill="both", expand=True, padx=20)
         
-        canvas.pack(side="left", fill="both", expand=True, padx=20)
-        scrollbar.pack(side="right", fill="y")
+        # Enable mousewheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
         
         def render_entries():
             # Clear existing
             for widget in scrollable_frame.winfo_children():
                 widget.destroy()
                 
-            search_term = search_var.get().lower()
+            selected_month = month_var.get()
             filter_type = type_var.get()
             
             session = get_session()
@@ -512,16 +512,21 @@ class JournalFeature:
                 
                 filtered_count = 0
                 for entry in entries:
-                    # Apply search (skip placeholder text)
-                    search_text = search_term if search_term != "search entries..." else ""
-                    if search_text and search_text not in entry.content.lower():
-                        continue
+                    # Apply month filter
+                    if selected_month != "All Months":
+                        try:
+                            entry_month = datetime.strptime(str(entry.entry_date).split('.')[0], "%Y-%m-%d %H:%M:%S").strftime("%B %Y")
+                            if entry_month != selected_month:
+                                continue
+                        except:
+                            pass
                         
-                    if "High Stress" in filter_type and (entry.stress_level or 0) <= 7:
+                    # Apply type filter
+                    if filter_type == "High Stress" and (entry.stress_level or 0) <= 7:
                         continue
-                    if "Great Days" in filter_type and (entry.energy_level or 0) <= 7:
+                    if filter_type == "Great Days" and (entry.energy_level or 0) <= 7:
                         continue
-                    if "Bad Sleep" in filter_type and (entry.sleep_hours or 7) >= 6:
+                    if filter_type == "Bad Sleep" and (entry.sleep_hours or 7) >= 6:
                         continue
                         
                     filtered_count += 1
@@ -529,12 +534,13 @@ class JournalFeature:
                     
                 if filtered_count == 0:
                     tk.Label(scrollable_frame, text="No entries found matching filters.", 
-                            font=("Segoe UI", 12), bg=self.colors["bg"], fg=self.colors["text_secondary"]).pack(pady=20)
+                            font=("Segoe UI", 12), bg=self.colors.get("bg", "#f0f0f0"), 
+                            fg=self.colors.get("text_secondary", "#666")).pack(pady=20)
             finally:
                 session.close()
 
         # Update on filter change
-        search_entry.bind("<Return>", lambda e: render_entries())
+        month_combo.bind("<<ComboboxSelected>>", lambda e: render_entries())
         type_combo.bind("<<ComboboxSelected>>", lambda e: render_entries())
         
         # Initial Render
