@@ -1,0 +1,46 @@
+name: Auto Apply ECWoC Label to Issues
+
+on:
+  issues:
+    types:
+      - opened
+      - closed
+
+permissions:
+  issues: write
+
+jobs:
+  add-ecwoc-label:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Add ECWoC label to issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issueNumber = context.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const labelName = "ECWoC";
+
+            // Get existing labels on the issue
+            const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+              owner,
+              repo,
+              issue_number: issueNumber,
+            });
+
+            const hasLabel = labels.some(label => label.name === labelName);
+
+            if (!hasLabel) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                labels: [labelName],
+              });
+
+              console.log(`✅ Added '${labelName}' label to issue #${issueNumber}`);
+            } else {
+              console.log(`ℹ️ Issue #${issueNumber} already has '${labelName}' label`);
+            }
