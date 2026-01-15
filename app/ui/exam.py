@@ -11,6 +11,8 @@ from datetime import datetime
 import statistics
 from app.db import get_connection
 from app.utils import compute_age_group
+from app.services.question_curator import QuestionCurator
+from app.ui.assessments import RecommendationView
 
 
 class ExamManager:
@@ -171,7 +173,7 @@ class ExamManager:
         options_frame = tk.Frame(card_inner, bg=colors.get("surface", "#FFFFFF"))
         options_frame.pack(fill="x", pady=(20, 5))
         
-        self.answer_var.set(None)  # Reset selection to None to avoid auto-select
+        self.answer_var.set(0)  # Reset selection to 0 to avoid auto-select
         
         options = [
             ("Never", 1),
@@ -504,8 +506,18 @@ class ExamManager:
                 except Exception as e:
                     logging.warning(f"Could not show satisfaction survey: {e}")
             
-            # Show results - FIXED: Use embedded view
-            self.show_embedded_results()
+            # Determine Recommendations
+            score_data = {"total_score": self.app.current_score} 
+            # In future: fetch stress/energy from recent journal or specific question IDs
+            
+            recs = QuestionCurator.recommend_tests(self.app, score_data)
+            
+            if recs:
+                # Show Embedded Recommendation View
+                RecommendationView(self.root, self.app, recs, callback_done=self.show_embedded_results)
+            else:
+                # Show results directly
+                self.show_embedded_results()
             
         except Exception as e:
             logging.error(f"Error finishing test: {e}")
@@ -517,7 +529,7 @@ class ExamManager:
             if hasattr(self.app, 'clear_screen'):
                 self.app.clear_screen()
     
-    def show_embedded_results(self):
+    def show_embedded_results(self, result_ids=None):
         """Show results embedded in the main window (Web-Style)"""
         self.app.clear_screen()
         colors = self.app.colors
@@ -581,6 +593,69 @@ class ExamManager:
                  
         tk.Label(feedback_frame, text=desc, font=("Segoe UI", 14), wraplength=400, justify="left",
                  bg=colors["surface"], fg=colors["text_primary"]).pack(anchor="w")
+
+        # --- Sentiment Insight ---
+        sent_score = getattr(self.app, 'sentiment_score', 0)
+        if sent_score >= 60:
+            s_text = "Positive Mindset ☀"
+            s_color = colors.get("success", "#10B981")
+        elif sent_score >= 40:
+            s_text = "Neutral / Balanced 😐"
+            s_color = colors.get("text_secondary", "#94A3B8")
+        else:
+            s_text = "Needs Attention 🌧"
+            s_color = colors.get("accent", "#F59E0B")
+            
+        tk.Label(feedback_frame, text=f"Sentiment: {s_text} ({int(sent_score)}/100)", 
+                 font=("Segoe UI", 12, "bold"), bg=colors["surface"], fg=s_color).pack(anchor="w", pady=(15, 0))
+
+        # --- NEW SECTION: Deep Dive Results (if any) ---
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            deep_dives = []
+            if self.app.current_user_id:
+                if result_ids and len(result_ids) > 0:
+                     # Precise filtering by IDs (The robust way)
+                     placeholders = ','.join(['?'] * len(result_ids))
+                     query = f"SELECT assessment_type, total_score, details FROM assessment_results WHERE id IN ({placeholders}) ORDER BY timestamp DESC"
+                     cursor.execute(query, result_ids)
+                     deep_dives = cursor.fetchall()
+                else:
+                    # Fallback: 15 minutes lookback (Legacy/Direct access way)
+                    time_threshold = datetime.now().timestamp() - 900 
+                    cursor.execute(
+                        "SELECT assessment_type, total_score, details FROM assessment_results WHERE user_id = ? AND timestamp > ? ORDER BY timestamp DESC",
+                        (self.app.current_user_id, str(datetime.fromtimestamp(time_threshold)))
+                    )
+                    deep_dives = cursor.fetchall()
+                
+                if deep_dives:
+                    dd_section = tk.Frame(container, bg=colors["bg"])
+                    dd_section.pack(fill="x", pady=(20, 10))
+                    
+                    tk.Label(dd_section, text="🔍 Deep Dive Insights", font=("Segoe UI", 18, "bold"), 
+                             bg=colors["bg"], fg=colors["text_primary"]).pack(anchor="w", pady=(0, 10))
+                    
+                    grid_frame = tk.Frame(dd_section, bg=colors["bg"])
+                    grid_frame.pack(fill="x")
+                    
+                    for i, (dtype, dscore, ddetails) in enumerate(deep_dives):
+                        # Simple card for each
+                        card = tk.Frame(grid_frame, bg=colors["surface"], padx=15, pady=15,
+                                      highlightthickness=1, highlightbackground=colors.get("border", "#E2E8F0"))
+                        card.pack(side="left", fill="x", expand=True, padx=5)
+                        
+                        d_name = dtype.replace("_", " ").title()
+                        tk.Label(card, text=d_name, font=("Segoe UI", 12, "bold"), 
+                                 bg=colors["surface"], fg=colors["text_primary"]).pack(anchor="w")
+                                 
+                        tk.Label(card, text=f"Score: {dscore}/100", font=("Segoe UI", 16, "bold"), 
+                                 bg=colors["surface"], fg=colors["primary"]).pack(anchor="w", pady=5)
+        except Exception as e:
+            logging.error(f"Failed to load specific deep dives: {e}")
+
 
         # 3. Actions Row
         action_frame = tk.Frame(container, bg=colors["bg"])

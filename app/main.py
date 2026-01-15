@@ -9,7 +9,9 @@ from app.ui.profile import UserProfileView
 from app.ui.exam import ExamManager
 from app.auth import AuthManager
 from app.i18n_manager import get_i18n
+from app.i18n_manager import get_i18n
 from app.questions import load_questions
+from app.ui.assessments import AssessmentHub
 
 class SoulSenseApp:
     def __init__(self, root):
@@ -43,6 +45,15 @@ class SoulSenseApp:
             "surface_hover": "#334155"
         }
         
+        # Fonts
+        self.fonts = {
+            "h1": ("Segoe UI", 24, "bold"),
+            "h2": ("Segoe UI", 20, "bold"),
+            "h3": ("Segoe UI", 16, "bold"),
+            "body": ("Segoe UI", 12),
+            "small": ("Segoe UI", 10)
+        }
+        
         # State
         self.username = None # Set after login
         self.current_user_id = None
@@ -71,6 +82,7 @@ class SoulSenseApp:
             {"id": "exam", "label": "Assessment", "icon": "🧠"},
             {"id": "dashboard", "label": "Dashboard", "icon": "📊"},
             {"id": "journal", "label": "Journal", "icon": "📝"},
+            {"id": "assessments", "label": "Deep Dive", "icon": "🔍"},
             {"id": "history", "label": "History", "icon": "�"}, # Replaces Profile
         ], on_change=self.switch_view)
         # self.sidebar.pack(side="left", fill="y") # Don't pack yet
@@ -273,6 +285,8 @@ class SoulSenseApp:
             self.show_profile()
         elif view_id == "history":
             self.show_history()
+        elif view_id == "assessments":
+            self.show_assessments()
 
     def show_history(self):
         """Show User History (Embedded)"""
@@ -307,6 +321,12 @@ class SoulSenseApp:
     def clear_screen(self):
         for widget in self.content_area.winfo_children():
             widget.destroy()
+
+    def show_assessments(self):
+        """Show Assessment Selection Hub"""
+        self.clear_screen()
+        hub = AssessmentHub(self.content_area, self)
+        hub.render()
 
     def show_home(self):
         # --- WEB-STYLE HERO DASHBOARD ---
