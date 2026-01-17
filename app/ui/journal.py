@@ -13,6 +13,7 @@ from sqlalchemy import desc, text
 from app.i18n_manager import get_i18n
 from app.models import JournalEntry
 from app.db import get_session
+from app.config import WINDOW_SIZE
 
 # Lazy imports to avoid circular dependencies
 # These will be imported only when needed
@@ -204,7 +205,7 @@ class JournalFeature:
         self.username = username
         self.journal_window = tk.Toplevel(self.parent_root)
         self.journal_window.title(self.i18n.get("journal.title"))
-        self.journal_window.geometry("800x600")
+        self.journal_window.geometry(WINDOW_SIZE)
         self.journal_window.configure(bg=self.colors.get("bg"))
         self.render_journal_view(self.journal_window, username)
     

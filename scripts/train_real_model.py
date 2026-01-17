@@ -9,12 +9,15 @@ from sklearn.metrics import accuracy_score, classification_report
 import logging
 import sys
 
+# Add parent dir to path to import app modules
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.config import DB_PATH, MODELS_DIR
+
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Constants
-DB_PATH = os.path.join("db", "soulsense.db")
-MODELS_DIR = "models"
 MIN_RECORDS_REQUIRED = 100
 
 def get_db_connection():

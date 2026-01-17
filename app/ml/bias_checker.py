@@ -8,9 +8,11 @@ import json
 import os
 from datetime import datetime
 
+from app.config import DB_PATH as DEFAULT_DB_PATH
+
 class SimpleBiasChecker:
-    def __init__(self, db_path="db/soulsense.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        self.db_path = db_path or DEFAULT_DB_PATH
     
     def check_age_bias(self):
         """Simple check: Are scores different across age groups?"""

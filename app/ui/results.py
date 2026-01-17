@@ -6,6 +6,7 @@ import random
 from app.db import get_connection, get_session
 from app.models import Score
 from app.constants import BENCHMARK_DATA
+from app.config import WINDOW_SIZE
 try:
     from app.services.pdf_generator import generate_pdf_report
 except ImportError:
@@ -578,7 +579,7 @@ class ResultsManager:
         # Create popup window
         detail_win = tk.Toplevel(self.app.root)
         detail_win.title("Detailed Analysis")
-        detail_win.geometry("800x600")
+        detail_win.geometry(WINDOW_SIZE)
         detail_win.configure(bg=self.app.colors.get("bg", "#0F172A"))
         
         # Center window
