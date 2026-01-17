@@ -11,7 +11,7 @@ import logging
 import sys
 import traceback
 import functools
-from typing import Any, Callable, Dict, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Dict, Optional, Type, TypeVar, Union, cast
 from datetime import datetime
 from contextlib import contextmanager
 
@@ -60,6 +60,7 @@ class ErrorHandler:
     """
     
     _instance: Optional['ErrorHandler'] = None
+    _initialized: bool = False
     
     def __new__(cls) -> 'ErrorHandler':
         """Singleton pattern to ensure single error handler instance."""
@@ -113,10 +114,10 @@ class ErrorHandler:
         }
         
         if user_id:
-            log_data["user_id"] = user_id
+            log_data["user_id"] = str(user_id)
             
         if additional_context:
-            log_data["context"] = additional_context
+            log_data["context"] = str(additional_context)
         
         # Get traceback for non-trivial errors
         if severity in (ErrorSeverity.HIGH, ErrorSeverity.CRITICAL):
@@ -233,13 +234,13 @@ def get_error_handler() -> ErrorHandler:
 
 
 def safe_operation(
-    fallback: T = None,
+    fallback: Optional[T] = None,
     log: bool = True,
     user_message: Optional[str] = None,
     severity: str = ErrorSeverity.MEDIUM,
     show_ui: bool = False,
     reraise: bool = False
-) -> Callable[[Callable[..., T]], Callable[..., T]]:
+) -> Callable[[Callable[..., T]], Callable[..., Optional[T]]]:
     """
     Decorator to wrap functions with automatic error handling.
     
@@ -259,9 +260,9 @@ def safe_operation(
         def load_data():
             ...
     """
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+    def decorator(func: Callable[..., T]) -> Callable[..., Optional[T]]:
         @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> T:
+        def wrapper(*args: Any, **kwargs: Any) -> Optional[T]:
             try:
                 return func(*args, **kwargs)
             except Exception as e:
@@ -357,7 +358,7 @@ def setup_global_exception_handlers() -> None:
             return
         
         handler.log_error(
-            exc_value,
+            cast(Exception, exc_value),
             module="global",
             operation="uncaught_exception",
             severity=ErrorSeverity.CRITICAL
@@ -366,7 +367,7 @@ def setup_global_exception_handlers() -> None:
         # Try to show error to user
         try:
             from app.main import show_error
-            user_msg = handler.get_user_message(exc_value)
+            user_msg = handler.get_user_message(cast(Exception, exc_value))
             show_error("Unexpected Error", user_msg, exc_value)
         except Exception:
             # Fallback to stderr
@@ -382,7 +383,7 @@ def setup_global_exception_handlers() -> None:
         def tk_exception_handler(exc_type: Type[BaseException], exc_value: BaseException, exc_tb) -> None:
             """Handle tkinter callback exceptions."""
             handler.log_error(
-                exc_value,
+                cast(Exception, exc_value),
                 module="tkinter",
                 operation="callback_exception",
                 severity=ErrorSeverity.HIGH
@@ -390,7 +391,7 @@ def setup_global_exception_handlers() -> None:
             
             try:
                 from app.main import show_error
-                user_msg = handler.get_user_message(exc_value)
+                user_msg = handler.get_user_message(cast(Exception, exc_value))
                 show_error("Interface Error", user_msg, exc_value)
             except Exception:
                 traceback.print_exception(exc_type, exc_value, exc_tb)

@@ -4,10 +4,10 @@ from tkinter import ttk, messagebox, simpledialog
 import logging
 import json
 from datetime import datetime
-from app.models import get_session, MedicalProfile, User, PersonalProfile, UserStrengths
+from app.models import get_session, MedicalProfile, User, PersonalProfile, UserStrengths, UserEmotionalPatterns
 # from app.ui.styles import ApplyTheme # Not needed
 from app.ui.sidebar import SidebarNav
-from app.models import get_session, MedicalProfile, User, PersonalProfile, UserStrengths
+from app.models import get_session, MedicalProfile, User, PersonalProfile, UserStrengths, UserEmotionalPatterns
 from app.ui.sidebar import SidebarNav
 from app.ui.components.timeline import LifeTimeline
 from app.ui.components.tag_input import TagInput
@@ -1600,6 +1600,37 @@ class UserProfileView:
         self.boundaries_input = TagInput(right_col, max_tags=5, colors=self.colors, suggestion_list=suggested_boundaries)
         self.boundaries_input.pack(fill="x", pady=(0, 20))
 
+        # ===================
+        # EMOTIONAL PROFILE SECTION (Issue #269)
+        # ===================
+        self._create_section_label(right_col, "Emotional Profile")
+        
+        # Common Emotional States
+        self._create_field_label(right_col, "Common Emotional States")
+        tk.Label(right_col, text="(Emotions you often experience)", font=("Segoe UI", 9), 
+                bg=self.colors.get("card_bg"), fg="gray").pack(anchor="w")
+        suggested_emotions = ["Anxiety", "Calmness", "Overthinking", "Sadness", "Excitement", 
+                              "Frustration", "Contentment", "Overwhelm", "Joy", "Stress"]
+        self.emotions_input = TagInput(right_col, max_tags=6, colors=self.colors, suggestion_list=suggested_emotions)
+        self.emotions_input.pack(fill="x", pady=(0, 15))
+        
+        # Emotional Triggers
+        self._create_field_label(right_col, "What Triggers These Emotions?")
+        self.triggers_text = self._create_text_area(right_col, max_length=500)
+        
+        # Coping Strategies
+        self._create_field_label(right_col, "Your Coping Strategies")
+        self.coping_text = self._create_text_area(right_col, max_length=500)
+        
+        # Preferred Support Style
+        self._create_field_label(right_col, "How Should AI Respond to You?")
+        support_styles = ["Encouraging & Motivating", "Problem-Solving & Practical", 
+                          "Just Listen & Validate", "Distraction & Positivity"]
+        self.support_style_var = tk.StringVar()
+        self.support_style_combo = ttk.Combobox(right_col, textvariable=self.support_style_var, 
+                                                 values=support_styles, state="readonly", font=("Segoe UI", 12))
+        self.support_style_combo.pack(fill="x", pady=(0, 20))
+
         # Footer Actions (Overlay or Bottom of Main Layout)
         footer = tk.Frame(main_layout, bg=self.colors.get("bg"), height=60)
         footer.pack(fill="x", side="bottom", padx=0, pady=10)
@@ -1640,6 +1671,18 @@ class UserProfileView:
 
                 # PR #5 Load
                 self.comm_style_text.insert("1.0", s.comm_style or "")
+            
+            # Load Emotional Patterns (Issue #269)
+            if user and user.emotional_patterns:
+                ep = user.emotional_patterns
+                
+                try: self.emotions_input.tags = json.loads(ep.common_emotions)
+                except: self.emotions_input.tags = []
+                self.emotions_input._render_tags()
+                
+                self.triggers_text.insert("1.0", ep.emotional_triggers or "")
+                self.coping_text.insert("1.0", ep.coping_strategies or "")
+                self.support_style_var.set(ep.preferred_support or "")
                 
             session.close()
         except Exception as e:
@@ -1669,6 +1712,18 @@ class UserProfileView:
 
             # PR #5 Save
             strengths.comm_style = self.comm_style_text.get("1.0", tk.END).strip()
+
+            # Save Emotional Patterns (Issue #269)
+            if not user.emotional_patterns:
+                ep = UserEmotionalPatterns(user_id=user.id)
+                user.emotional_patterns = ep
+            else:
+                ep = user.emotional_patterns
+            
+            ep.common_emotions = json.dumps(self.emotions_input.get_tags())
+            ep.emotional_triggers = self.triggers_text.get("1.0", tk.END).strip()
+            ep.coping_strategies = self.coping_text.get("1.0", tk.END).strip()
+            ep.preferred_support = self.support_style_var.get()
 
             session.commit()
             session.close()

@@ -11,7 +11,7 @@ from nltk.sentiment import SentimentIntensityAnalyzer
 from sqlalchemy import desc, text
 
 from app.i18n_manager import get_i18n
-from app.models import JournalEntry
+from app.models import JournalEntry, User, UserEmotionalPatterns
 from app.models import JournalEntry
 from app.db import get_session
 from app.validation import validate_required, validate_length, validate_range, sanitize_text, RANGES
@@ -780,15 +780,57 @@ class JournalFeature:
 
             # --- SYNTHESIS ---
             
+            # Load user's emotional patterns (Issue #269)
+            user_emotions = []
+            preferred_support = None
+            try:
+                user = session.query(User).filter_by(username=self.username).first()
+                if user and user.emotional_patterns:
+                    ep = user.emotional_patterns
+                    import json
+                    try:
+                        user_emotions = json.loads(ep.common_emotions) if ep.common_emotions else []
+                    except:
+                        user_emotions = []
+                    preferred_support = ep.preferred_support
+            except Exception as e:
+                logging.warning(f"Could not load emotional patterns: {e}")
+            
+            # Check if detected patterns match user-defined emotions
+            personalized_note = ""
+            for emotion in user_emotions:
+                emotion_lower = emotion.lower()
+                if emotion_lower in ["anxiety", "stress", "overwhelm"] and avg_stress > 5:
+                    personalized_note = f"💭 I notice you've identified **{emotion}** as something you often experience. This pattern seems active right now."
+                    break
+                elif emotion_lower in ["sadness"] and any(e.sentiment_score and e.sentiment_score < -30 for e in entries):
+                    personalized_note = f"💭 Your journals show a low sentiment, and you've mentioned **{emotion}** as a common feeling."
+                    break
+            
+            # Personalize response based on support style
+            def style_message(base_msg):
+                if not preferred_support:
+                    return base_msg
+                if "Encouraging" in preferred_support:
+                    return f"💪 {base_msg}\n\n**Remember**: You've handled tough days before. You've got this!"
+                elif "Problem-Solving" in preferred_support:
+                    return f"📋 {base_msg}\n\n**Action Item**: Pick one small thing to improve today."
+                elif "Listen" in preferred_support:
+                    return f"🤗 {base_msg}\n\n**It's okay to feel this way.** Take your time."
+                elif "Distraction" in preferred_support:
+                    return f"✨ {base_msg}\n\n**Fun idea**: Take a 5-min break and do something you enjoy!"
+                return base_msg
+            
             if not risk_factors:
-                return "🌟 **Balanced State**: Your metrics look healthy! Keep maintaining this rhythm."
+                return style_message("🌟 **Balanced State**: Your metrics look healthy! Keep maintaining this rhythm.")
             
             if len(risk_factors) == 1:
                 # Single issue
                 msg = f"⚠️ **Attention Needed**: I've detected signs of {risk_factors[0]}.\n"
                 msg += advice_components[0]
                 if common_trigger: msg += f"\n(Context: You mentioned '{common_trigger}' as a trigger)"
-                return msg
+                if personalized_note: msg += f"\n\n{personalized_note}"
+                return style_message(msg)
             
             else:
                 # Complex/Combined issue (Smart Synthesis)
@@ -807,7 +849,8 @@ class JournalFeature:
                 if is_busy:
                     msg += "\n\n🗓️ **Note**: Your schedule looks packed. Clear 30 mins for 'do nothing' time."
                 
-                return msg
+                if personalized_note: msg += f"\n\n{personalized_note}"
+                return style_message(msg)
             
             # Calculate Averages
             avg_sleep = sum(sleeps) / len(sleeps) if sleeps else 0

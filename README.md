@@ -288,6 +288,7 @@ The application is grounded in established emotional intelligence theory (Salove
   - **Avatar Customization**: Upload and crop profile pictures
 - Daily emotional journal with AI sentiment analysis
 - Emotional pattern tracking and insights
+- **Emotional Patterns Capture (NEW!)** - Define your common emotional states for personalized AI responses
 - View past journal entries and emotional journey
 - **Startup Integrity Checks (NEW!)**
   - Validates database schema and required files at startup
@@ -313,6 +314,38 @@ The journal feature allows users to:
 - **Emotional Tracking:** Monitors emotional trends over time
 
 The journal feature is informed by research on expressive writing and emotional processing (Pennebaker, 1997; Smyth, 1998), which demonstrates the therapeutic benefits of written emotional expression. The AI sentiment analysis uses natural language processing techniques validated in computational psychology research (Calvo & D'Mello, 2010).
+
+---
+
+## 💭 Emotional Patterns Feature (Issue #269)
+
+Allows users to describe their common emotional states, enabling more personalized and empathetic AI responses.
+
+### How to Use
+
+1. Navigate to **Profile → Strengths & Goals**
+2. Scroll to the **"Emotional Profile"** section
+3. Fill in your details:
+   - **Common Emotional States**: Select or type emotions you often experience (e.g., Anxiety, Stress, Calmness)
+   - **Emotional Triggers**: Describe what causes these emotions
+   - **Coping Strategies**: Your personal methods for managing emotions
+   - **Preferred AI Support Style**: How you want the AI to respond to you
+
+### AI Support Styles
+
+| Style | Response Approach |
+|-------|-------------------|
+| **Encouraging & Motivating** | "You've got this! You've handled tough days before." |
+| **Problem-Solving & Practical** | "Here's an action item to try today..." |
+| **Just Listen & Validate** | "It's okay to feel this way. Take your time." |
+| **Distraction & Positivity** | "Fun idea: Take a 5-min break and do something you enjoy!" |
+
+### Integration
+
+When you write journal entries, the AI will:
+- Detect if your current emotional state matches your defined patterns
+- Personalize responses based on your preferred support style
+- Provide relevant coping suggestions from your profile
 
 ---
 

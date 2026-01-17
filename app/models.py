@@ -38,6 +38,7 @@ class User(Base):
     medical_profile = relationship("MedicalProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
     personal_profile = relationship("PersonalProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
     strengths = relationship("UserStrengths", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    emotional_patterns = relationship("UserEmotionalPatterns", uselist=False, back_populates="user", cascade="all, delete-orphan")
 
 class UserSettings(Base):
     __tablename__ = 'user_settings'
@@ -132,6 +133,31 @@ class UserStrengths(Base):
     last_updated = Column(String, default=lambda: datetime.utcnow().isoformat())
 
     user = relationship("User", back_populates="strengths")
+
+
+class UserEmotionalPatterns(Base):
+    """Store user-defined emotional patterns for empathetic AI responses (Issue #269)."""
+    __tablename__ = 'user_emotional_patterns'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
+    
+    # Common emotional states (JSON array)
+    common_emotions = Column(Text, default="[]")  # e.g., ["anxiety", "calmness", "overthinking"]
+    
+    # Emotional triggers (what causes these emotions)
+    emotional_triggers = Column(Text, nullable=True)
+    
+    # User's coping strategies
+    coping_strategies = Column(Text, nullable=True)
+    
+    # Preferred support style during distress
+    preferred_support = Column(String, nullable=True)  # "Encouraging", "Problem-solving", "Just listen"
+    
+    last_updated = Column(String, default=lambda: datetime.utcnow().isoformat())
+    
+    user = relationship("User", back_populates="emotional_patterns")
+
 
 class Score(Base):
     __tablename__ = 'scores'
