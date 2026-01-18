@@ -25,9 +25,13 @@ def test_initialize_questions(mock_ctx):
     
     # Configure mock query result
     # We simulate the return of 5 columns as defined in the query
+    # Using namedtuple to simulate SQLAlchemy Row (attribute + index access)
+    from collections import namedtuple
+    Row = namedtuple('Row', ['id', 'question_text', 'tooltip', 'min_age', 'max_age'])
+    
     mock_data = [
-        (1, "Question 1", "Tooltip 1", 18, 100),
-        (2, "Question 2", None, 25, 60)
+        Row(1, "Question 1", "Tooltip 1", 18, 100),
+        Row(2, "Question 2", None, 25, 60)
     ]
     
     # Mock the query chain

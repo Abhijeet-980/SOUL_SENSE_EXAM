@@ -46,7 +46,8 @@ def initialize_questions() -> bool:
                 ).order_by(Question.id).all()
                 
                 # Convert to list of tuples immediately
-                _ALL_QUESTIONS = list(qs)
+                # Explicit conversion to satisfy MyPy and ensure pure tuples
+                _ALL_QUESTIONS = [(q.id, q.question_text, q.tooltip, q.min_age, q.max_age) for q in qs]
                 
                 logger.info(f"Loaded {len(_ALL_QUESTIONS)} active questions into memory.")
                 return True
