@@ -294,6 +294,10 @@ The application is grounded in established emotional intelligence theory (Salove
   - Validates database schema and required files at startup
   - Auto-recovery for missing directories or corrupted config
   - User-friendly diagnostic alerts
+- **Loading States for Long Operations (NEW!)**
+  - Visual feedback during PDF export, AI analysis, and data export
+  - Animated loading overlay prevents user confusion
+  - Automatic cleanup on completion or error
 
 ---
 

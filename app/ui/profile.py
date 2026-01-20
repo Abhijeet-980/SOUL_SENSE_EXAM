@@ -20,6 +20,7 @@ from app.validation import (
 )
 from app.constants import FONT_FAMILY_SECONDARY
 from app.ui.validation_ui import setup_entry_limit, setup_text_limit
+from app.ui.components.loading_overlay import show_loading, hide_loading
 
 class UserProfileView:
     def __init__(self, parent_root: tk.Widget, app_instance: Any) -> None:
@@ -1459,6 +1460,7 @@ class UserProfileView:
         btn_frame.pack(anchor="w")
         
         def do_export_json():
+            loading = None
             try:
                 from app.utils.file_validation import validate_file_path, sanitize_filename, ValidationError
                 from tkinter import filedialog
@@ -1527,15 +1529,23 @@ class UserProfileView:
                     messagebox.showerror("Security Error", str(ve))
                     return
                 
+                # Show loading overlay during file write
+                loading = show_loading(self.window, "Exporting your data...")
+                self.window.update()  # Force UI update
+                
                 # 5. Write File
                 from app.utils.atomic import atomic_write
                 
                 with atomic_write(filename, 'w', encoding='utf-8') as f:
                     json.dump(export_data, f, indent=2, ensure_ascii=False)
+                
+                hide_loading(loading)
+                loading = None
                     
                 messagebox.showinfo("Export Success", f"Data exported successfully to:\n{filename}")
                 
             except Exception as e:
+                hide_loading(loading)
                 logging.error(f"Export failed: {e}")
                 messagebox.showerror("Export Error", f"Failed to export data: {e}")
 
