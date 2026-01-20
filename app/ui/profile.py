@@ -666,18 +666,10 @@ class UserProfileView:
         # Open crop dialog
         self._open_crop_dialog(filepath)
     
-    def _open_crop_dialog(self, filepath):
-        """Open a dialog to crop the selected image to a square."""
+    def _open_crop_dialog(self, image_path):
+        """Open image cropper dialog"""
         from PIL import Image, ImageTk
         import os
-        
-        try:
-            original_img = Image.open(filepath)
-        except Exception as e:
-            from tkinter import messagebox
-            messagebox.showerror("Error", f"Could not open image: {e}", parent=self.window)
-            return
-        
         # Create crop dialog
         dialog = tk.Toplevel(self.window)
         dialog.title("Crop Profile Photo")

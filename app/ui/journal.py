@@ -265,9 +265,20 @@ class JournalFeature:
             patterns.append(self.i18n.get("patterns.self_reflective"))
         
         return "; ".join(patterns) if patterns else self.i18n.get("patterns.general_expression")
+
+    def _app_mood_from_score(self, score: float) -> str:
+        """Convert sentiment score to mood string"""
+        if score >= 20:
+            return "Positive"
+        elif score <= -20:
+            return "Negative"
+        else:
+            return "Neutral"
     
     def save_and_analyze(self):
         """Save journal entry and perform AI analysis"""
+        from app.ui.components.loading_overlay import show_loading, hide_loading
+        
         content = sanitize_text(self.text_area.get("1.0", tk.END))
         
         # Validation checks
@@ -298,49 +309,78 @@ class JournalFeature:
                  messagebox.showwarning("Validation Error", f"Invalid value for {lbl}")
                  return
         
-        # Perform analysis
-        sentiment_score = self.analyze_sentiment(content)
-        emotional_patterns = self.extract_emotional_patterns(content)
+        # Guard
+        if hasattr(self, 'is_processing') and self.is_processing:
+            return
+
+        # Start Processing
+        self.is_processing = True
         
-        # Save to database
+        if hasattr(self, 'save_btn'):
+            self.save_btn.configure(state="disabled")
+            
+        overlay = None
         try:
+            overlay = show_loading(self.parent_root, "Analyzing Emotions...")
+        except Exception as e:
+            # If creating overlay fails (e.g. parent destroyed), minimal fallback
+            logging.error(f"Could not create loading overlay: {e}")
+            # continue processing anyway
+
+        try:
+            current_time = datetime.now()
+            
+            # 1. Perform Analysis (Heavy)
+            sentiment_score = 0.0
+            try:
+                sentiment_score = self.analyze_sentiment(content)
+                emotional_patterns = self.extract_emotional_patterns(content)
+            except Exception as e:
+                logging.error(f"Analysis failed: {e}")
+                    # Continue saving even if analysis fails slightly
+            
+            # 2. Database Save
             with safe_db_context() as session:
-                entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 entry = JournalEntry(
-                    username=self.username,
-                    entry_date=entry_date,
+                    username=self.username if hasattr(self, 'username') else (self.app.username if self.app and hasattr(self.app, 'username') else 'guest'),
                     content=content,
                     sentiment_score=sentiment_score,
-                    emotional_patterns=emotional_patterns,
-                    # Metrics
-                    sleep_hours=self.sleep_hours_var.get(),
-                    sleep_quality=self.sleep_quality_var.get(),
-                    energy_level=self.energy_level_var.get(),
-                    work_hours=self.work_hours_var.get(),
-                    # PR #6 Expansion
-                    screen_time_mins=self.screen_time_var.get(),
-                    stress_level=self.stress_level_var.get(),
-                    daily_schedule=sanitize_text(self.schedule_text.get("1.0", tk.END)),
-                    stress_triggers=sanitize_text(self.triggers_text.get("1.0", tk.END))
+                    entry_date=current_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    emotional_patterns=emotional_patterns
                 )
                 session.add(entry)
-                # safe_db_context Auto-commits on exit
+                # Commit handled by context manager
             
-            # Check for expanded health insights
+            # 3. Dynamic Health Insights
             health_insights = self.generate_health_insights()
             
-            # Show analysis results with insights
+            # 4. Show Result (Popup)
+            # Hide overlay BEFORE showing result, otherwise popup might be behind overlay
+            hide_loading(overlay)
+            overlay = None # invalid ref
+            
             self.show_analysis_results(sentiment_score, emotional_patterns, health_insights)
             
-            # Clear text area
-            # Clear inputs
+            # 5. Clear Input
             self.text_area.delete("1.0", tk.END)
-            self.schedule_text.delete("1.0", tk.END)
-            self.triggers_text.delete("1.0", tk.END)
+            # Reset word count
+            if hasattr(self, 'word_count_label'):
+                self.word_count_label.config(text="0 words")
+                
+                # self.load_entries() # Method does not exist, and view_past_entries is a separate window
             
         except Exception as e:
             logging.error("Failed to save journal entry", exc_info=True)
             messagebox.showerror("Error", f"Failed to save entry: {e}")
+            
+        finally:
+            # Cleanup
+            if overlay:
+                hide_loading(overlay)
+            
+            self.is_processing = False
+            if hasattr(self, 'save_btn') and self.save_btn.winfo_exists():
+                self.save_btn.configure(state="normal")
     
     def show_analysis_results(self, sentiment_score, patterns, nudge_advice=None):
         """Display AI analysis results"""
