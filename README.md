@@ -294,6 +294,14 @@ The application is grounded in established emotional intelligence theory (Salove
   - Validates database schema and required files at startup
   - Auto-recovery for missing directories or corrupted config
   - User-friendly diagnostic alerts
+- **Database Backup & Restore (NEW!)**
+  - Create timestamped local backups of your data
+  - Restore from any previous backup with safety copy
+  - Manage backups via Settings → Data Backup
+- **Loading States for Long Operations (NEW!)**
+  - Visual feedback during PDF export, AI analysis, and data export
+  - Animated loading overlay prevents user confusion
+  - Automatic cleanup on completion or error
 
 ---
 
@@ -456,6 +464,33 @@ The system categorizes issues into:
 - **Failures**: Critical issues that prevent the app from starting safely. The app shows a detailed error and exits gracefully.
 
 This prevents common "ModuleNotFoundError" or "DatabaseError" crashes that users might encounter due to filesystem issues.
+
+---
+
+## 💾 Database Backup & Restore
+
+SoulSense allows you to create and restore local backups of your data, protecting against accidental data loss.
+
+### Features
+
+- **Create Backups**: Snapshot your database with optional description
+- **Restore Backups**: Return to any previous backup state
+- **Safety Copy**: Automatic safety backup before restoration
+- **Manage Backups**: View, list, and delete old backups
+
+### How to Use
+
+1. Navigate to **Settings** in the profile sidebar
+2. Scroll to **"Data Backup"** section
+3. Click **"💾 Manage Backups"**
+4. Create new backups or restore from existing ones
+
+### Backup Storage
+
+Backups are stored in `data/backups/` with timestamped filenames:
+```
+soulsense_backup_20260120_001500_my_description.db
+```
 
 ---
 

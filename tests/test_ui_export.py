@@ -75,3 +75,51 @@ class TestUIExportSecurity:
             assert False, "Should have raised ValidationError"
         except ValidationError:
             pass  # Expected
+
+
+class TestLoadingOverlay:
+    """Test the LoadingOverlay component."""
+
+    def test_loading_overlay_module_imports(self):
+        """Test that the loading overlay module can be imported."""
+        from app.ui.components.loading_overlay import (
+            LoadingOverlay,
+            show_loading,
+            hide_loading
+        )
+        
+        # Verify all exports exist
+        assert LoadingOverlay is not None
+        assert callable(show_loading)
+        assert callable(hide_loading)
+
+    def test_loading_overlay_class_attributes(self):
+        """Test LoadingOverlay class has expected attributes."""
+        from app.ui.components.loading_overlay import LoadingOverlay
+        
+        # Verify spinner frames exist
+        assert hasattr(LoadingOverlay, 'SPINNER_FRAMES')
+        assert len(LoadingOverlay.SPINNER_FRAMES) > 0
+        
+    def test_hide_loading_with_none(self):
+        """Test that hide_loading handles None gracefully."""
+        from app.ui.components.loading_overlay import hide_loading
+        
+        # Should not raise any exception
+        hide_loading(None)
+
+    def test_loading_overlay_in_results_manager(self):
+        """Test that ResultsManager has loading overlay integrated."""
+        import inspect
+        from app.ui.results import ResultsManager
+        
+        # Check export_results_pdf uses loading overlay
+        source = inspect.getsource(ResultsManager.export_results_pdf)
+        assert 'show_loading' in source
+        assert 'hide_loading' in source
+        
+        # Check show_ml_analysis uses loading overlay
+        source = inspect.getsource(ResultsManager.show_ml_analysis)
+        assert 'show_loading' in source
+        assert 'hide_loading' in source
+

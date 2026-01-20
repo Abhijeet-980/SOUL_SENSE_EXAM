@@ -4,10 +4,11 @@ from tkinter import ttk, messagebox, simpledialog
 import logging
 import json
 from datetime import datetime
-from app.models import get_session, MedicalProfile, User, PersonalProfile, UserStrengths, UserEmotionalPatterns
+from app.db import get_session
+from app.models import User
+from app.services.profile_service import ProfileService
 # from app.ui.styles import ApplyTheme # Not needed
 from app.ui.sidebar import SidebarNav
-from app.models import get_session, MedicalProfile, User, PersonalProfile, UserStrengths, UserEmotionalPatterns
 from app.ui.sidebar import SidebarNav
 from app.ui.components.timeline import LifeTimeline
 from app.ui.components.tag_input import TagInput
@@ -20,6 +21,7 @@ from app.validation import (
 )
 from app.constants import FONT_FAMILY_SECONDARY
 from app.ui.validation_ui import setup_entry_limit, setup_text_limit
+from app.ui.components.loading_overlay import show_loading, hide_loading
 
 class UserProfileView:
     def __init__(self, parent_root: tk.Widget, app_instance: Any) -> None:
@@ -665,18 +667,10 @@ class UserProfileView:
         # Open crop dialog
         self._open_crop_dialog(filepath)
     
-    def _open_crop_dialog(self, filepath):
-        """Open a dialog to crop the selected image to a square."""
+    def _open_crop_dialog(self, image_path):
+        """Open image cropper dialog"""
         from PIL import Image, ImageTk
         import os
-        
-        try:
-            original_img = Image.open(filepath)
-        except Exception as e:
-            from tkinter import messagebox
-            messagebox.showerror("Error", f"Could not open image: {e}", parent=self.window)
-            return
-        
         # Create crop dialog
         dialog = tk.Toplevel(self.window)
         dialog.title("Crop Profile Photo")
@@ -691,6 +685,14 @@ class UserProfileView:
             font=self.styles.get_font("sm"), bg=self.colors.get("card_bg"), fg="gray"
         ).pack(pady=(15, 10))
         
+        # Load Image
+        try:
+            original_img = Image.open(image_path)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open image: {e}", parent=dialog)
+            dialog.destroy()
+            return
+
         # Calculate display size (max 400px)
         display_size = 400
         scale = min(display_size / original_img.width, display_size / original_img.height)
@@ -1295,15 +1297,17 @@ class UserProfileView:
     
     def load_personal_data(self):
         try:
-            session = get_session()
-            user = session.query(User).filter_by(username=self.app.username).first()
-            self.current_events = []
-            
+            # Phase 53: Load from ProfileService
+            user = ProfileService.get_user_profile(self.app.username)
+
             if user and user.personal_profile:
                 profile = user.personal_profile
+                
+                # Update UI
                 self.occ_var.set(profile.occupation or "")
                 self.edu_var.set(profile.education or "")
-                self.status_var.set(profile.marital_status or "")
+                self.status_var.set(profile.marital_status or "Single")
+                self.bio_text.delete("1.0", tk.END)
                 self.bio_text.insert("1.0", profile.bio or "")
 
                 # Phase 53: Load contact info
@@ -1317,11 +1321,15 @@ class UserProfileView:
                     except:
                         pass
                 self.gender_var.set(profile.gender or "Prefer not to say")
+                self.address_text.delete("1.0", tk.END)
                 self.address_text.insert("1.0", profile.address or "")
 
                 # PR #5 Load
+                self.society_text.delete("1.0", tk.END)
                 self.society_text.insert("1.0", profile.society_contribution or "")
+                self.life_pov_text.delete("1.0", tk.END)
                 self.life_pov_text.insert("1.0", profile.life_pov or "")
+                self.high_pressure_text.delete("1.0", tk.END)
                 self.high_pressure_text.insert("1.0", profile.high_pressure_events or "")
                 
                 # Load events
@@ -1332,21 +1340,11 @@ class UserProfileView:
                         self.current_events = []
             
             self.timeline.refresh(self.current_events)
-            session.close()
         except Exception as e:
             logging.error(f"Error loading personal profile: {e}")
 
     def save_personal_data(self):
         try:
-             session = get_session()
-             user = session.query(User).filter_by(username=self.app.username).first()
-             
-             if not user.personal_profile:
-                 profile = PersonalProfile(user_id=user.id)
-                 user.personal_profile = profile
-             else:
-                 profile = user.personal_profile
-                 
              # Sanitize
              occupation = sanitize_text(self.occ_var.get())
              education = sanitize_text(self.edu_var.get())
@@ -1384,44 +1382,43 @@ class UserProfileView:
                     messagebox.showwarning("Validation Error", msg)
                     return
 
-             profile.occupation = occupation
-             profile.education = education
-             profile.marital_status = self.status_var.get()
-             profile.bio = bio
+             # Prepare Data Dict
+             data = {
+                 "occupation": occupation,
+                 "education": education,
+                 "marital_status": self.status_var.get(),
+                 "bio": bio,
+                 "email": email,
+                 "phone": phone,
+                 "date_of_birth": dob_str,
+                 "gender": self.gender_var.get(),
+                 "address": address,
+                 "society_contribution": society,
+                 "life_pov": life_pov,
+                 "high_pressure_events": pressure
+             }
 
-             profile.email = email
-             profile.phone = phone
-             profile.date_of_birth = dob_str
-             profile.gender = self.gender_var.get()
-             profile.address = address
-
-             # PR #5 Save
-             profile.society_contribution = society
-             profile.life_pov = life_pov
-             profile.high_pressure_events = pressure
+             # Use Service
+             success = ProfileService.update_personal_profile(self.app.username, data)
              
-             session.commit()
-             session.close()
-             messagebox.showinfo("Success", "Personal details saved!")
+             if success:
+                messagebox.showinfo("Success", "Personal details saved!")
+             else:
+                messagebox.showerror("Error", "Failed to find user to save details.")
+                
         except Exception as e:
             logging.error(f"Error saving personal profile: {e}")
             messagebox.showerror("Error", "Failed to save details.")
 
     def save_life_events(self):
         try:
-             session = get_session()
-             user = session.query(User).filter_by(username=self.app.username).first()
+             data = {
+                 "life_events": json.dumps(self.current_events)
+             }
              
-             if not user.personal_profile:
-                 profile = PersonalProfile(user_id=user.id)
-                 user.personal_profile = profile
-             else:
-                 profile = user.personal_profile
-            
-             profile.life_events = json.dumps(self.current_events)
+             ProfileService.update_personal_profile(self.app.username, data)
+             # No message needed or show one? Usually silent or status bar
              
-             session.commit()
-             session.close()
         except Exception as e:
             logging.error(f"Error saving events: {e}")
             messagebox.showerror("Error", "Failed to save events.")
@@ -1459,16 +1456,15 @@ class UserProfileView:
         btn_frame.pack(anchor="w")
         
         def do_export_json():
+            loading = None
             try:
                 from app.utils.file_validation import validate_file_path, sanitize_filename, ValidationError
                 from tkinter import filedialog
                 import json
                 
                 # 1. Prepare Data
-                session = get_session()
-                user = session.query(User).filter_by(username=self.app.username).first()
+                user = ProfileService.get_user_profile(self.app.username)
                 if not user:
-                    session.close()
                     messagebox.showerror("Error", "User not found.")
                     return
                 
@@ -1502,8 +1498,6 @@ class UserProfileView:
                         "goals": s.goals
                     }
 
-                session.close()
-
                 # 2. Sanitize Filename
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 safe_username = sanitize_filename(self.app.username)
@@ -1527,15 +1521,23 @@ class UserProfileView:
                     messagebox.showerror("Security Error", str(ve))
                     return
                 
+                # Show loading overlay during file write
+                loading = show_loading(self.window, "Exporting your data...")
+                self.window.update()  # Force UI update
+                
                 # 5. Write File
                 from app.utils.atomic import atomic_write
                 
                 with atomic_write(filename, 'w', encoding='utf-8') as f:
                     json.dump(export_data, f, indent=2, ensure_ascii=False)
+                
+                hide_loading(loading)
+                loading = None
                     
                 messagebox.showinfo("Export Success", f"Data exported successfully to:\n{filename}")
                 
             except Exception as e:
+                hide_loading(loading)
                 logging.error(f"Export failed: {e}")
                 messagebox.showerror("Export Error", f"Failed to export data: {e}")
 
@@ -1638,9 +1640,43 @@ class UserProfileView:
         warning_label.pack(anchor="w", pady=(0, 20))
         
         # ==================
+        # Data Backup Section (Issue #345)
+        # ==================
+        self._create_section_label(parent, "Data Backup")
+        
+        backup_desc = tk.Label(
+            parent,
+            text="Create and restore local backups of your data",
+            font=self.styles.get_font("xs"),
+            bg=colors.get("card_bg"),
+            fg="gray"
+        )
+        backup_desc.pack(anchor="w", pady=(0, 10))
+        
+        backup_btn = tk.Button(
+            parent,
+            text="💾 Manage Backups",
+            command=self._open_backup_manager,
+            font=self.styles.get_font("md", "bold"),
+            bg=colors.get("primary"),
+            fg="white",
+            relief="flat",
+            padx=20,
+            pady=10,
+            cursor="hand2"
+        )
+        backup_btn.pack(anchor="w", pady=(0, 20))
+        
+        # ==================
         # Experimental Features Section
         # ==================
         self._render_experimental_flags_section(parent)
+
+    def _open_backup_manager(self):
+        """Open the backup manager dialog (Issue #345)."""
+        from app.ui.backup_manager import BackupManager
+        backup_manager = BackupManager(self.app)
+        backup_manager.show_backup_dialog()
 
     def _save_settings(self):
         """Save settings to DB"""
@@ -1794,27 +1830,30 @@ class UserProfileView:
     # --- Data Logic ---
     def load_medical_data(self):
         try:
-            session = get_session()
-            user = session.query(User).filter_by(username=self.app.username).first()
+            user = ProfileService.get_user_profile(self.app.username)
             if user and user.medical_profile:
                 profile = user.medical_profile
                 self.blood_type_var.set(profile.blood_type or "Unknown")
                 self.ec_name_var.set(profile.emergency_contact_name or "")
                 self.ec_phone_var.set(profile.emergency_contact_phone or "")
                 
+                self.allergies_text.delete("1.0", tk.END)
                 self.allergies_text.insert("1.0", profile.allergies or "")
+                self.medications_text.delete("1.0", tk.END)
                 self.medications_text.insert("1.0", profile.medications or "")
-                self.medications_text.insert("1.0", profile.medications or "")
+                self.conditions_text.delete("1.0", tk.END)
                 self.conditions_text.insert("1.0", profile.medical_conditions or "")
                 
                 # PR #5 Load
+                self.surgeries_text.delete("1.0", tk.END)
                 self.surgeries_text.insert("1.0", profile.surgeries or "")
+                self.therapy_text.delete("1.0", tk.END)
                 self.therapy_text.insert("1.0", profile.therapy_history or "")
+                self.health_issues_text.delete("1.0", tk.END)
                 self.health_issues_text.insert("1.0", profile.ongoing_health_issues or "")
             else:
                 self.blood_type_var.set("Unknown")
             
-            session.close()
         except Exception as e:
             logging.error(f"Error loading medical profile: {e}")
 
@@ -1853,37 +1892,25 @@ class UserProfileView:
                     messagebox.showwarning("Validation Error", msg, parent=self.window)
                     return
 
-            session = get_session()
-            user = session.query(User).filter_by(username=self.app.username).first()
+            # Prepare data
+            data = {
+                "blood_type": self.blood_type_var.get(),
+                "emergency_contact_name": contact_name,
+                "emergency_contact_phone": contact_phone,
+                "allergies": allergies,
+                "medications": medications,
+                "medical_conditions": conditions,
+                "surgeries": surgeries,
+                "therapy_history": therapy,
+                "ongoing_health_issues": health_issues
+            }
+
+            success = ProfileService.update_medical_profile(self.app.username, data)
             
-            if not user:
-                session.close()
-                return 
-                
-            if not user.medical_profile:
-                profile = MedicalProfile(user_id=user.id)
-                user.medical_profile = profile
+            if success:
+                messagebox.showinfo(self.i18n.get("profile.success_title"), self.i18n.get("profile.success_msg"), parent=self.window)
             else:
-                profile = user.medical_profile
-                
-            # Update fields
-            profile.blood_type = self.blood_type_var.get()
-            profile.emergency_contact_name = contact_name
-            profile.emergency_contact_phone = contact_phone
-            
-            profile.allergies = allergies
-            profile.medications = medications
-            profile.medical_conditions = conditions
-            
-            # PR #5 Save
-            profile.surgeries = surgeries
-            profile.therapy_history = therapy
-            profile.ongoing_health_issues = health_issues
-            
-            session.commit()
-            session.close()
-            
-            messagebox.showinfo(self.i18n.get("profile.success_title"), self.i18n.get("profile.success_msg"), parent=self.window)
+                messagebox.showerror(self.i18n.get("profile.error_title"), "User not found to save data.", parent=self.window)
             
         except Exception as e:
             logging.error(f"Error saving medical profile: {e}")
@@ -2034,95 +2061,89 @@ class UserProfileView:
 
     def load_strengths_data(self):
         try:
-            session = get_session()
-            user = session.query(User).filter_by(username=self.app.username).first()
+            user = ProfileService.get_user_profile(self.app.username)
             
-            if user and user.strengths:
-                s = user.strengths
+            if user:
+                if user.strengths:
+                    s = user.strengths
+                    
+                    # Load JSONs safely
+                    try: self.strengths_input.tags = json.loads(s.top_strengths)
+                    except: self.strengths_input.tags = []
+                    self.strengths_input._render_tags()
+                    
+                    try: self.improvements_input.tags = json.loads(s.areas_for_improvement)
+                    except: self.improvements_input.tags = []
+                    self.improvements_input._render_tags()
+                    
+                    try: self.boundaries_input.tags = json.loads(s.sharing_boundaries)
+                    except: self.boundaries_input.tags = []
+                    self.boundaries_input._render_tags()
+                    
+                    # Issue #271 Load
+                    try: self.challenges_input.tags = json.loads(s.current_challenges)
+                    except: self.challenges_input.tags = []
+                    self.challenges_input._render_tags()
+                    
+                    self.learn_style_var.set(s.learning_style or "")
+                    self.comm_style_var.set(s.communication_preference or "")
+                    self.goals_text.delete("1.0", tk.END)
+                    self.goals_text.insert("1.0", s.goals or "")
+                    
+                    # PR #5 Load
+                    self.comm_style_text.delete("1.0", tk.END)
+                    self.comm_style_text.insert("1.0", s.comm_style or "")
                 
-                # Load JSONs safely
-                try: self.strengths_input.tags = json.loads(s.top_strengths)
-                except: self.strengths_input.tags = []
-                self.strengths_input._render_tags()
+                # Load Emotional Patterns (Issue #269)
+                if user.emotional_patterns:
+                    ep = user.emotional_patterns
+                    
+                    try: self.emotions_input.tags = json.loads(ep.common_emotions)
+                    except: self.emotions_input.tags = []
+                    self.emotions_input._render_tags()
+                    
+                    self.triggers_text.delete("1.0", tk.END)
+                    self.triggers_text.insert("1.0", ep.emotional_triggers or "")
+                    self.coping_text.delete("1.0", tk.END)
+                    self.coping_text.insert("1.0", ep.coping_strategies or "")
+                    self.support_style_var.set(ep.preferred_support or "")
                 
-                try: self.improvements_input.tags = json.loads(s.areas_for_improvement)
-                except: self.improvements_input.tags = []
-                self.improvements_input._render_tags()
-                
-                try: self.boundaries_input.tags = json.loads(s.sharing_boundaries)
-                except: self.boundaries_input.tags = []
-                self.boundaries_input._render_tags()
-                
-                # Issue #271 Load
-                try: self.challenges_input.tags = json.loads(s.current_challenges)
-                except: self.challenges_input.tags = []
-                self.challenges_input._render_tags()
-                
-                self.learn_style_var.set(s.learning_style or "")
-                self.comm_style_var.set(s.communication_preference or "")
-                self.goals_text.insert("1.0", s.goals or "")
-
-                # PR #5 Load
-                self.comm_style_text.insert("1.0", s.comm_style or "")
-            
-            # Load Emotional Patterns (Issue #269)
-            if user and user.emotional_patterns:
-                ep = user.emotional_patterns
-                
-                try: self.emotions_input.tags = json.loads(ep.common_emotions)
-                except: self.emotions_input.tags = []
-                self.emotions_input._render_tags()
-                
-                self.triggers_text.insert("1.0", ep.emotional_triggers or "")
-                self.coping_text.insert("1.0", ep.coping_strategies or "")
-                self.support_style_var.set(ep.preferred_support or "")
-                
-            session.close()
         except Exception as e:
             logging.error(f"Error loading strengths: {e}")
 
     def save_strengths_data(self):
         try:
-            session = get_session()
-            user = session.query(User).filter_by(username=self.app.username).first()
-
-            if not user.strengths:
-                strengths = UserStrengths(user_id=user.id)
-                user.strengths = strengths
-            else:
-                strengths = user.strengths
-
-            # Update fields
-            strengths.top_strengths = json.dumps(self.strengths_input.get_tags())
-            strengths.areas_for_improvement = json.dumps(self.improvements_input.get_tags())
-            # Issue #271 Save
-            strengths.current_challenges = json.dumps(self.challenges_input.get_tags())
-            strengths.sharing_boundaries = json.dumps(self.boundaries_input.get_tags())
-
-            strengths.learning_style = self.learn_style_var.get()
-            strengths.communication_preference = self.comm_style_var.get()
-            strengths.learning_style = self.learn_style_var.get()
-            strengths.communication_preference = self.comm_style_var.get()
-            strengths.goals = self.goals_text.get("1.0", tk.END).strip()
-
-            # PR #5 Save
-            strengths.comm_style = self.comm_style_text.get("1.0", tk.END).strip()
-
-            # Save Emotional Patterns (Issue #269)
-            if not user.emotional_patterns:
-                ep = UserEmotionalPatterns(user_id=user.id)
-                user.emotional_patterns = ep
-            else:
-                ep = user.emotional_patterns
+            # Prepare Strengths Data
+            strengths_data = {
+                "top_strengths": json.dumps(self.strengths_input.get_tags()),
+                "areas_for_improvement": json.dumps(self.improvements_input.get_tags()),
+                "current_challenges": json.dumps(self.challenges_input.get_tags()),
+                "sharing_boundaries": json.dumps(self.boundaries_input.get_tags()),
+                "learning_style": self.learn_style_var.get(),
+                "communication_preference": self.comm_style_var.get(),
+                "goals": self.goals_text.get("1.0", tk.END).strip(),
+                "comm_style": self.comm_style_text.get("1.0", tk.END).strip()
+            }
             
-            ep.common_emotions = json.dumps(self.emotions_input.get_tags())
-            ep.emotional_triggers = self.triggers_text.get("1.0", tk.END).strip()
-            ep.coping_strategies = self.coping_text.get("1.0", tk.END).strip()
-            ep.preferred_support = self.support_style_var.get()
+            # Prepare Emotional Patterns Data
+            emotional_data = {
+                "common_emotions": json.dumps(self.emotions_input.get_tags()),
+                "emotional_triggers": self.triggers_text.get("1.0", tk.END).strip(),
+                "coping_strategies": self.coping_text.get("1.0", tk.END).strip(),
+                "preferred_support": self.support_style_var.get()
+            }
 
-            session.commit()
-            session.close()
-            messagebox.showinfo("Success", "Preferences saved successfully!")
+            # Update Strengths (Service handles user lookup)
+            s_success = ProfileService.update_strengths(self.app.username, strengths_data)
+            
+            # Update Emotional Patterns
+            e_success = ProfileService.update_emotional_patterns(self.app.username, emotional_data)
+
+            if s_success and e_success:
+                messagebox.showinfo("Success", "Preferences saved successfully!")
+            else:
+                 messagebox.showerror("Error", "Failed to save some preferences.")
+                 
         except Exception as e:
             logging.error(f"Error saving strengths: {e}")
             messagebox.showerror("Error", "Failed to save preferences.")
@@ -2161,10 +2182,7 @@ class UserProfileView:
 
         # Get user ID
         try:
-            from app.db import get_session
-            session = get_session()
-            user = session.query(User).filter_by(username=self.app.username).first()
-            session.close()
+            user = ProfileService.get_user_profile(self.app.username)
 
             if not user:
                 messagebox.showerror("Error", "User not found.", parent=self.window)

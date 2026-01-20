@@ -439,13 +439,18 @@ class AuthManager:
         from app.utils import compute_age_group
         from tkinter import messagebox
         from app.validation import validate_required, validate_age, sanitize_text
+        from app.ui.components.loading_overlay import show_loading, hide_loading
         
+        # 0. Processing Guard
+        if hasattr(self, 'is_processing') and self.is_processing:
+            return
+            
         # Sanitize entries
         username = sanitize_text(self.username_entry.get())
         age_str = sanitize_text(self.age_entry.get())
         profession = sanitize_text(self.profession_entry.get())
         
-        # Validation
+        # Validation (Fast, Sync)
         valid_name, msg_name = validate_required(username, "Name")
         if not valid_name:
             messagebox.showwarning("Missing Information", msg_name)
@@ -458,58 +463,72 @@ class AuthManager:
         
         age = int(age_str) # Safe now
         
-        # Store user info
-        self.app.username = username
-        self.app.age = age
-        self.app.age_group = compute_age_group(age)
-        self.app.profession = profession if profession else "Not specified"
+        # Start Processing
+        self.is_processing = True
+        overlay = show_loading(self.root, "Creating Profile...")
         
-        logging.info(
-            f"Session started | user={username} | age={age} | "
-            f"age_group={self.app.age_group} | profession={self.app.profession} | "
-            f"questions={len(self.app.questions)}"
-        )
-        
-        # Check/Create User in DB for Settings Persistence
         try:
-            from app.db import safe_db_context
-            from app.models import User
-            from datetime import datetime
+            # Store user info
+            self.app.username = username
+            self.app.age = age
+            self.app.age_group = compute_age_group(age)
+            self.app.profession = profession if profession else "Not specified"
             
-            with safe_db_context() as session:
-                user = session.query(User).filter_by(username=username).first()
-                
-                if not user:
-                    # Implicit Registration
-                    user = User(
-                        username=username,
-                        password_hash="guest_access", 
-                        created_at=datetime.utcnow().isoformat(),
-                        last_login=datetime.utcnow().isoformat()
-                    )
-                    session.add(user)
-                    # safe_db_context will commit on exit
-                    logging.info(f"Created new user for settings: {username}")
-                    
-                    # RESET SETTINGS FOR NEW USER (As requested)
-                    # Ensure we start with defaults
-                    # Note: load_user_settings will load from DB, which are defaults for new user. 
-                    # Guest settings in self.app.settings will be overwritten. This is CORRECT.
-                    
-                else:
-                    user.last_login = datetime.utcnow().isoformat()
-                    # safe_db_context will commit on exit
-                
-                # Flush to get ID if new
-                session.flush()
-                # Load User Settings (Applies Theme etc)
-                self.app.load_user_settings(user.id)
+            logging.info(
+                f"Session started | user={username} | age={age} | "
+                f"age_group={self.app.age_group} | profession={self.app.profession} | "
+                f"questions={len(self.app.questions)}"
+            )
             
-        except Exception as e:
-            logging.error(f"Failed to load user settings: {e}")
+            # Check/Create User in DB for Settings Persistence
+            try:
+                from app.db import safe_db_context
+                from app.models import User
+                from datetime import datetime
+                
+                with safe_db_context() as session:
+                    user = session.query(User).filter_by(username=username).first()
+                    
+                    if not user:
+                        # Implicit Registration
+                        user = User(
+                            username=username,
+                            password_hash="guest_access", 
+                            created_at=datetime.utcnow().isoformat(),
+                            last_login=datetime.utcnow().isoformat()
+                        )
+                        session.add(user)
+                        # safe_db_context will commit on exit
+                        logging.info(f"Created new user for settings: {username}")
+                        
+                        # RESET SETTINGS FOR NEW USER (As requested)
+                        # Ensure we start with defaults
+                        # Note: load_user_settings will load from DB, which are defaults for new user. 
+                        # Guest settings in self.app.settings will be overwritten. This is CORRECT.
+                        
+                    else:
+                        user.last_login = datetime.utcnow().isoformat()
+                        
+                    # Flush to get ID if new
+                    session.flush()
+                    # Load User Settings (Applies Theme etc)
+                    self.app.load_user_settings(user.id)
+                
+            except Exception as e:
+                logging.error(f"Failed to load user settings: {e}")
+                # Continue anyway, don't crash login
 
-        # Navigate
-        if hasattr(self, 'callback') and self.callback:
-            self.callback()
-        else:
-            self.app.start_test()
+            # Navigate
+            if hasattr(self, 'callback') and self.callback:
+                self.callback()
+            else:
+                self.app.start_test()
+                
+        except Exception as e:
+            logging.error(f"Error submitting user info: {e}")
+            messagebox.showerror("Error", "Failed to start session. Please try again.")
+            
+        finally:
+            # Cleanup
+            hide_loading(overlay)
+            self.is_processing = False

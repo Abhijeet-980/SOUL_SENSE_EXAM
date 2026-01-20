@@ -11,10 +11,26 @@ from nltk.sentiment import SentimentIntensityAnalyzer
 from sqlalchemy import desc, text
 
 from app.i18n_manager import get_i18n
-from app.models import JournalEntry, User, UserEmotionalPatterns
-from app.db import safe_db_context
+from app.i18n_manager import get_i18n
+from app.models import JournalEntry, User
+from app.db import get_session
+from app.services.journal_service import JournalService
 from app.validation import validate_required, validate_length, validate_range, sanitize_text, RANGES
 from app.validation import MAX_TEXT_LENGTH
+
+# Matplotlib imports for mood trend charts
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    import matplotlib.dates as mdates
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    plt = None
+    Figure = None
+    FigureCanvasTkAgg = None
+    mdates = None
 
 # Lazy imports to avoid circular dependencies
 # These will be imported only when needed
@@ -168,11 +184,23 @@ class JournalFeature:
         self.triggers_text = create_compact_text(context_frame, "Stress Triggers (if any)")
 
         # --- Reflection Section ---
-        tk.Label(container, text="Your thoughts today...", 
-                font=("Segoe UI", 12, "bold"), bg=colors["bg"], 
+        tk.Label(container, text="Your thoughts today...",
+                font=("Segoe UI", 12, "bold"), bg=colors["bg"],
                 fg=colors["text_primary"]).pack(anchor="w", pady=(15, 5))
-        
-        self.text_area = scrolledtext.ScrolledText(container, width=60, height=8, 
+
+        # Tags input field
+        tags_frame = tk.Frame(container, bg=colors["bg"])
+        tags_frame.pack(fill="x", pady=(0, 10))
+        tk.Label(tags_frame, text="Tags (comma-separated, e.g., stress, gratitude, relationships):",
+                font=("Segoe UI", 10), bg=colors["bg"],
+                fg=colors["text_secondary"]).pack(anchor="w")
+        self.tags_entry = tk.Entry(tags_frame, font=("Segoe UI", 10),
+                                  bg=colors.get("input_bg", "#fff"), fg=colors.get("input_fg", "#000"),
+                                  relief="flat", highlightthickness=1,
+                                  highlightbackground=colors.get("border", "#ccc"))
+        self.tags_entry.pack(fill="x")
+
+        self.text_area = scrolledtext.ScrolledText(container, width=60, height=8,
                                                   font=("Segoe UI", 11),
                                                   bg=colors["surface"], fg=colors["text_primary"],
                                                   relief="flat", highlightthickness=1,
@@ -182,24 +210,222 @@ class JournalFeature:
         # Buttons
         btn_frame = tk.Frame(container, bg=colors["bg"])
         btn_frame.pack(fill="x", pady=20)
-        
+
         # Navigation Buttons
         tk.Button(btn_frame, text=self.i18n.get("journal.view_past"), command=self.view_past_entries,
                  font=("Segoe UI", 11), bg=colors["surface"], fg=colors["text_primary"],
                  relief="flat", padx=15).pack(side="left", padx=(0, 10))
 
+        tk.Button(btn_frame, text="📊 Mood Trends", command=self.show_mood_trends,
+                 font=("Segoe UI", 11), bg=colors["surface"], fg=colors["text_primary"],
+                 relief="flat", padx=15).pack(side="left", padx=(0, 10))
+
         tk.Button(btn_frame, text=self.i18n.get("journal.dashboard"), command=self.open_dashboard,
                  font=("Segoe UI", 11), bg=colors["surface"], fg=colors["text_primary"],
-                 relief="flat", padx=15).pack(side="left")
-        
+                 relief="flat", padx=15).pack(side="left", padx=(0, 10))
+
+        # Toggle Search Section
+        self.search_visible = False
+        self.search_toggle_btn = tk.Button(btn_frame, text="🔍 Search Past Entries", command=self.toggle_search_section,
+                                          font=("Segoe UI", 11), bg=colors["accent"], fg="white",
+                                          relief="flat", padx=15)
+        self.search_toggle_btn.pack(side="left", padx=(0, 10))
+
         tk.Button(btn_frame, text="Save Entry", command=self.save_and_analyze,
                  font=("Segoe UI", 11, "bold"), bg=colors["primary"], fg=colors.get("text_inverse", "white"),
                  padx=20, pady=8, relief="flat").pack(side="right")
-                 
+
         if hasattr(self.app, 'switch_view'):
              tk.Button(btn_frame, text="Cancel", command=lambda: self.app.switch_view('home'),
                      font=("Segoe UI", 11), bg=colors["bg"], fg=colors["text_secondary"],
                      relief="flat").pack(side="right", padx=10)
+
+        # Collapsible Search Section
+        self.search_frame = tk.LabelFrame(container, text="Search Past Entries", font=("Segoe UI", 12, "bold"),
+                                         bg=colors["surface"], fg=colors["text_primary"], padx=15, pady=15)
+        # Initially hidden
+        self.search_frame.pack_forget()
+
+        # Search Filters
+        search_filters_frame = tk.Frame(self.search_frame, bg=colors["surface"])
+        search_filters_frame.pack(fill="x", pady=(0, 10))
+
+        # Tags filter
+        tags_container = tk.Frame(search_filters_frame, bg=colors["surface"])
+        tags_container.pack(side="left", padx=(0, 15))
+
+        tk.Label(tags_container, text="🏷️ Tags:", font=("Segoe UI", 10, "bold"),
+                bg=colors["surface"], fg=colors["text_secondary"]).pack(side="left")
+
+        self.inline_tags_var = tk.StringVar()
+        self.inline_tags_entry = tk.Entry(tags_container, textvariable=self.inline_tags_var, font=("Segoe UI", 10),
+                                         bg=colors.get("input_bg", "#fff"), fg=colors.get("input_fg", "#000"),
+                                         relief="flat", highlightthickness=1,
+                                         highlightbackground=colors.get("border", "#ccc"), width=20)
+        self.inline_tags_entry.pack(side="left", padx=5)
+        self.inline_tags_entry.insert(0, "e.g., stress, gratitude")
+
+        # Date range filter
+        date_container = tk.Frame(search_filters_frame, bg=colors["surface"])
+        date_container.pack(side="left", padx=10)
+
+        tk.Label(date_container, text="📅 From:", font=("Segoe UI", 10, "bold"),
+                bg=colors["surface"], fg=colors.get("text_secondary", "#666")).pack(side="left")
+
+        self.inline_from_date_var = tk.StringVar()
+        self.inline_from_date_entry = tk.Entry(date_container, textvariable=self.inline_from_date_var, font=("Segoe UI", 10),
+                                              bg=colors.get("input_bg", "#fff"), fg=colors.get("input_fg", "#000"),
+                                              relief="flat", highlightthickness=1,
+                                              highlightbackground=colors.get("border", "#ccc"), width=12)
+        self.inline_from_date_entry.pack(side="left", padx=5)
+        self.inline_from_date_entry.insert(0, "YYYY-MM-DD")
+
+        tk.Label(date_container, text="To:", font=("Segoe UI", 10, "bold"),
+                bg=colors["surface"], fg=colors.get("text_secondary", "#666")).pack(side="left", padx=(10, 5))
+
+        self.inline_to_date_var = tk.StringVar()
+        self.inline_to_date_entry = tk.Entry(date_container, textvariable=self.inline_to_date_var, font=("Segoe UI", 10),
+                                            bg=colors.get("input_bg", "#fff"), fg=colors.get("input_fg", "#000"),
+                                            relief="flat", highlightthickness=1,
+                                            highlightbackground=colors.get("border", "#ccc"), width=12)
+        self.inline_to_date_entry.pack(side="left", padx=5)
+        self.inline_to_date_entry.insert(0, "YYYY-MM-DD")
+
+        # Mood filter
+        mood_container = tk.Frame(search_filters_frame, bg=colors["surface"])
+        mood_container.pack(side="left", padx=10)
+
+        tk.Label(mood_container, text="😊 Mood:", font=("Segoe UI", 10, "bold"),
+                bg=colors["surface"], fg=colors.get("text_secondary", "#666")).pack(side="left")
+
+        self.inline_mood_var = tk.StringVar(value="All Moods")
+        self.inline_mood_combo = ttk.Combobox(mood_container, textvariable=self.inline_mood_var,
+                                             values=["All Moods", "Positive", "Neutral", "Negative"],
+                                             state="readonly", width=12)
+        self.inline_mood_combo.pack(side="left", padx=5)
+
+        # Clear button
+        tk.Button(search_filters_frame, text="Reset Filters", command=self.clear_inline_filters,
+                 font=("Segoe UI", 9), bg=colors.get("primary", "#8B5CF6"), fg="white",
+                 relief="flat", padx=12, pady=4).pack(side="right", padx=10)
+
+        # Scrolled Frame for Results
+        self.results_canvas = tk.Canvas(self.search_frame, bg=colors["surface"], highlightthickness=0)
+        self.results_scrollable_frame = tk.Frame(self.results_canvas, bg=colors["surface"])
+
+        self.results_scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.results_canvas.configure(scrollregion=self.results_canvas.bbox("all"))
+        )
+
+        self.results_canvas.create_window((0, 0), window=self.results_scrollable_frame, anchor="nw")
+        self.results_canvas.pack(fill="both", expand=True, padx=0, pady=(10, 0))
+
+        # Enable mousewheel scrolling
+        def _on_mousewheel(event):
+            try:
+                self.results_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            except tk.TclError:
+                pass
+
+        self.results_canvas.bind("<MouseWheel>", _on_mousewheel)
+        self.results_canvas.bind("<Enter>", lambda e: self.results_canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        self.results_canvas.bind("<Leave>", lambda e: self.results_canvas.unbind_all("<MouseWheel>"))
+
+        # Bind filter changes to update results
+        self.inline_tags_entry.bind("<KeyRelease>", lambda e: self.update_inline_results())
+        self.inline_from_date_entry.bind("<KeyRelease>", lambda e: self.update_inline_results())
+        self.inline_to_date_entry.bind("<KeyRelease>", lambda e: self.update_inline_results())
+        self.inline_mood_combo.bind("<<ComboboxSelected>>", lambda e: self.update_inline_results())
+
+        # Initial render (empty)
+        self.update_inline_results()
+
+    def toggle_search_section(self):
+        """Toggle the visibility of the search section"""
+        if self.search_visible:
+            self.search_frame.pack_forget()
+            self.search_toggle_btn.config(text="🔍 Search Past Entries")
+            self.search_visible = False
+        else:
+            self.search_frame.pack(fill="x", pady=10)
+            self.search_toggle_btn.config(text="🔍 Hide Search")
+            self.search_visible = True
+
+    def clear_inline_filters(self):
+        """Clear all inline search filters"""
+        self.inline_tags_var.set("")
+        self.inline_from_date_var.set("")
+        self.inline_to_date_var.set("")
+        self.inline_mood_var.set("All Moods")
+        self.update_inline_results()
+
+    def update_inline_results(self):
+        """Update the inline search results based on current filters"""
+        # Clear existing results
+        for widget in self.results_scrollable_frame.winfo_children():
+            widget.destroy()
+
+        # Get filter values
+        selected_tags = self.inline_tags_var.get().strip().lower()
+        from_date = self.inline_from_date_var.get().strip()
+        to_date = self.inline_to_date_var.get().strip()
+        selected_mood = self.inline_mood_var.get()
+
+        session = get_session()
+        try:
+            entries = session.query(JournalEntry)\
+                .filter_by(username=self.username)\
+                .order_by(desc(JournalEntry.entry_date))\
+                .all()
+
+            filtered_count = 0
+            for entry in entries:
+                # Apply tags filter
+                if selected_tags and selected_tags != "e.g., stress, gratitude":
+                    entry_tags = (getattr(entry, 'tags', '') or '').lower()
+                    tag_list = [tag.strip() for tag in selected_tags.split(',') if tag.strip()]
+                    if not any(tag in entry_tags for tag in tag_list):
+                        continue
+
+                # Apply date range filter
+                if from_date and from_date != "YYYY-MM-DD":
+                    try:
+                        entry_date = datetime.strptime(str(entry.entry_date).split('.')[0], "%Y-%m-%d %H:%M:%S").date()
+                        from_date_obj = datetime.strptime(from_date, "%Y-%m-%d").date()
+                        if entry_date < from_date_obj:
+                            continue
+                    except (ValueError, AttributeError):
+                        pass
+
+                if to_date and to_date != "YYYY-MM-DD":
+                    try:
+                        entry_date = datetime.strptime(str(entry.entry_date).split('.')[0], "%Y-%m-%d %H:%M:%S").date()
+                        to_date_obj = datetime.strptime(to_date, "%Y-%m-%d").date()
+                        if entry_date > to_date_obj:
+                            continue
+                    except (ValueError, AttributeError):
+                        pass
+
+                # Apply mood filter
+                if selected_mood != "All Moods":
+                    sentiment_score = getattr(entry, 'sentiment_score', 0) or 0
+                    if selected_mood == "Positive" and sentiment_score <= 30:
+                        continue
+                    elif selected_mood == "Neutral" and (sentiment_score > 30 or sentiment_score < -30):
+                        continue
+                    elif selected_mood == "Negative" and sentiment_score >= -30:
+                        continue
+
+                filtered_count += 1
+                self._create_entry_card(self.results_scrollable_frame, entry)
+
+            if filtered_count == 0:
+                tk.Label(self.results_scrollable_frame, text="No entries found matching filters.",
+                        font=("Segoe UI", 12), bg=self.colors.get("surface", "#fff"),
+                        fg=self.colors.get("text_secondary", "#666")).pack(pady=20)
+        finally:
+            session.close()
 
     def open_journal_window(self, username):
         """Standalone Window Mode (Deprecated but kept for compat)"""
@@ -265,9 +491,20 @@ class JournalFeature:
             patterns.append(self.i18n.get("patterns.self_reflective"))
         
         return "; ".join(patterns) if patterns else self.i18n.get("patterns.general_expression")
+
+    def _app_mood_from_score(self, score: float) -> str:
+        """Convert sentiment score to mood string"""
+        if score >= 20:
+            return "Positive"
+        elif score <= -20:
+            return "Negative"
+        else:
+            return "Neutral"
     
     def save_and_analyze(self):
         """Save journal entry and perform AI analysis"""
+        from app.ui.components.loading_overlay import show_loading, hide_loading
+        
         content = sanitize_text(self.text_area.get("1.0", tk.END))
         
         # Validation checks
@@ -298,49 +535,91 @@ class JournalFeature:
                  messagebox.showwarning("Validation Error", f"Invalid value for {lbl}")
                  return
         
-        # Perform analysis
-        sentiment_score = self.analyze_sentiment(content)
-        emotional_patterns = self.extract_emotional_patterns(content)
+        # Guard
+        if hasattr(self, 'is_processing') and self.is_processing:
+            return
+
+        # Start Processing
+        self.is_processing = True
         
-        # Save to database
+        if hasattr(self, 'save_btn'):
+            self.save_btn.configure(state="disabled")
+            
+        overlay = None
         try:
-            with safe_db_context() as session:
-                entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                entry = JournalEntry(
-                    username=self.username,
-                    entry_date=entry_date,
+            overlay = show_loading(self.parent_root, "Analyzing Emotions...")
+        except Exception as e:
+            # If creating overlay fails (e.g. parent destroyed), minimal fallback
+            logging.error(f"Could not create loading overlay: {e}")
+            # continue processing anyway
+
+        try:
+            current_time = datetime.now()
+            
+            # 1. Perform Analysis (Heavy)
+            sentiment_score = 0.0
+            try:
+                sentiment_score = self.analyze_sentiment(content)
+                emotional_patterns = self.extract_emotional_patterns(content)
+            except Exception as e:
+                logging.error(f"Analysis failed: {e}")
+                    # Continue saving even if analysis fails slightly
+            
+            # 2. Database Save
+            # 2. Database Save (via Service)
+            try:
+                # Collect metrics from sliders
+                metrics = {
+                    "sleep_hours": self.sleep_hours_var.get(),
+                    "sleep_quality": self.sleep_quality_var.get(),
+                    "energy_level": self.energy_level_var.get(),
+                    "stress_level": self.stress_level_var.get(),
+                    "work_hours": self.work_hours_var.get(),
+                    "screen_time_mins": self.screen_time_var.get()
+                }
+                
+                JournalService.create_entry(
+                    username=self.username if hasattr(self, 'username') else (self.app.username if self.app and hasattr(self.app, 'username') else 'guest'),
                     content=content,
                     sentiment_score=sentiment_score,
                     emotional_patterns=emotional_patterns,
-                    # Metrics
-                    sleep_hours=self.sleep_hours_var.get(),
-                    sleep_quality=self.sleep_quality_var.get(),
-                    energy_level=self.energy_level_var.get(),
-                    work_hours=self.work_hours_var.get(),
-                    # PR #6 Expansion
-                    screen_time_mins=self.screen_time_var.get(),
-                    stress_level=self.stress_level_var.get(),
-                    daily_schedule=sanitize_text(self.schedule_text.get("1.0", tk.END)),
-                    stress_triggers=sanitize_text(self.triggers_text.get("1.0", tk.END))
+                    entry_date=current_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    **metrics
                 )
-                session.add(entry)
-                # safe_db_context Auto-commits on exit
+            except Exception as e:
+                logging.error(f"Service save failed: {e}")
+                raise e # Re-raise to trigger outer error handler
             
-            # Check for expanded health insights
+            # 3. Dynamic Health Insights
             health_insights = self.generate_health_insights()
             
-            # Show analysis results with insights
+            # 4. Show Result (Popup)
+            # Hide overlay BEFORE showing result, otherwise popup might be behind overlay
+            hide_loading(overlay)
+            overlay = None # invalid ref
+            
             self.show_analysis_results(sentiment_score, emotional_patterns, health_insights)
             
-            # Clear text area
-            # Clear inputs
+            # 5. Clear Input
             self.text_area.delete("1.0", tk.END)
-            self.schedule_text.delete("1.0", tk.END)
-            self.triggers_text.delete("1.0", tk.END)
+            # Reset word count
+            if hasattr(self, 'word_count_label'):
+                self.word_count_label.config(text="0 words")
+                
+                # self.load_entries() # Method does not exist, and view_past_entries is a separate window
             
         except Exception as e:
             logging.error("Failed to save journal entry", exc_info=True)
             messagebox.showerror("Error", f"Failed to save entry: {e}")
+            
+        finally:
+            # Cleanup
+            if overlay:
+                hide_loading(overlay)
+            
+            self.is_processing = False
+            if hasattr(self, 'save_btn') and self.save_btn.winfo_exists():
+                self.save_btn.configure(state="normal")
     
     def show_analysis_results(self, sentiment_score, patterns, nudge_advice=None):
         """Display AI analysis results"""
@@ -424,8 +703,8 @@ class JournalFeature:
         entries_window.title(self.i18n.get("journal.past_entries_title"))
         entries_window.geometry("700x500")
         entries_window.configure(bg=self.colors.get("bg", "#f0f0f0"))
-        
-        tk.Label(entries_window, text=self.i18n.get("journal.emotional_journey"), 
+
+        tk.Label(entries_window, text=self.i18n.get("journal.emotional_journey"),
                 font=("Arial", 16, "bold"), bg=self.colors.get("bg", "#f0f0f0"),
                 fg=self.colors.get("text_primary", "#000")).pack(pady=10)
 
@@ -442,22 +721,87 @@ class JournalFeature:
                 messagebox.showerror("Error", "Calendar view feature not available")
 
         tk.Button(entries_window, text="📅 Calendar View", command=open_history_view,
-                 bg=self.colors.get("secondary", "#8B5CF6"), fg="white", 
+                 bg=self.colors.get("secondary", "#8B5CF6"), fg="white",
                  relief="flat", padx=10).pack(pady=5)
 
-
-        # --- Modern Filter Bar (No search, Month + Type filters) ---
+        # --- Enhanced Filter Bar (Tags, Date Range, Mood, Month + Type filters) ---
         filter_frame = tk.Frame(entries_window, bg=self.colors.get("surface", "#fff"), pady=12)
         filter_frame.pack(fill="x", padx=20, pady=(0, 10))
-        
-        # Month filter
-        month_container = tk.Frame(filter_frame, bg=self.colors.get("surface", "#fff"))
-        month_container.pack(side="left", padx=(10, 15))
-        
-        tk.Label(month_container, text="📅 Month:", font=("Segoe UI", 10, "bold"),
-                bg=self.colors.get("surface", "#fff"), 
+
+        # Row 1: Tags and Date Range
+        row1_frame = tk.Frame(filter_frame, bg=self.colors.get("surface", "#fff"))
+        row1_frame.pack(fill="x", pady=(0, 8))
+
+        # Tags filter
+        tags_container = tk.Frame(row1_frame, bg=self.colors.get("surface", "#fff"))
+        tags_container.pack(side="left", padx=(10, 15))
+
+        tk.Label(tags_container, text="🏷️ Tags:", font=("Segoe UI", 10, "bold"),
+                bg=self.colors.get("surface", "#fff"),
                 fg=self.colors.get("text_secondary", "#666")).pack(side="left")
-        
+
+        tags_var = tk.StringVar()
+        tags_entry = tk.Entry(tags_container, textvariable=tags_var, font=("Segoe UI", 10),
+                             bg=self.colors.get("input_bg", "#fff"), fg=self.colors.get("input_fg", "#000"),
+                             relief="flat", highlightthickness=1,
+                             highlightbackground=self.colors.get("border", "#ccc"), width=20)
+        tags_entry.pack(side="left", padx=5)
+        tags_entry.insert(0, "e.g., stress, gratitude")
+
+        # Date range filter
+        date_container = tk.Frame(row1_frame, bg=self.colors.get("surface", "#fff"))
+        date_container.pack(side="left", padx=10)
+
+        tk.Label(date_container, text="📅 From:", font=("Segoe UI", 10, "bold"),
+                bg=self.colors.get("surface", "#fff"),
+                fg=self.colors.get("text_secondary", "#666")).pack(side="left")
+
+        from_date_var = tk.StringVar()
+        from_date_entry = tk.Entry(date_container, textvariable=from_date_var, font=("Segoe UI", 10),
+                                  bg=self.colors.get("input_bg", "#fff"), fg=self.colors.get("input_fg", "#000"),
+                                  relief="flat", highlightthickness=1,
+                                  highlightbackground=self.colors.get("border", "#ccc"), width=12)
+        from_date_entry.pack(side="left", padx=5)
+        from_date_entry.insert(0, "YYYY-MM-DD")
+
+        tk.Label(date_container, text="To:", font=("Segoe UI", 10, "bold"),
+                bg=self.colors.get("surface", "#fff"),
+                fg=self.colors.get("text_secondary", "#666")).pack(side="left", padx=(10, 5))
+
+        to_date_var = tk.StringVar()
+        to_date_entry = tk.Entry(date_container, textvariable=to_date_var, font=("Segoe UI", 10),
+                                bg=self.colors.get("input_bg", "#fff"), fg=self.colors.get("input_fg", "#000"),
+                                relief="flat", highlightthickness=1,
+                                highlightbackground=self.colors.get("border", "#ccc"), width=12)
+        to_date_entry.pack(side="left", padx=5)
+        to_date_entry.insert(0, "YYYY-MM-DD")
+
+        # Row 2: Mood, Month, and Type filters
+        row2_frame = tk.Frame(filter_frame, bg=self.colors.get("surface", "#fff"))
+        row2_frame.pack(fill="x")
+
+        # Mood filter
+        mood_container = tk.Frame(row2_frame, bg=self.colors.get("surface", "#fff"))
+        mood_container.pack(side="left", padx=(10, 15))
+
+        tk.Label(mood_container, text="😊 Mood:", font=("Segoe UI", 10, "bold"),
+                bg=self.colors.get("surface", "#fff"),
+                fg=self.colors.get("text_secondary", "#666")).pack(side="left")
+
+        mood_var = tk.StringVar(value="All Moods")
+        mood_combo = ttk.Combobox(mood_container, textvariable=mood_var,
+                                 values=["All Moods", "Positive", "Neutral", "Negative"],
+                                 state="readonly", width=12)
+        mood_combo.pack(side="left", padx=5)
+
+        # Month filter
+        month_container = tk.Frame(row2_frame, bg=self.colors.get("surface", "#fff"))
+        month_container.pack(side="left", padx=10)
+
+        tk.Label(month_container, text="📅 Month:", font=("Segoe UI", 10, "bold"),
+                bg=self.colors.get("surface", "#fff"),
+                fg=self.colors.get("text_secondary", "#666")).pack(side="left")
+
         # Generate month options
         from datetime import datetime
         current_month = datetime.now()
@@ -466,77 +810,120 @@ class JournalFeature:
             month_date = datetime(current_month.year if current_month.month - i > 0 else current_month.year - 1,
                                  ((current_month.month - i - 1) % 12) + 1, 1)
             month_options.append(month_date.strftime("%B %Y"))
-        
+
         month_var = tk.StringVar(value="All Months")
-        month_combo = ttk.Combobox(month_container, textvariable=month_var, 
+        month_combo = ttk.Combobox(month_container, textvariable=month_var,
                                   values=month_options, state="readonly", width=15)
         month_combo.pack(side="left", padx=5)
-        
+
         # Type filter
-        filter_container = tk.Frame(filter_frame, bg=self.colors.get("surface", "#fff"))
+        filter_container = tk.Frame(row2_frame, bg=self.colors.get("surface", "#fff"))
         filter_container.pack(side="left", padx=10)
-        
+
         tk.Label(filter_container, text="Type:", font=("Segoe UI", 10, "bold"),
-                bg=self.colors.get("surface", "#fff"), 
+                bg=self.colors.get("surface", "#fff"),
                 fg=self.colors.get("text_secondary", "#666")).pack(side="left")
-        
+
         type_var = tk.StringVar(value="All Entries")
-        type_combo = ttk.Combobox(filter_container, textvariable=type_var, 
-                                 values=["All Entries", "High Stress", "Great Days", "Bad Sleep"], 
+        type_combo = ttk.Combobox(filter_container, textvariable=type_var,
+                                 values=["All Entries", "High Stress", "Great Days", "Bad Sleep"],
                                  state="readonly", width=15)
         type_combo.pack(side="left", padx=5)
-        
+
         # Clear button
         def clear_filters():
+            tags_var.set("")
+            from_date_var.set("")
+            to_date_var.set("")
+            mood_var.set("All Moods")
             month_var.set("All Months")
             type_var.set("All Entries")
             render_entries()
-        
-        tk.Button(filter_frame, text="Reset", command=clear_filters,
+
+        tk.Button(row2_frame, text="Reset", command=clear_filters,
                  font=("Segoe UI", 9), bg=self.colors.get("primary", "#8B5CF6"), fg="white",
                  relief="flat", padx=12, pady=4).pack(side="right", padx=10)
-        
+
         # Scrollable Area (Hidden scrollbar - mousewheel only)
         canvas = tk.Canvas(entries_window, bg=self.colors.get("bg", "#f0f0f0"), highlightthickness=0)
         scrollable_frame = tk.Frame(canvas, bg=self.colors.get("bg", "#f0f0f0"))
-        
+
         scrollable_frame.bind(
             "<Configure>",
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
-        
+
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.pack(fill="both", expand=True, padx=20)
-        
+
         # Enable mousewheel scrolling (scoped to this canvas only)
         def _on_mousewheel(event):
             try:
                 canvas.yview_scroll(int(-1*(event.delta/120)), "units")
             except tk.TclError:
                 pass  # Canvas may be destroyed
-        
+
         canvas.bind("<MouseWheel>", _on_mousewheel)
         canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
         canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
-        
+
         def render_entries():
             # Clear existing
             for widget in scrollable_frame.winfo_children():
                 widget.destroy()
-                
+
+            # Get filter values
+            selected_tags = tags_var.get().strip().lower()
+            from_date = from_date_var.get().strip()
+            to_date = to_date_var.get().strip()
+            selected_mood = mood_var.get()
             selected_month = month_var.get()
             filter_type = type_var.get()
             
             # Using safe_db_context for read operations too
-            with safe_db_context() as session:
-                entries = session.query(JournalEntry)\
-                    .filter_by(username=self.username)\
-                    .order_by(desc(JournalEntry.entry_date))\
-                    .all()
+            # Using JournalService for read operations
+            try:
+                entries = JournalService.get_entries(self.username)
                 print(f"DEBUG: View Past Entries found {len(entries)} records for {self.username}")
-                
+
                 filtered_count = 0
                 for entry in entries:
+                    # Apply tags filter
+                    if selected_tags and selected_tags != "e.g., stress, gratitude":
+                        entry_tags = (getattr(entry, 'tags', '') or '').lower()
+                        tag_list = [tag.strip() for tag in selected_tags.split(',') if tag.strip()]
+                        if not any(tag in entry_tags for tag in tag_list):
+                            continue
+
+                    # Apply date range filter
+                    if from_date and from_date != "YYYY-MM-DD":
+                        try:
+                            entry_date = datetime.strptime(str(entry.entry_date).split('.')[0], "%Y-%m-%d %H:%M:%S").date()
+                            from_date_obj = datetime.strptime(from_date, "%Y-%m-%d").date()
+                            if entry_date < from_date_obj:
+                                continue
+                        except (ValueError, AttributeError):
+                            pass
+
+                    if to_date and to_date != "YYYY-MM-DD":
+                        try:
+                            entry_date = datetime.strptime(str(entry.entry_date).split('.')[0], "%Y-%m-%d %H:%M:%S").date()
+                            to_date_obj = datetime.strptime(to_date, "%Y-%m-%d").date()
+                            if entry_date > to_date_obj:
+                                continue
+                        except (ValueError, AttributeError):
+                            pass
+
+                    # Apply mood filter
+                    if selected_mood != "All Moods":
+                        sentiment_score = getattr(entry, 'sentiment_score', 0) or 0
+                        if selected_mood == "Positive" and sentiment_score <= 30:
+                            continue
+                        elif selected_mood == "Neutral" and (sentiment_score > 30 or sentiment_score < -30):
+                            continue
+                        elif selected_mood == "Negative" and sentiment_score >= -30:
+                            continue
+
                     # Apply month filter
                     if selected_month != "All Months":
                         try:
@@ -545,7 +932,7 @@ class JournalFeature:
                                 continue
                         except:
                             pass
-                        
+
                     # Apply type filter
                     if filter_type == "High Stress" and (entry.stress_level or 0) <= 7:
                         continue
@@ -553,19 +940,27 @@ class JournalFeature:
                         continue
                     if filter_type == "Bad Sleep" and (entry.sleep_hours or 7) >= 6:
                         continue
-                        
+
                     filtered_count += 1
                     self._create_entry_card(scrollable_frame, entry)
-                    
-                if filtered_count == 0:
-                    tk.Label(scrollable_frame, text="No entries found matching filters.", 
-                            font=("Segoe UI", 12), bg=self.colors.get("bg", "#f0f0f0"), 
-                            fg=self.colors.get("text_secondary", "#666")).pack(pady=20)
+                    if filtered_count == 0:
+                        tk.Label(scrollable_frame, text="No entries found matching filters.", 
+                                font=("Segoe UI", 12), bg=self.colors.get("bg", "#f0f0f0"), 
+                                fg=self.colors.get("text_secondary", "#666")).pack(pady=20)
+            except Exception as e:
+                logging.error(f"Failed to render entries: {e}")
+                tk.Label(scrollable_frame, text="Could not load entries.", 
+                        font=("Segoe UI", 12), bg=self.colors.get("bg", "#f0f0f0"), 
+                        fg="red").pack(pady=20)
 
         # Update on filter change
         month_combo.bind("<<ComboboxSelected>>", lambda e: render_entries())
         type_combo.bind("<<ComboboxSelected>>", lambda e: render_entries())
-        
+        mood_combo.bind("<<ComboboxSelected>>", lambda e: render_entries())
+        tags_entry.bind("<KeyRelease>", lambda e: render_entries())
+        from_date_entry.bind("<KeyRelease>", lambda e: render_entries())
+        to_date_entry.bind("<KeyRelease>", lambda e: render_entries())
+
         # Initial Render
         render_entries()
 
@@ -573,6 +968,122 @@ class JournalFeature:
         def _configure_canvas(event):
             canvas.itemconfig(canvas.create_window((0,0), window=scrollable_frame, anchor="nw"), width=event.width)
         canvas.bind("<Configure>", _configure_canvas)
+
+    def show_mood_trends(self):
+        """Display visual mood trend charts using Matplotlib"""
+        if not MATPLOTLIB_AVAILABLE:
+            messagebox.showerror("Error", "Matplotlib is not installed. Please install it to view mood trend charts.")
+            return
+
+        # Create chart window
+        chart_window = tk.Toplevel(self.journal_window)
+        chart_window.title("Mood Trends Over Time")
+        chart_window.geometry("800x600")
+        chart_window.configure(bg=self.colors.get("bg", "#f0f0f0"))
+
+        # Header
+        tk.Label(chart_window, text="📊 Your Emotional Journey",
+                font=("Segoe UI", 16, "bold"), bg=self.colors.get("bg", "#f0f0f0"),
+                fg=self.colors.get("text_primary", "#000")).pack(pady=10)
+
+        # Get data
+        session = get_session()
+        try:
+            entries = session.query(JournalEntry)\
+                .filter_by(username=self.username)\
+                .order_by(JournalEntry.entry_date)\
+                .all()
+
+            if not entries:
+                tk.Label(chart_window, text="No journal entries found to analyze trends.",
+                        font=("Segoe UI", 12), bg=self.colors.get("bg", "#f0f0f0"),
+                        fg=self.colors.get("text_secondary", "#666")).pack(pady=20)
+                return
+
+            # Extract data
+            dates = []
+            sentiments = []
+            stress_levels = []
+            energy_levels = []
+            sleep_hours = []
+
+            for entry in entries:
+                try:
+                    date_obj = datetime.strptime(str(entry.entry_date).split('.')[0], "%Y-%m-%d %H:%M:%S")
+                    dates.append(date_obj)
+                    sentiments.append(getattr(entry, 'sentiment_score', 0) or 0)
+                    stress_levels.append(getattr(entry, 'stress_level', 5) or 5)
+                    energy_levels.append(getattr(entry, 'energy_level', 5) or 5)
+                    sleep_hours.append(getattr(entry, 'sleep_hours', 7) or 7)
+                except:
+                    continue
+
+            if not dates:
+                tk.Label(chart_window, text="Unable to process entry dates for trend analysis.",
+                        font=("Segoe UI", 12), bg=self.colors.get("bg", "#f0f0f0"),
+                        fg=self.colors.get("text_secondary", "#666")).pack(pady=20)
+                return
+
+            # Create figure with subplots
+            fig = Figure(figsize=(10, 8), dpi=100, facecolor=self.colors.get("surface", "#fff"))
+            fig.suptitle("Mood & Wellness Trends", fontsize=14, fontweight='bold')
+
+            # Sentiment over time
+            ax1 = fig.add_subplot(221)
+            ax1.plot(dates, sentiments, 'b-', linewidth=2, marker='o', markersize=4)
+            ax1.set_title("Sentiment Score Over Time", fontsize=12)
+            ax1.set_ylabel("Sentiment (-100 to +100)")
+            ax1.grid(True, alpha=0.3)
+            ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+            plt.setp(ax1.xaxis.get_majorticklabels(), rotation=45)
+
+            # Stress levels
+            ax2 = fig.add_subplot(222)
+            ax2.plot(dates, stress_levels, 'r-', linewidth=2, marker='s', markersize=4)
+            ax2.set_title("Stress Levels Over Time", fontsize=12)
+            ax2.set_ylabel("Stress Level (1-10)")
+            ax2.set_ylim(0, 11)
+            ax2.grid(True, alpha=0.3)
+            ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+            plt.setp(ax2.xaxis.get_majorticklabels(), rotation=45)
+
+            # Energy levels
+            ax3 = fig.add_subplot(223)
+            ax3.plot(dates, energy_levels, 'g-', linewidth=2, marker='^', markersize=4)
+            ax3.set_title("Energy Levels Over Time", fontsize=12)
+            ax3.set_ylabel("Energy Level (1-10)")
+            ax3.set_ylim(0, 11)
+            ax3.grid(True, alpha=0.3)
+            ax3.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+            plt.setp(ax3.xaxis.get_majorticklabels(), rotation=45)
+
+            # Sleep hours
+            ax4 = fig.add_subplot(224)
+            ax4.plot(dates, sleep_hours, 'purple', linewidth=2, marker='d', markersize=4)
+            ax4.set_title("Sleep Hours Over Time", fontsize=12)
+            ax4.set_ylabel("Sleep Hours")
+            ax4.set_ylim(0, max(sleep_hours) + 2 if sleep_hours else 12)
+            ax4.grid(True, alpha=0.3)
+            ax4.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+            plt.setp(ax4.xaxis.get_majorticklabels(), rotation=45)
+
+            fig.tight_layout()
+
+            # Embed in tkinter
+            canvas = FigureCanvasTkAgg(fig, master=chart_window)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
+
+            # Close button
+            tk.Button(chart_window, text="Close", command=chart_window.destroy,
+                     font=("Segoe UI", 11), bg=self.colors.get("primary", "#8B5CF6"),
+                     fg="white", relief="flat", padx=20, pady=8).pack(pady=(0, 20))
+
+        except Exception as e:
+            logging.error(f"Failed to generate mood trends: {e}")
+            messagebox.showerror("Error", f"Failed to generate mood trends: {e}")
+        finally:
+            session.close()
 
     def _create_entry_card(self, parent, entry):
         """Create a modern, aesthetic card for a journal entry with click-to-detail"""
@@ -698,21 +1209,13 @@ class JournalFeature:
     # ========== HEALTH INSIGHTS & NUDGES ==========
     def generate_health_insights(self):
         """Check for recent trends and return comprehensive health insights"""
-        """Check for recent trends and return comprehensive health insights"""
+        insight_text = "Not enough data for insights yet."
         try:
-            with safe_db_context() as session:
-                # Query last 3 days
-                three_days_ago = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
-                
-                # Use SQLAlchemy query instead of raw SQL for better compatibility
-                entries = session.query(JournalEntry)\
-                    .filter(JournalEntry.username == self.username)\
-                    .filter(JournalEntry.entry_date >= three_days_ago)\
-                    .order_by(JournalEntry.entry_date.desc())\
-                    .all()
-                
-                if not entries:
-                    return "Start tracking your sleep and energy to get personalized health insights!"
+            # Query last 3 days via Service
+            entries = JournalService.get_recent_entries(self.username, days=3)
+            
+            if not entries:
+                return "Start tracking your sleep and energy to get personalized health insights!"
                 
                 # Data extraction
                 sleeps = []
@@ -779,6 +1282,7 @@ class JournalFeature:
                 user_emotions = []
                 preferred_support = None
                 try:
+                    session = get_session()
                     user = session.query(User).filter_by(username=self.username).first()
                     if user and user.emotional_patterns:
                         ep = user.emotional_patterns

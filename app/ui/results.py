@@ -13,6 +13,7 @@ except ImportError:
 import json
 from app.models import AssessmentResult
 from typing import Any, Dict, List, Optional, Tuple
+from app.ui.components.loading_overlay import show_loading, hide_loading
 
 class ResultsManager:
     def __init__(self, app: Any) -> None:
@@ -266,6 +267,7 @@ class ResultsManager:
             messagebox.showerror("Error", "PDF Generator module not available.")
             return
 
+        loading = None
         try:
             from app.utils.file_validation import validate_file_path, sanitize_filename, ValidationError
             
@@ -294,6 +296,10 @@ class ResultsManager:
                 messagebox.showerror("Security Error", str(ve))
                 return
 
+            # Show loading overlay during PDF generation
+            loading = show_loading(self.app.root, "Generating PDF report...")
+            self.app.root.update()  # Force UI update
+
             # Prepare data for report
             result_path = generate_pdf_report(
                 self.app.username,
@@ -307,13 +313,14 @@ class ResultsManager:
                 filepath=filename
             )
             
+            hide_loading(loading)
+            loading = None
+            
             if result_path:
                 messagebox.showinfo("Success", f"Report saved successfully:\n{result_path}")
-                # Optional: Open the file
-                # import os
-                # os.startfile(result_path) 
             
         except Exception as e:
+            hide_loading(loading)
             messagebox.showerror("Export Error", f"Failed to generate PDF:\n{str(e)}")
             logging.error(f"PDF Export failed: {e}")
 
@@ -770,8 +777,13 @@ class ResultsManager:
         if not hasattr(self.app, 'ml_predictor') or not self.app.ml_predictor:
             messagebox.showerror("Error", "AI Model not loaded.")
             return
-            
+        
+        loading = None
         try:
+            # Show loading overlay during ML inference
+            loading = show_loading(self.app.root, "Running AI analysis...")
+            self.app.root.update()  # Force UI update
+            
             # 1. Get Prediction
             result = self.app.ml_predictor.predict_with_explanation(
                 self.app.responses,
@@ -779,6 +791,10 @@ class ResultsManager:
                 self.app.current_score,
                 sentiment_score=self.app.sentiment_score if hasattr(self.app, 'sentiment_score') else None
             )
+            
+            # Hide loading before showing popup
+            hide_loading(loading)
+            loading = None
             
             colors = self.app.colors
             
@@ -986,6 +1002,7 @@ class ResultsManager:
             btn_close.bind("<Leave>", lambda e: btn_close.configure(bg="#546E7A"))
             
         except Exception as e:
+            hide_loading(loading)
             logging.error("AI Analysis failed", exc_info=True)
             messagebox.showerror("Analysis Error", f"Could not generate AI report.\n{e}")
 
