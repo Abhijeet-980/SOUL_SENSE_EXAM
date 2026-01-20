@@ -262,6 +262,9 @@ class SoulSenseApp:
             self.show_history()
         elif view_id == "assessments":
             self.show_assessments()
+        elif view_id == "login":
+            # Logout and show login screen
+            self._do_logout()
 
     def show_history(self):
         """Show User History (Embedded)"""
@@ -456,6 +459,23 @@ class SoulSenseApp:
         from app.ui.profile import UserProfileView
         # Render Profile into content_area
         UserProfileView(self.content_area, self)
+
+    def _do_logout(self) -> None:
+        """Clear user session and show login screen."""
+        # Clear user state
+        self.username = None
+        self.current_user_id = None
+        self.settings = {}
+        
+        # Hide sidebar
+        if hasattr(self, 'sidebar'):
+            self.sidebar.pack_forget()
+        
+        # Clear content area
+        self.clear_screen()
+        
+        # Show login screen
+        self.show_login_screen()
 
     def graceful_shutdown(self) -> None:
         """Perform graceful shutdown operations"""

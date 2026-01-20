@@ -2180,15 +2180,21 @@ class UserProfileView:
         if not confirm2:
             return
 
-        # Get user ID
+        # Get user ID - prefer current_user_id if available, fallback to profile lookup
+        user_id = None
         try:
-            user = ProfileService.get_user_profile(self.app.username)
+            # First try to use current_user_id directly (more reliable)
+            if hasattr(self.app, 'current_user_id') and self.app.current_user_id:
+                user_id = self.app.current_user_id
+            else:
+                # Fallback to profile lookup
+                user = ProfileService.get_user_profile(self.app.username)
+                if user:
+                    user_id = user.id
 
-            if not user:
-                messagebox.showerror("Error", "User not found.", parent=self.window)
+            if not user_id:
+                messagebox.showerror("Error", "User not found. Please log in again.", parent=self.window)
                 return
-
-            user_id = user.id
 
         except Exception as e:
             logging.error(f"Error getting user ID: {e}")

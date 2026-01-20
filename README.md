@@ -302,6 +302,11 @@ The application is grounded in established emotional intelligence theory (Salove
   - Visual feedback during PDF export, AI analysis, and data export
   - Animated loading overlay prevents user confusion
   - Automatic cleanup on completion or error
+- **Delete My Data (NEW!)**
+  - Permanently delete all your personal data from the application
+  - Two-step confirmation dialog for safety
+  - Removes all user records, profiles, journals, settings, and local files
+  - Accessible via Profile → Settings → Data Management
 
 ---
 
