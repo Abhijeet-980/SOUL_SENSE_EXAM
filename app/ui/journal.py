@@ -1219,65 +1219,64 @@ class JournalFeature:
             
             # Data extraction
             sleeps = []
-                qualities = []
-                energies = []
-                works = []
-                screens = []
-                stresses = []
-                
-                for entry in entries:
-                    sleeps.append(entry.sleep_hours)
-                    qualities.append(entry.sleep_quality)
-                    energies.append(entry.energy_level)
-                    works.append(entry.work_hours)
-                    screens.append(getattr(entry, 'screen_time_mins', None))
-                    stresses.append(getattr(entry, 'stress_level', None))
-                
-                # --- DEBUG LOGGING ---
-                print(f"DEBUG: Entries found: {len(entries)}")
-                print(f"DEBUG: Screens: {screens}")
-                print(f"DEBUG: Stresses: {stresses}")
-                print(f"DEBUG: Work: {works}")
-                print(f"DEBUG: Energy: {energies}")
-                print(f"DEBUG: Sleep: {sleeps}")
-                # ---------------------
-    
-                # --- ADVANCED ANALYSIS ENGINE ---
-                
-                risk_factors = []
-                advice_components = []
-                
-                # 1. Digital Overload Check
-                avg_screen = sum(s for s in screens if s)/len([s for s in screens if s]) if any(screens) else 0
-                avg_stress = sum(s for s in stresses if s)/len([s for s in stresses if s]) if any(stresses) else 0
-                
-                if avg_screen > 240 and avg_stress > 6:
-                    risk_factors.append("Digital Overload")
-                    advice_components.append("Reducing screen time by 1 hour could lower your stress levels.")
-    
-                # 2. Burnout Check
-                avg_work = sum(w for w in works if w)/len([w for w in works if w]) if any(works) else 0
-                avg_energy = sum(e for e in energies if e)/len([e for e in energies if e]) if any(energies) else 0
-                
-                if avg_work > 9 and avg_energy < 5:
-                    risk_factors.append("Early Burnout")
-                    advice_components.append("Your energy is low despite high work output. This is sustainable for only short periods.")
-    
-                # 3. Sleep Check
-                avg_sleep = sum(s for s in sleeps if s)/len([s for s in sleeps if s]) if any(sleeps) else 0
-                if avg_sleep < 6:
-                    risk_factors.append("Sleep Deprivation")
-                    advice_components.append("Recovery is your #1 priority right now. Aim for 7h tonight.")
-    
-                # 4. Contextual Triggers & Schedule
-                recent_triggers = [t for t in [getattr(e, 'stress_triggers', '') for e in entries] if t]
-                common_trigger = recent_triggers[0][:15] + "..." if recent_triggers else None
-                
-                schedules = [s for s in [getattr(e, 'daily_schedule', '') for e in entries] if s]
-                is_busy = schedules and len(schedules[0]) > 50
-    
-                # --- SYNTHESIS ---
-                
+            qualities = []
+            energies = []
+            works = []
+            screens = []
+            stresses = []
+            
+            for entry in entries:
+                sleeps.append(entry.sleep_hours)
+                qualities.append(entry.sleep_quality)
+                energies.append(entry.energy_level)
+                works.append(entry.work_hours)
+                screens.append(getattr(entry, 'screen_time_mins', None))
+                stresses.append(getattr(entry, 'stress_level', None))
+            
+            # --- DEBUG LOGGING ---
+            print(f"DEBUG: Entries found: {len(entries)}")
+            print(f"DEBUG: Screens: {screens}")
+            print(f"DEBUG: Stresses: {stresses}")
+            print(f"DEBUG: Work: {works}")
+            print(f"DEBUG: Energy: {energies}")
+            print(f"DEBUG: Sleep: {sleeps}")
+            # ---------------------
+
+            # --- ADVANCED ANALYSIS ENGINE ---
+            
+            risk_factors = []
+            advice_components = []
+            
+            # 1. Digital Overload Check
+            avg_screen = sum(s for s in screens if s)/len([s for s in screens if s]) if any(screens) else 0
+            avg_stress = sum(s for s in stresses if s)/len([s for s in stresses if s]) if any(stresses) else 0
+            
+            if avg_screen > 240 and avg_stress > 6:
+                risk_factors.append("Digital Overload")
+                advice_components.append("Reducing screen time by 1 hour could lower your stress levels.")
+
+            # 2. Burnout Check
+            avg_work = sum(w for w in works if w)/len([w for w in works if w]) if any(works) else 0
+            avg_energy = sum(e for e in energies if e)/len([e for e in energies if e]) if any(energies) else 0
+            
+            if avg_work > 9 and avg_energy < 5:
+                risk_factors.append("Early Burnout")
+                advice_components.append("Your energy is low despite high work output. This is sustainable for only short periods.")
+
+            # 3. Sleep Check
+            avg_sleep = sum(s for s in sleeps if s)/len([s for s in sleeps if s]) if any(sleeps) else 0
+            if avg_sleep < 6:
+                risk_factors.append("Sleep Deprivation")
+                advice_components.append("Recovery is your #1 priority right now. Aim for 7h tonight.")
+
+            # 4. Contextual Triggers & Schedule
+            recent_triggers = [t for t in [getattr(e, 'stress_triggers', '') for e in entries] if t]
+            common_trigger = recent_triggers[0][:15] + "..." if recent_triggers else None
+            
+            schedules = [s for s in [getattr(e, 'daily_schedule', '') for e in entries] if s]
+            is_busy = schedules and len(schedules[0]) > 50
+
+            # --- SYNTHESIS ---
                 # Load user's emotional patterns (Issue #269)
                 user_emotions = []
                 preferred_support = None
