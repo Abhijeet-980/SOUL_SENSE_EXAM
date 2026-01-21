@@ -66,13 +66,19 @@ def test_submit_answer_invalid(exam_session):
     with pytest.raises(ValueError, match="Answer must be between 1 and 4"):
         exam_session.submit_answer(5)
 
-@patch('app.db.get_connection')
-def test_exam_completion_flow(mock_conn, exam_session):
-    exam_session.start_exam()
+@patch('app.db.safe_db_context')
+def test_exam_completion_flow(mock_safe_db, exam_session):
+    # Mock the database session
+    mock_session = MagicMock()
+    mock_safe_db.return_value.__enter__ = MagicMock(return_value=mock_session)
+    mock_safe_db.return_value.__exit__ = MagicMock(return_value=False)
     
-    # Mock DB interactions
-    mock_cursor = MagicMock()
-    mock_conn.return_value.cursor.return_value = mock_cursor
+    # Mock User query for finish_exam
+    mock_user = MagicMock()
+    mock_user.id = 123
+    mock_session.query.return_value.filter_by.return_value.first.return_value = mock_user
+    
+    exam_session.start_exam()
     
     # Answer all 3 questions
     exam_session.submit_answer(2)
@@ -86,10 +92,7 @@ def test_exam_completion_flow(mock_conn, exam_session):
     exam_session.calculate_metrics()
     assert exam_session.score == 2 + 3 + 4
     
-    # Test finish_exam (DB save)
-    # finish_exam queries 'users' table for ID, mock that return
-    mock_cursor.fetchone.return_value = (123,) # user_id
-    
+    # Test finish_exam (DB save) - now properly mocked
     result = exam_session.finish_exam()
     assert result is True
     

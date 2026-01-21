@@ -1216,9 +1216,9 @@ class JournalFeature:
             
             if not entries:
                 return "Start tracking your sleep and energy to get personalized health insights!"
-                
-                # Data extraction
-                sleeps = []
+            
+            # Data extraction
+            sleeps = []
                 qualities = []
                 energies = []
                 works = []
