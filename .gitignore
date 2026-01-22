@@ -19,6 +19,42 @@ env.bak/
 venv.bak/
 
 # =========================
+# Deployment & Secrets
+# =========================
+# Never commit actual environment files
+.env.staging
+.env.production
+.env.local
+.env.development
+
+# Deployment artifacts
+.rollback_info
+.deployment_history
+backend/fastapi/backups/*.sql
+backend/fastapi/backups/*.gz
+backend/fastapi/logs/*
+!backend/fastapi/logs/.gitkeep
+
+# Docker volumes and data
+backend/fastapi/data/
+postgres-data*/
+redis-data*/
+
+# SSL certificates and keys
+backend/fastapi/nginx/ssl/*.key
+backend/fastapi/nginx/ssl/*.pem
+backend/fastapi/nginx/ssl/*.crt
+!backend/fastapi/nginx/ssl/.gitkeep
+
+# Secrets and credentials
+secrets/
+*.secret
+*.key
+*.pem
+credentials.json
+service-account.json
+
+# =========================
 # Build / packaging
 # =========================
 build/

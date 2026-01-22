@@ -1,0 +1,141 @@
+# Docker Compose - Production Environment
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soulsense-api-production
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.production
+    environment:
+      - SOULSENSE_APP_ENV=production
+    volumes:
+      - ./logs:/var/log/soulsense
+      - ./data:/app/data
+    depends_on:
+      - db
+      - redis
+    networks:
+      - soulsense-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+    labels:
+      - "com.soulsense.environment=production"
+      - "com.soulsense.version=${DEPLOYMENT_VERSION}"
+      - "com.soulsense.previous-version=${PREVIOUS_VERSION}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  db:
+    image: postgres:15-alpine
+    container_name: soulsense-db-production
+    restart: always
+    environment:
+      - POSTGRES_DB=soulsense_production
+      - POSTGRES_USER=${SOULSENSE_DB_USER}
+      - POSTGRES_PASSWORD=${SOULSENSE_DB_PASSWORD}
+    volumes:
+      - postgres-data-production:/var/lib/postgresql/data
+      - ./backups:/backups
+    networks:
+      - soulsense-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SOULSENSE_DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  redis:
+    image: redis:7-alpine
+    container_name: soulsense-redis-production
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis-data-production:/data
+    networks:
+      - soulsense-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: soulsense-nginx-production
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - api
+    networks:
+      - soulsense-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  soulsense-network:
+    driver: bridge
+
+volumes:
+  postgres-data-production:
+    driver: local
+  redis-data-production:
+    driver: local

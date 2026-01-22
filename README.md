@@ -294,6 +294,19 @@ The application is grounded in established emotional intelligence theory (Salove
   - Validates database schema and required files at startup
   - Auto-recovery for missing directories or corrupted config
   - User-friendly diagnostic alerts
+- **Database Backup & Restore (NEW!)**
+  - Create timestamped local backups of your data
+  - Restore from any previous backup with safety copy
+  - Manage backups via Settings → Data Backup
+- **Loading States for Long Operations (NEW!)**
+  - Visual feedback during PDF export, AI analysis, and data export
+  - Animated loading overlay prevents user confusion
+  - Automatic cleanup on completion or error
+- **Delete My Data (NEW!)**
+  - Permanently delete all your personal data from the application
+  - Two-step confirmation dialog for safety
+  - Removes all user records, profiles, journals, settings, and local files
+  - Accessible via Profile → Settings → Data Management
 
 ---
 
@@ -456,6 +469,33 @@ The system categorizes issues into:
 - **Failures**: Critical issues that prevent the app from starting safely. The app shows a detailed error and exits gracefully.
 
 This prevents common "ModuleNotFoundError" or "DatabaseError" crashes that users might encounter due to filesystem issues.
+
+---
+
+## 💾 Database Backup & Restore
+
+SoulSense allows you to create and restore local backups of your data, protecting against accidental data loss.
+
+### Features
+
+- **Create Backups**: Snapshot your database with optional description
+- **Restore Backups**: Return to any previous backup state
+- **Safety Copy**: Automatic safety backup before restoration
+- **Manage Backups**: View, list, and delete old backups
+
+### How to Use
+
+1. Navigate to **Settings** in the profile sidebar
+2. Scroll to **"Data Backup"** section
+3. Click **"💾 Manage Backups"**
+4. Create new backups or restore from existing ones
+
+### Backup Storage
+
+Backups are stored in `data/backups/` with timestamped filenames:
+```
+soulsense_backup_20260120_001500_my_description.db
+```
 
 ---
 
@@ -800,6 +840,45 @@ python -m alembic revision --autogenerate -m "describe_change"
 
 **Verify Migrations:**
 Our test suite includes `tests/test_migrations.py` which guarantees that migrations apply correctly to a fresh database.
+
+### 4. Test Fixtures (Issue #348)
+
+SoulSense provides a comprehensive test fixture system for standardized, reusable test data.
+
+**Available Fixtures:**
+
+| Category | Fixtures |
+|----------|----------|
+| **Database Entities** | `sample_user`, `sample_user_with_profiles`, `sample_score`, `sample_responses`, `sample_journal_entry`, `sample_question_bank` |
+| **ML Components** | `sample_user_features`, `sample_clustered_features`, `mock_clusterer`, `mock_feature_extractor`, `mock_risk_predictor` |
+| **Utilities** | `temp_db` (isolated database), `isolated_db`, `populated_db` |
+
+**Factory Classes:**
+
+```python
+from tests.fixtures import UserFactory, ScoreFactory, FeatureDataFactory
+
+# Create test user with all profiles
+user = UserFactory.create_with_profiles(session)
+
+# Create batch of scores
+scores = ScoreFactory.create_batch(session, user, count=10)
+
+# Generate ML feature data
+features = FeatureDataFactory.create_user_features(n_users=50)
+```
+
+**Using Fixtures in Tests:**
+
+```python
+def test_user_scores(temp_db, sample_user):
+    """Fixtures are automatically available to all tests."""
+    from tests.fixtures import ScoreFactory
+    scores = ScoreFactory.create_batch(temp_db, sample_user, count=5)
+    assert len(scores) == 5
+```
+
+For complete documentation, see [tests/FIXTURES.md](tests/FIXTURES.md).
 
 ---
 

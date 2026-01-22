@@ -1,0 +1,4 @@
+id,username,user_id,total_score,sentiment_score,age,detailed_age_group,is_rushed,is_inconsistent,reflection_text,timestamp
+6,alice,,20,0.5,28,25-29,False,False,,2026-01-22T15:35:07.311470
+1,test_user1,,15,0.5,25,25-29,False,False,,2026-01-21T15:35:07.273989
+4,test_user2,,12,0.5,30,30-34,False,False,,2026-01-20T15:35:07.311341

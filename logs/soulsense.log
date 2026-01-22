@@ -769,13 +769,3 @@ AttributeError: 'UserProfileView' object has no attribute '_render_export_view'.
 2026-01-21 22:38:48 - app.startup_checks - INFO - [startup_checks.py:324] -   Recovery: Created tables: users, scores, responses, journal_entries, user_settings
 2026-01-21 22:38:48 - app.startup_checks - INFO - [startup_checks.py:345] - Integrity checks complete: 2 passed, 1 warnings, 0 failed
 2026-01-21 22:38:48 - __main__ - INFO - [main.py:516] - Startup Integrity Check Results:
-========================================
-✓ config_integrity: Configuration is valid
-✓ required_files: All required files and directories present
-⚠ database_schema: Created missing tables: ['users', 'scores', 'responses', 'journal_entries', 'user_settings']
-   → Recovery: Created tables: users, scores, responses, journal_entries, user_settings
-========================================
-2026-01-21 23:14:04 - __main__ - INFO - [main.py:546] - Preloading questions into memory...
-2026-01-21 23:14:04 - app.questions - INFO - [questions.py:52] - Loaded 0 active questions into memory.
-2026-01-21 23:14:05 - app.questions - INFO - [questions.py:87] - Questions not initialized, loading now...
-2026-01-21 23:14:05 - app.questions - INFO - [questions.py:52] - Loaded 0 active questions into memory.

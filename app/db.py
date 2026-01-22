@@ -109,7 +109,16 @@ def create_tables_directly() -> None:
                 entry_date TEXT DEFAULT CURRENT_TIMESTAMP,
                 content TEXT,
                 sentiment_score REAL,
-                emotional_patterns TEXT
+                emotional_patterns TEXT,
+                sleep_hours REAL,
+                sleep_quality INTEGER,
+                energy_level INTEGER,
+                work_hours REAL,
+                screen_time_mins INTEGER,
+                stress_level INTEGER,
+                stress_triggers TEXT,
+                daily_schedule TEXT,
+                tags TEXT
             )
         """)
         

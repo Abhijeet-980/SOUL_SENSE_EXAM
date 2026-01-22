@@ -9,7 +9,6 @@ import logging
 import time
 from datetime import datetime
 import statistics
-from app.db import get_connection
 from app.utils import compute_age_group
 from app.services.question_curator import QuestionCurator
 from app.ui.assessments import RecommendationView
@@ -344,16 +343,34 @@ class ExamManager:
 
     def save_answer(self):
         """Save current answer and proceed"""
+        # 0. Debounce / Navigation Guard
+        if hasattr(self, 'is_navigating') and self.is_navigating:
+            return
+            
         ans = self.answer_var.get()
         if ans == 0:
             messagebox.showwarning("Select an Answer", "Please select an option before continuing.")
             return
         
         try:
+            self.is_navigating = True
+            
+            # Disable next button visually if possible (optional optimization)
+            # here we rely on the flag primarily for speed
+            
             self.session.submit_answer(ans)
             self.show_question()
+            
+            # Reset flag is handled implicitly because show_question redraws the UI
+            # or we can reset it here if show_question is synchronous and fast
+            self.is_navigating = False
+            
         except ValueError as e:
+            self.is_navigating = False
             messagebox.showerror("Error", str(e))
+        except Exception:
+            self.is_navigating = False
+            raise
 
     def show_reflection_screen(self):
         """Show premium reflection screen"""
@@ -430,7 +447,7 @@ class ExamManager:
         btn_frame = tk.Frame(content_frame, bg=colors["bg"])
         btn_frame.pack(pady=15)
         
-        submit_btn = tk.Button(
+        self.submit_btn = tk.Button( # Store ref to disable later
             btn_frame,
             text="✨ Submit & See Results",
             command=self.submit_reflection,
@@ -445,9 +462,9 @@ class ExamManager:
             pady=12,
             borderwidth=0
         )
-        submit_btn.pack()
-        submit_btn.bind("<Enter>", lambda e: submit_btn.configure(bg=colors.get("success_hover", "#059669")))
-        submit_btn.bind("<Leave>", lambda e: submit_btn.configure(bg=colors.get("success", "#10B981")))
+        self.submit_btn.pack()
+        self.submit_btn.bind("<Enter>", lambda e: self.submit_btn.configure(bg=colors.get("success_hover", "#059669")))
+        self.submit_btn.bind("<Leave>", lambda e: self.submit_btn.configure(bg=colors.get("success", "#10B981")))
         
         # Skip link
         skip_label = tk.Label(
@@ -463,23 +480,63 @@ class ExamManager:
 
     def _skip_reflection(self):
         """Skip reflection and finish test"""
+        if hasattr(self, 'is_processing') and self.is_processing: return
         self.session.reflection_text = ""
         self.finish_test()
 
     def submit_reflection(self):
         """Analyze reflection text and finish test"""
+        from app.ui.components.loading_overlay import show_loading, hide_loading
+        
+        # Guard
+        if hasattr(self, 'is_processing') and self.is_processing:
+            return
+
         text = self.reflection_entry.get("1.0", tk.END).strip()
         
         if not text:
             if not messagebox.askyesno("Skip?", "You haven't written anything. Do you want to skip?"):
                 return
+            # If skipping via empty text, just proceed
             self.session.submit_reflection("")
-        else:
+            self.finish_test()
+            return
+            
+        # Start Processing
+        self.is_processing = True
+        self.submit_btn.configure(state="disabled")
+        overlay = show_loading(self.root, "Analyzing Reflection...")
+        
+        try:
             # Use main app's analyzer if available
             analyzer = getattr(self.app, 'sia', None)
+            
+            # This might be slow (NLTK or API)
             self.session.submit_reflection(text, analyzer)
+            self.finish_test()
+            
+        except Exception as e:
+            logging.error(f"Error submitting reflection: {e}")
+            messagebox.showerror("Error", "Analysis failed. Proceeding without analysis.")
+            # Fallback
+            try:
+                self.session.submit_reflection("")
+                self.finish_test()
+            except:
+                pass
         
-        self.finish_test()
+        finally:
+            # Cleanup
+            hide_loading(overlay)
+            self.is_processing = False
+            # We don't need to re-enable button because finish_test clears the screen
+            # unless finish_test failed, in which case we might be stuck? 
+            # safe to re-enable just in case screen wasn't cleared
+            try:
+                 if self.submit_btn.winfo_exists():
+                    self.submit_btn.configure(state="normal")
+            except:
+                pass
 
     def finish_test(self):
         """Calculate final score and save to database - FIXED VERSION"""
@@ -611,25 +668,15 @@ class ExamManager:
 
         # --- NEW SECTION: Deep Dive Results (if any) ---
         try:
-            conn = get_connection()
-            cursor = conn.cursor()
+            from app.services.exam_service import ExamService
             
             deep_dives = []
             if self.app.current_user_id:
-                if result_ids and len(result_ids) > 0:
-                     # Precise filtering by IDs (The robust way)
-                     placeholders = ','.join(['?'] * len(result_ids))
-                     query = f"SELECT assessment_type, total_score, details FROM assessment_results WHERE id IN ({placeholders}) ORDER BY timestamp DESC"
-                     cursor.execute(query, result_ids)
-                     deep_dives = cursor.fetchall()
-                else:
-                    # Fallback: 15 minutes lookback (Legacy/Direct access way)
-                    time_threshold = datetime.now().timestamp() - 900 
-                    cursor.execute(
-                        "SELECT assessment_type, total_score, details FROM assessment_results WHERE user_id = ? AND timestamp > ? ORDER BY timestamp DESC",
-                        (self.app.current_user_id, str(datetime.fromtimestamp(time_threshold)))
-                    )
-                    deep_dives = cursor.fetchall()
+                deep_dives = ExamService.get_assessment_results(
+                    user_id=self.app.current_user_id,
+                    result_ids=result_ids,
+                    minutes_lookback=15
+                )
                 
                 if deep_dives:
                     dd_section = tk.Frame(container, bg=colors["bg"])
@@ -641,17 +688,17 @@ class ExamManager:
                     grid_frame = tk.Frame(dd_section, bg=colors["bg"])
                     grid_frame.pack(fill="x")
                     
-                    for i, (dtype, dscore, ddetails) in enumerate(deep_dives):
+                    for i, result in enumerate(deep_dives):
                         # Simple card for each
                         card = tk.Frame(grid_frame, bg=colors["surface"], padx=15, pady=15,
                                       highlightthickness=1, highlightbackground=colors.get("border", "#E2E8F0"))
                         card.pack(side="left", fill="x", expand=True, padx=5)
                         
-                        d_name = dtype.replace("_", " ").title()
+                        d_name = result.assessment_type.replace("_", " ").title()
                         tk.Label(card, text=d_name, font=("Segoe UI", 12, "bold"), 
                                  bg=colors["surface"], fg=colors["text_primary"]).pack(anchor="w")
                                  
-                        tk.Label(card, text=f"Score: {dscore}/100", font=("Segoe UI", 16, "bold"), 
+                        tk.Label(card, text=f"Score: {result.total_score}/100", font=("Segoe UI", 16, "bold"), 
                                  bg=colors["surface"], fg=colors["primary"]).pack(anchor="w", pady=5)
         except Exception as e:
             logging.error(f"Failed to load specific deep dives: {e}")

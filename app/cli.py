@@ -406,14 +406,15 @@ class SoulSenseCLI:
         print("  4. 📈 Dashboard")
         print("  5. 💾 Export Results")
         print("  6. ⚙️  Settings")
-        print("  7. 🚪 Exit")
+        print("  7. ℹ️  Version")
+        print("  8. 🚪 Exit")
         print("")
         
         while True:
-            choice = self.get_input("Select option (1-7): ")
-            if choice in ('1', '2', '3', '4', '5', '6', '7'):
+            choice = self.get_input("Select option (1-8): ")
+            if choice in ('1', '2', '3', '4', '5', '6', '7', '8'):
                 return int(choice)
-            print("Invalid choice. Please enter 1-7.")
+            print("Invalid choice. Please enter 1-8.")
 
     def show_history(self) -> None:
         """Display exam history with ASCII graph"""
@@ -980,10 +981,33 @@ class SoulSenseCLI:
             choice = self.get_input("Select option (1-2): ")
             
             if choice == '1':
-                new_val = self.get_input(f"Enter new question count (5-20, current: {self.num_questions}): ")
-                if new_val.isdigit() and 5 <= int(new_val) <= 20:
-                    self.num_questions = int(new_val)
-                    # Save to shared settings (same file as GUI)
+                # Loop until valid input provided or user cancels with 'b'
+                from app.validation import validate_range
+                while True:
+                    new_val = self.get_input(f"Enter new question count (1-20, current: {self.num_questions}) [b to cancel]: ")
+                    if new_val.lower() == 'b':
+                        break
+
+                    # Use validate_range to check numeric and bounds
+                    valid, msg = validate_range(new_val, 1, 20, "Question count")
+                    if not valid:
+                        print(colorize(f"Invalid: {msg}", Colors.YELLOW))
+                        continue
+
+                    # Ensure an integer value
+                    try:
+                        q_int = int(float(new_val))
+                    except (ValueError, TypeError):
+                        print(colorize("Please enter a whole number.", Colors.YELLOW))
+                        continue
+
+                    # Final bounds check after conversion (in case float like 3.5 was provided)
+                    if q_int < 1 or q_int > 20:
+                        print(colorize("Invalid value. Must be an integer between 1 and 20.", Colors.YELLOW))
+                        continue
+
+                    # Apply setting
+                    self.num_questions = q_int
                     try:
                         from app.utils import save_settings
                         self.settings["question_count"] = self.num_questions
@@ -992,12 +1016,27 @@ class SoulSenseCLI:
                         print(colorize("   (This setting is shared with GUI)", Colors.CYAN))
                     except Exception as e:
                         print(f"\n{colorize('Warning:', Colors.YELLOW)} Setting applied for this session but could not save: {e}")
+
                     self.get_input("\nPress Enter to continue...")
-                else:
-                    print("Invalid value. Must be between 5 and 20.")
-                    time.sleep(1)
+                    break
             elif choice == '2':
                 return
+
+    def show_version(self) -> None:
+        """Display application version information"""
+        from app.constants import VERSION, APP_NAME
+        
+        self.clear_screen()
+        print("="*60)
+        print("      V E R S I O N   I N F O")
+        print("="*60 + "\n")
+        
+        print(f"  {colorize(APP_NAME, Colors.CYAN)} {colorize(f'v{VERSION}', Colors.GREEN)}")
+        print(f"\n  Build Date: January 2026")
+        print(f"  Python {sys.version.split()[0]}")
+        print("\n" + "="*60)
+        
+        self.get_input("\nPress Enter to continue...")
 
     def run_exam_flow(self):
         """Run complete exam flow"""
@@ -1030,6 +1069,8 @@ class SoulSenseCLI:
                 elif choice == 6:
                     self.show_settings()
                 elif choice == 7:
+                    self.show_version()
+                elif choice == 8:
                     print("\nGoodbye! 👋")
                     sys.exit(0)
                     
@@ -1043,6 +1084,11 @@ class SoulSenseCLI:
 if __name__ == "__main__":
     if '--help' in sys.argv:
         print("Soul Sense CLI - Run with 'python -m app.cli'")
+        sys.exit(0)
+    
+    if '--version' in sys.argv or '-v' in sys.argv:
+        from app.constants import VERSION, APP_NAME
+        print(f"{APP_NAME} v{VERSION}")
         sys.exit(0)
         
     cli = SoulSenseCLI()

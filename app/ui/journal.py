@@ -11,8 +11,10 @@ from nltk.sentiment import SentimentIntensityAnalyzer
 from sqlalchemy import desc, text
 
 from app.i18n_manager import get_i18n
-from app.models import JournalEntry, User, UserEmotionalPatterns
-from app.db import safe_db_context
+from app.i18n_manager import get_i18n
+from app.models import JournalEntry, User
+from app.db import get_session
+from app.services.journal_service import JournalService
 from app.validation import validate_required, validate_length, validate_range, sanitize_text, RANGES
 from app.validation import MAX_TEXT_LENGTH
 
@@ -489,9 +491,20 @@ class JournalFeature:
             patterns.append(self.i18n.get("patterns.self_reflective"))
         
         return "; ".join(patterns) if patterns else self.i18n.get("patterns.general_expression")
+
+    def _app_mood_from_score(self, score: float) -> str:
+        """Convert sentiment score to mood string"""
+        if score >= 20:
+            return "Positive"
+        elif score <= -20:
+            return "Negative"
+        else:
+            return "Neutral"
     
     def save_and_analyze(self):
         """Save journal entry and perform AI analysis"""
+        from app.ui.components.loading_overlay import show_loading, hide_loading
+        
         content = sanitize_text(self.text_area.get("1.0", tk.END))
         
         # Validation checks
@@ -522,50 +535,91 @@ class JournalFeature:
                  messagebox.showwarning("Validation Error", f"Invalid value for {lbl}")
                  return
         
-        # Perform analysis
-        sentiment_score = self.analyze_sentiment(content)
-        emotional_patterns = self.extract_emotional_patterns(content)
+        # Guard
+        if hasattr(self, 'is_processing') and self.is_processing:
+            return
 
-        # Save to database
+        # Start Processing
+        self.is_processing = True
+        
+        if hasattr(self, 'save_btn'):
+            self.save_btn.configure(state="disabled")
+            
+        overlay = None
         try:
-            with safe_db_context() as session:
-                entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                entry = JournalEntry(
-                    username=self.username,
-                    entry_date=entry_date,
+            overlay = show_loading(self.parent_root, "Analyzing Emotions...")
+        except Exception as e:
+            # If creating overlay fails (e.g. parent destroyed), minimal fallback
+            logging.error(f"Could not create loading overlay: {e}")
+            # continue processing anyway
+
+        try:
+            current_time = datetime.now()
+            
+            # 1. Perform Analysis (Heavy)
+            sentiment_score = 0.0
+            try:
+                sentiment_score = self.analyze_sentiment(content)
+                emotional_patterns = self.extract_emotional_patterns(content)
+            except Exception as e:
+                logging.error(f"Analysis failed: {e}")
+                    # Continue saving even if analysis fails slightly
+            
+            # 2. Database Save
+            # 2. Database Save (via Service)
+            try:
+                # Collect metrics from sliders
+                metrics = {
+                    "sleep_hours": self.sleep_hours_var.get(),
+                    "sleep_quality": self.sleep_quality_var.get(),
+                    "energy_level": self.energy_level_var.get(),
+                    "stress_level": self.stress_level_var.get(),
+                    "work_hours": self.work_hours_var.get(),
+                    "screen_time_mins": self.screen_time_var.get()
+                }
+                
+                JournalService.create_entry(
+                    username=self.username if hasattr(self, 'username') else (self.app.username if self.app and hasattr(self.app, 'username') else 'guest'),
                     content=content,
                     sentiment_score=sentiment_score,
                     emotional_patterns=emotional_patterns,
-                    # Metrics
-                    sleep_hours=self.sleep_hours_var.get(),
-                    sleep_quality=self.sleep_quality_var.get(),
-                    energy_level=self.energy_level_var.get(),
-                    work_hours=self.work_hours_var.get(),
-                    # PR #6 Expansion
-                    screen_time_mins=self.screen_time_var.get(),
-                    stress_level=self.stress_level_var.get(),
-                    daily_schedule=sanitize_text(self.schedule_text.get("1.0", tk.END)),
-                    stress_triggers=sanitize_text(self.triggers_text.get("1.0", tk.END))
+                    entry_date=current_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    **metrics
                 )
-                session.add(entry)
-                # safe_db_context Auto-commits on exit
+            except Exception as e:
+                logging.error(f"Service save failed: {e}")
+                raise e # Re-raise to trigger outer error handler
             
-            # Check for expanded health insights
+            # 3. Dynamic Health Insights
             health_insights = self.generate_health_insights()
-
-            # Show analysis results with insights
+            
+            # 4. Show Result (Popup)
+            # Hide overlay BEFORE showing result, otherwise popup might be behind overlay
+            hide_loading(overlay)
+            overlay = None # invalid ref
+            
             self.show_analysis_results(sentiment_score, emotional_patterns, health_insights)
-
-            # Clear text area
-            # Clear inputs
+            
+            # 5. Clear Input
             self.text_area.delete("1.0", tk.END)
-            self.tags_entry.delete(0, tk.END)
-            self.schedule_text.delete("1.0", tk.END)
-            self.triggers_text.delete("1.0", tk.END)
-
+            # Reset word count
+            if hasattr(self, 'word_count_label'):
+                self.word_count_label.config(text="0 words")
+                
+                # self.load_entries() # Method does not exist, and view_past_entries is a separate window
+            
         except Exception as e:
             logging.error("Failed to save journal entry", exc_info=True)
             messagebox.showerror("Error", f"Failed to save entry: {e}")
+            
+        finally:
+            # Cleanup
+            if overlay:
+                hide_loading(overlay)
+            
+            self.is_processing = False
+            if hasattr(self, 'save_btn') and self.save_btn.winfo_exists():
+                self.save_btn.configure(state="normal")
     
     def show_analysis_results(self, sentiment_score, patterns, nudge_advice=None):
         """Display AI analysis results"""
@@ -827,11 +881,9 @@ class JournalFeature:
             filter_type = type_var.get()
             
             # Using safe_db_context for read operations too
-            with safe_db_context() as session:
-                entries = session.query(JournalEntry)\
-                    .filter_by(username=self.username)\
-                    .order_by(desc(JournalEntry.entry_date))\
-                    .all()
+            # Using JournalService for read operations
+            try:
+                entries = JournalService.get_entries(self.username)
                 print(f"DEBUG: View Past Entries found {len(entries)} records for {self.username}")
 
                 filtered_count = 0
@@ -891,11 +943,15 @@ class JournalFeature:
 
                     filtered_count += 1
                     self._create_entry_card(scrollable_frame, entry)
-
-                if filtered_count == 0:
-                    tk.Label(scrollable_frame, text="No entries found matching filters.",
-                            font=("Segoe UI", 12), bg=self.colors.get("bg", "#f0f0f0"),
-                            fg=self.colors.get("text_secondary", "#666")).pack(pady=20)
+                    if filtered_count == 0:
+                        tk.Label(scrollable_frame, text="No entries found matching filters.", 
+                                font=("Segoe UI", 12), bg=self.colors.get("bg", "#f0f0f0"), 
+                                fg=self.colors.get("text_secondary", "#666")).pack(pady=20)
+            except Exception as e:
+                logging.error(f"Failed to render entries: {e}")
+                tk.Label(scrollable_frame, text="Could not load entries.", 
+                        font=("Segoe UI", 12), bg=self.colors.get("bg", "#f0f0f0"), 
+                        fg="red").pack(pady=20)
 
         # Update on filter change
         month_combo.bind("<<ComboboxSelected>>", lambda e: render_entries())
@@ -1153,21 +1209,13 @@ class JournalFeature:
     # ========== HEALTH INSIGHTS & NUDGES ==========
     def generate_health_insights(self):
         """Check for recent trends and return comprehensive health insights"""
-        """Check for recent trends and return comprehensive health insights"""
+        insight_text = "Not enough data for insights yet."
         try:
-            with safe_db_context() as session:
-                # Query last 3 days
-                three_days_ago = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
-                
-                # Use SQLAlchemy query instead of raw SQL for better compatibility
-                entries = session.query(JournalEntry)\
-                    .filter(JournalEntry.username == self.username)\
-                    .filter(JournalEntry.entry_date >= three_days_ago)\
-                    .order_by(JournalEntry.entry_date.desc())\
-                    .all()
-                
-                if not entries:
-                    return "Start tracking your sleep and energy to get personalized health insights!"
+            # Query last 3 days via Service
+            entries = JournalService.get_recent_entries(self.username, days=3)
+            
+            if not entries:
+                return "Start tracking your sleep and energy to get personalized health insights!"
                 
                 # Data extraction
                 sleeps = []
@@ -1234,6 +1282,7 @@ class JournalFeature:
                 user_emotions = []
                 preferred_support = None
                 try:
+                    session = get_session()
                     user = session.query(User).filter_by(username=self.username).first()
                     if user and user.emotional_patterns:
                         ep = user.emotional_patterns

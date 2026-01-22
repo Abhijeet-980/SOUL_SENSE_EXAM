@@ -1,0 +1,77 @@
+# Docker Compose - Staging Environment
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soulsense-api-staging
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.staging
+    environment:
+      - SOULSENSE_APP_ENV=staging
+    volumes:
+      - ./logs:/var/log/soulsense
+      - ./data:/app/data
+    depends_on:
+      - db
+    networks:
+      - soulsense-network
+    labels:
+      - "com.soulsense.environment=staging"
+      - "com.soulsense.version=${DEPLOYMENT_VERSION:-latest}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  db:
+    image: postgres:15-alpine
+    container_name: soulsense-db-staging
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=soulsense_staging
+      - POSTGRES_USER=${SOULSENSE_DB_USER}
+      - POSTGRES_PASSWORD=${SOULSENSE_DB_PASSWORD}
+    volumes:
+      - postgres-data-staging:/var/lib/postgresql/data
+      - ./backups:/backups
+    networks:
+      - soulsense-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SOULSENSE_DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: Redis for caching and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: soulsense-redis-staging
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data-staging:/data
+    networks:
+      - soulsense-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  soulsense-network:
+    driver: bridge
+
+volumes:
+  postgres-data-staging:
+    driver: local
+  redis-data-staging:
+    driver: local
