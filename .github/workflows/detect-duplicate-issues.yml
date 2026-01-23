@@ -46,16 +46,20 @@ jobs:
               const oldText = `${issue.title}\n${issue.body || ""}`
                 .toLowerCase();
 
-              // Basic keyword similarity check
-              const words = newText.split(/\W+/).filter(w => w.length > 4);
-              let matches = 0;
+              // Improved similarity check
+              const newWords = new Set(newText.split(/\W+/).filter(w => w.length > 4));
+              const oldWords = new Set(oldText.split(/\W+/).filter(w => w.length > 4));
+              
+              if (newWords.size === 0) continue;
 
-              for (const word of words) {
+              let matches = 0;
+              for (const word of newWords) {
                 if (oldText.includes(word)) matches++;
               }
 
-              // Heuristic threshold
-              if (matches >= 3) {
+              // Threshold: At least 5 words and > 50% of the significant words in the new issue must match
+              const similarityRatio = matches / newWords.size;
+              if (matches >= 5 && similarityRatio > 0.5) {
                 similarIssues.push(issue);
               }
             }

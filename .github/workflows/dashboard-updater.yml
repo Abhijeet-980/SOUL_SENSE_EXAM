@@ -1,0 +1,184 @@
+name: Update Community Dashboard
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:  # Manual trigger
+  issues:
+    types: [opened, closed, labeled]
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Fetch GitHub Data and Update Dashboard
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            // Get all issues (including closed for stats)
+            const allIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo,
+              state: 'all',
+              per_page: 100
+            });
+            
+            // Filter out PRs
+            const issues = allIssues.filter(i => !i.pull_request);
+            
+            // Get contributors
+            let contributors = [];
+            try {
+              const contribResponse = await github.rest.repos.listContributors({
+                owner, repo,
+                per_page: 15
+              });
+              contributors = contribResponse.data || [];
+            } catch (e) {
+              console.log('Could not fetch contributors');
+            }
+            
+            // Calculate stats
+            const openIssues = issues.filter(i => i.state === 'open');
+            const closedIssues = issues.filter(i => i.state === 'closed');
+            const inProgress = openIssues.filter(i => 
+              i.labels.some(l => l.name === 'status: in-progress')
+            );
+            const available = openIssues.filter(i => 
+              i.labels.some(l => l.name === 'status: available')
+            );
+            const goodFirstIssues = openIssues.filter(i =>
+              i.labels.some(l => l.name.toLowerCase().includes('good first') || l.name.toLowerCase().includes('beginner'))
+            );
+            const blocked = openIssues.filter(i =>
+              i.labels.some(l => l.name.toLowerCase().includes('blocked') || l.name.toLowerCase().includes('help wanted'))
+            );
+            
+            // Wave-based progress (if waves exist)
+            const waveLabels = ['wave:1', 'wave:2', 'wave:3', 'wave 1', 'wave 2', 'wave 3'];
+            const waveStats = {};
+            
+            for (const wave of ['1', '2', '3']) {
+              const waveIssues = issues.filter(i => 
+                i.labels.some(l => l.name.toLowerCase().includes(`wave`) && l.name.includes(wave))
+              );
+              if (waveIssues.length > 0) {
+                const completed = waveIssues.filter(i => i.state === 'closed').length;
+                const total = waveIssues.length;
+                const percent = Math.round((completed / total) * 100);
+                waveStats[wave] = { completed, total, percent };
+              }
+            }
+            
+            // Build wave progress section
+            let waveSection = '';
+            if (Object.keys(waveStats).length > 0) {
+              waveSection = `\n## 🌊 Wave Progress\n| Wave | Progress | Status |\n|------|----------|--------|\n`;
+              for (const [wave, stats] of Object.entries(waveStats)) {
+                const bar = '█'.repeat(Math.floor(stats.percent / 10)) + '░'.repeat(10 - Math.floor(stats.percent / 10));
+                waveSection += `| Wave ${wave} | ${bar} ${stats.percent}% | ${stats.completed}/${stats.total} complete |\n`;
+              }
+            }
+            
+            // Build good first issues section
+            let beginnerSection = '';
+            if (goodFirstIssues.length > 0) {
+              beginnerSection = `\n## 🌱 Good First Issues (${goodFirstIssues.length})\n`;
+              beginnerSection += goodFirstIssues.slice(0, 5).map(i => 
+                `- #${i.number}: ${i.title}`
+              ).join('\n');
+              if (goodFirstIssues.length > 5) {
+                beginnerSection += `\n- _...and ${goodFirstIssues.length - 5} more_`;
+              }
+            }
+            
+            // Build blocked issues section
+            let blockedSection = '';
+            if (blocked.length > 0) {
+              blockedSection = `\n## 🚧 Issues Needing Help (${blocked.length})\n`;
+              blockedSection += blocked.slice(0, 5).map(i => 
+                `- #${i.number}: ${i.title}`
+              ).join('\n');
+            }
+            
+            // Build contributors section
+            let contribSection = '\n## 👥 Top Contributors\n';
+            if (contributors.length > 0) {
+              contribSection += contributors.slice(0, 10).map((c, i) => 
+                `${i + 1}. @${c.login} (${c.contributions} contributions)`
+              ).join('\n');
+            } else {
+              contribSection += '_No contributors yet_';
+            }
+            
+            // Find or create dashboard issue
+            const dashboardIssues = await github.rest.issues.listForRepo({
+              owner, repo,
+              labels: 'dashboard,automated',
+              state: 'open'
+            });
+            
+            let dashboardIssue;
+            
+            if (dashboardIssues.data.length > 0) {
+              dashboardIssue = dashboardIssues.data[0];
+            } else {
+              const newIssue = await github.rest.issues.create({
+                owner, repo,
+                title: '📊 Community Contribution Dashboard',
+                body: 'Loading dashboard data...',
+                labels: ['dashboard', 'automated', 'documentation']
+              });
+              dashboardIssue = newIssue.data;
+            }
+            
+            // Generate dashboard content
+            const dashboardContent = `# 📈 Community Contribution Dashboard
+
+*Last updated: ${new Date().toISOString().split('T')[0]} at ${new Date().toISOString().split('T')[1].split('.')[0]} UTC*
+
+## 📊 Overview
+| Metric | Count |
+|--------|-------|
+| 📋 Total Issues | ${issues.length} |
+| 🟢 Open Issues | ${openIssues.length} |
+| ✅ Closed Issues | ${closedIssues.length} |
+| 🔄 In Progress | ${inProgress.length} |
+| 🆓 Available | ${available.length} |
+| 🌱 Good First Issues | ${goodFirstIssues.length} |
+| 👥 Contributors | ${contributors.length} |
+${waveSection}
+${beginnerSection}
+${blockedSection}
+${contribSection}
+
+## 🎯 Quick Links
+- [All Open Issues](https://github.com/${owner}/${repo}/issues?q=is%3Aopen+is%3Aissue)
+- [Good First Issues](https://github.com/${owner}/${repo}/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
+- [Available Issues](https://github.com/${owner}/${repo}/issues?q=is%3Aopen+is%3Aissue+label%3A%22status%3A+available%22)
+- [PRs Needing Review](https://github.com/${owner}/${repo}/pulls?q=is%3Aopen+is%3Apr+review%3Arequired)
+
+## 📋 How to Contribute
+1. Find an issue you'd like to work on
+2. Comment \`/assign\` to claim it
+3. Use \`/status\` to check your current assignments
+4. Create a PR when ready
+5. Use \`/unassign\` if you can't complete it
+
+---
+*This dashboard updates automatically every 6 hours. Pin this issue for easy access!*
+`;
+            
+            // Update the dashboard issue
+            await github.rest.issues.update({
+              owner, repo,
+              issue_number: dashboardIssue.number,
+              body: dashboardContent
+            });
+            
+            console.log('Dashboard updated successfully!');

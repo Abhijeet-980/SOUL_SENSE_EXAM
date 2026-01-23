@@ -1,0 +1,211 @@
+name: Weekly Community Digest
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9 AM UTC
+  workflow_dispatch:  # Manual trigger for testing
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  create-weekly-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Weekly Digest
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            // Calculate date range (last 7 days)
+            const now = new Date();
+            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            const weekAgoISO = weekAgo.toISOString();
+            
+            // Format dates for display
+            const formatDate = (d) => d.toISOString().split('T')[0];
+            const startDate = formatDate(weekAgo);
+            const endDate = formatDate(now);
+            
+            // Get issues created this week
+            const newIssues = await github.rest.issues.listForRepo({
+              owner, repo,
+              state: 'all',
+              since: weekAgoISO,
+              per_page: 100
+            });
+            
+            // Filter to only issues (not PRs) created this week
+            const issuesThisWeek = newIssues.data.filter(i => 
+              !i.pull_request && new Date(i.created_at) >= weekAgo
+            );
+            
+            // Get closed issues this week
+            const closedThisWeek = newIssues.data.filter(i => 
+              !i.pull_request && 
+              i.state === 'closed' && 
+              i.closed_at && 
+              new Date(i.closed_at) >= weekAgo
+            );
+            
+            // Get PRs
+            const prs = await github.rest.pulls.list({
+              owner, repo,
+              state: 'all',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 100
+            });
+            
+            const prsThisWeek = prs.data.filter(p => 
+              new Date(p.created_at) >= weekAgo
+            );
+            
+            const mergedThisWeek = prs.data.filter(p => 
+              p.merged_at && new Date(p.merged_at) >= weekAgo
+            );
+            
+            // Get unique contributors this week
+            const contributors = new Set();
+            
+            // From issues
+            issuesThisWeek.forEach(i => contributors.add(i.user.login));
+            
+            // From PRs
+            prsThisWeek.forEach(p => contributors.add(p.user.login));
+            
+            // From comments on issues
+            const recentComments = await github.rest.issues.listCommentsForRepo({
+              owner, repo,
+              since: weekAgoISO,
+              per_page: 100
+            });
+            
+            recentComments.data.forEach(c => {
+              if (c.user.login !== 'github-actions[bot]') {
+                contributors.add(c.user.login);
+              }
+            });
+            
+            // Find first-time contributors
+            const firstTimers = [];
+            for (const pr of mergedThisWeek) {
+              const authorPRs = await github.rest.pulls.list({
+                owner, repo,
+                state: 'all',
+                per_page: 10
+              });
+              const authorMerged = authorPRs.data.filter(p => 
+                p.user.login === pr.user.login && p.merged_at
+              );
+              if (authorMerged.length === 1) {
+                firstTimers.push(pr.user.login);
+              }
+            }
+            
+            // Get top contributors by PR count
+            const prCountByAuthor = {};
+            mergedThisWeek.forEach(p => {
+              prCountByAuthor[p.user.login] = (prCountByAuthor[p.user.login] || 0) + 1;
+            });
+            
+            const topContributors = Object.entries(prCountByAuthor)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 5);
+            
+            // Build digest content
+            let digestBody = `# 📰 Weekly Community Digest
+            
+**Week of ${startDate} to ${endDate}**
+
+---
+
+## 📊 This Week's Stats
+
+| Metric | Count |
+|--------|-------|
+| 🆕 New Issues | ${issuesThisWeek.length} |
+| ✅ Issues Closed | ${closedThisWeek.length} |
+| 🔀 PRs Opened | ${prsThisWeek.length} |
+| 🎉 PRs Merged | ${mergedThisWeek.length} |
+| 👥 Active Contributors | ${contributors.size} |
+
+---
+
+## 🏆 Top Contributors This Week
+${topContributors.length > 0 
+  ? topContributors.map(([login, count], i) => 
+      `${i + 1}. @${login} — ${count} PR${count > 1 ? 's' : ''} merged`
+    ).join('\n')
+  : '_No merged PRs this week_'
+}
+
+---
+
+## 🌟 First-Time Contributors
+${firstTimers.length > 0 
+  ? firstTimers.map(login => `- 🎉 @${login} — Welcome to the team!`).join('\n')
+  : '_No first-time contributors this week_'
+}
+
+---
+
+## 📋 Issues Closed This Week
+${closedThisWeek.length > 0
+  ? closedThisWeek.slice(0, 10).map(i => `- #${i.number}: ${i.title}`).join('\n')
+  : '_No issues closed this week_'
+}
+${closedThisWeek.length > 10 ? `\n_...and ${closedThisWeek.length - 10} more_` : ''}
+
+---
+
+## 🔀 PRs Merged This Week
+${mergedThisWeek.length > 0
+  ? mergedThisWeek.slice(0, 10).map(p => `- #${p.number}: ${p.title} by @${p.user.login}`).join('\n')
+  : '_No PRs merged this week_'
+}
+${mergedThisWeek.length > 10 ? `\n_...and ${mergedThisWeek.length - 10} more_` : ''}
+
+---
+
+## 🚀 Looking Ahead
+
+Check out [issues needing help](https://github.com/${owner}/${repo}/issues?q=is%3Aopen+label%3A%22help+wanted%22) or [good first issues](https://github.com/${owner}/${repo}/issues?q=is%3Aopen+label%3A%22good+first+issue%22) to get involved!
+
+---
+
+_This digest was generated automatically. See you next week! 👋_
+`;
+            
+            // Create the digest as a new issue
+            const digestIssue = await github.rest.issues.create({
+              owner, repo,
+              title: `📰 Weekly Digest: ${startDate} to ${endDate}`,
+              body: digestBody,
+              labels: ['digest', 'automated', 'documentation']
+            });
+            
+            console.log(`Weekly digest created: #${digestIssue.data.number}`);
+            
+            // Optional: Close old digest issues to keep things tidy
+            const oldDigests = await github.rest.issues.listForRepo({
+              owner, repo,
+              labels: 'digest,automated',
+              state: 'open',
+              per_page: 10
+            });
+            
+            // Close all except the newest one
+            for (const oldDigest of oldDigests.data) {
+              if (oldDigest.number !== digestIssue.data.number) {
+                await github.rest.issues.update({
+                  owner, repo,
+                  issue_number: oldDigest.number,
+                  state: 'closed'
+                });
+                console.log(`Closed old digest: #${oldDigest.number}`);
+              }
+            }
