@@ -29,6 +29,18 @@ class Settings(BaseSettings):
     jwt_secret_key: str = secrets.token_urlsafe(32)
     jwt_algorithm: str = "HS256"
     jwt_expiration_hours: int = 24
+    
+    # CORS Configuration
+    allowed_origins: str = '["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:8000"]'
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Parse allowed_origins JSON string."""
+        import json
+        try:
+            return json.loads(self.allowed_origins)
+        except json.JSONDecodeError:
+            return []
 
     model_config = SettingsConfigDict(
         env_file=str(ENV_FILE),

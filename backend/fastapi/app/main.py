@@ -25,13 +25,21 @@ def create_app() -> FastAPI:
         redoc_url="/redoc"
     )
 
+    # Security Headers Middleware
+    from .middleware.security import SecurityHeadersMiddleware
+    app.add_middleware(SecurityHeadersMiddleware)
+
     # CORS middleware
+    # If in production, ensure we are not allowing all origins blindly unless intended
+    origins = settings.cors_origins
+    
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-API-Version"],
+        max_age=3600, # Cache preflight requests for 1 hour
     )
     
     # Version header middleware
