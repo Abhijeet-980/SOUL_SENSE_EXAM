@@ -56,8 +56,14 @@ def start_server(host="127.0.0.1", port=8000, reload=True):
 
     print(f"Running: {' '.join(uvicorn_cmd)}")
     
+    # Add project root to PYTHONPATH to ensure backend.core imports work
+    env = os.environ.copy()
+    project_root = str(Path(__file__).resolve().parent.parent.parent)
+    current_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{project_root}{os.pathsep}{current_pythonpath}"
+    
     try:
-        subprocess.run(uvicorn_cmd)
+        subprocess.run(uvicorn_cmd, env=env)
     except KeyboardInterrupt:
         print("\n\n👋 Server stopped")
 
