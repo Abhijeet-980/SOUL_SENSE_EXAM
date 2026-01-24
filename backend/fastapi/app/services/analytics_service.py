@@ -3,14 +3,9 @@ from sqlalchemy import func, case, distinct
 from sqlalchemy.orm import Session
 from typing import List, Dict, Tuple, Optional
 from datetime import datetime, timedelta
-import sys
-from pathlib import Path
 
-# Add project root to path
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent
-sys.path.insert(0, str(ROOT_DIR))
-
-from app.models import Score, User
+# Import models from root_models module (handles namespace collision)
+from app.root_models import Score, User
 
 
 class AnalyticsService:

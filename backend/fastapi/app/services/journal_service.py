@@ -10,21 +10,15 @@ Handles business logic for journal entries including:
 
 import json
 import os
-import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import List, Optional, Tuple
 
 from sqlalchemy import func, and_, or_
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-# Add project root to path for imports
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-
-from app.models import JournalEntry, User
+# Import models from root_models module (handles namespace collision)
+from app.root_models import JournalEntry, User
 
 
 # ============================================================================

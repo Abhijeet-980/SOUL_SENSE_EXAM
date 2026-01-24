@@ -3,18 +3,9 @@ from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker, Session
 from typing import List, Optional, Tuple
 from datetime import datetime
-# Add project root to path for imports
-import os
-import sys
-from pathlib import Path
 
-# Get project root
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-
-# Standard import for models
-from app.models import Base, Score, Response, Question, QuestionCategory
+# Import model classes from root_models module (handles namespace collision)
+from app.root_models import Base, Score, Response, Question, QuestionCategory
 
 from ..config import get_settings
 
