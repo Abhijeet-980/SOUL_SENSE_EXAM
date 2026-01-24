@@ -15,8 +15,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Prevent MIME type sniffing
         response.headers["X-Content-Type-Options"] = "nosniff"
         
-        # Enable XSS protection filter in browsers
-        response.headers["X-XSS-Protection"] = "1; mode=block"
         
         # Control referrer information
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"

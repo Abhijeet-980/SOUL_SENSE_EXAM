@@ -54,9 +54,16 @@ class BaseAppSettings(BaseSettings):
     def cors_origins(self) -> list[str]:
         """Parse allowed_origins JSON string."""
         import json
+        import logging
+        
+        logger = logging.getLogger("app.config")
+        
         try:
             return json.loads(self.allowed_origins)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.warning(
+                f"Failed to parse allowed_origins JSON: '{self.allowed_origins}'. Error: {e}"
+            )
             return []
 
     model_config = SettingsConfigDict(

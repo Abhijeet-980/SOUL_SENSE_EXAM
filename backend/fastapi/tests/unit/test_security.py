@@ -13,7 +13,6 @@ def test_security_headers_present():
     headers = response.headers
     assert headers["X-Frame-Options"] == "DENY"
     assert headers["X-Content-Type-Options"] == "nosniff"
-    assert headers["X-XSS-Protection"] == "1; mode=block"
     assert headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
 
 def test_cors_allowed_origin():
@@ -38,7 +37,7 @@ def test_cors_disallowed_origin():
             "Access-Control-Request-Method": "GET"
         }
     )
-    # Be default, FastAPI CORSMiddleware returns 400 for disallowed origins on preflight
+    # By default, FastAPI CORSMiddleware returns 400 for disallowed origins on preflight
     # or just doesn't send the allow-origin header for simple requests.
     # For OPTIONS (preflight), it usually returns 200 but without Access-Control-Allow-Origin
     # or 400 depending on implementation. 
