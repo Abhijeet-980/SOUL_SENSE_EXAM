@@ -32,6 +32,46 @@ jobs:
             // Current labels (lowercase for comparison)
             const currentLabels = issue.labels.map(l => l.name.toLowerCase());
 
+            // ==================== LABEL COLORS ====================
+            const labelColors = {
+              // Meta labels
+              'bug': { color: 'd73a4a', description: 'Something isn\'t working' },
+              'enhancement': { color: 'a2eeef', description: 'New feature or request' },
+              'good first issue': { color: '7057ff', description: 'Good for newcomers' },
+              'help wanted': { color: '008672', description: 'Extra attention is needed' },
+              'question': { color: 'd876e3', description: 'Further information is requested' },
+              'documentation': { color: '0075ca', description: 'Improvements or additions to documentation' },
+              // Domain labels
+              'frontend': { color: 'f9a825', description: 'Frontend/UI related' },
+              'backend': { color: '1565c0', description: 'Backend/API related' },
+              'mobile': { color: '00897b', description: 'Mobile app related' },
+              'desktop': { color: '5e35b1', description: 'Desktop app related' },
+              'cli': { color: '37474f', description: 'Command line interface' },
+              'ml': { color: 'ff6f00', description: 'Machine learning related' },
+              'testing': { color: '8bc34a', description: 'Testing related' },
+              'devops': { color: '607d8b', description: 'DevOps/CI-CD related' }
+            };
+
+            // Helper: Ensure label exists with color
+            async function ensureLabel(labelName) {
+              const config = labelColors[labelName];
+              if (!config) return;
+              
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: labelName });
+              } catch (error) {
+                if (error.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner, repo,
+                    name: labelName,
+                    color: config.color,
+                    description: config.description
+                  });
+                  console.log(`Created label: ${labelName} with color #${config.color}`);
+                }
+              }
+            }
+
             // ==================== DOMAIN LABELS ====================
             // Requires 2+ keyword matches to add label
             const domainConfig = {
@@ -147,6 +187,11 @@ jobs:
             // ==================== APPLY LABELS ====================
             if (labelsToAdd.length > 0) {
               try {
+                // Ensure all labels exist with proper colors
+                for (const labelName of labelsToAdd) {
+                  await ensureLabel(labelName);
+                }
+
                 await github.rest.issues.addLabels({
                   owner, repo,
                   issue_number: issue.number,
