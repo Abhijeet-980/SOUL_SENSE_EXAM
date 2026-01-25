@@ -2,6 +2,8 @@
 import tkinter as tk
 from tkinter import messagebox
 import logging
+import signal
+import atexit
 from app.ui.app_initializer import AppInitializer
 from app.ui.view_manager import ViewManager
 from app.auth.app_auth import AppAuth
@@ -9,9 +11,17 @@ from app.shutdown_handler import ShutdownHandler
 from app.ui.styles import UIStyles
 from app.startup_checks import run_all_checks, get_check_summary, CheckStatus
 from app.exceptions import IntegrityError
-from app.logger import setup_logging
-from app.error_handler import setup_global_exception_handlers
-from app.questions import initialize_questions
+from app.logger import setup_logging, get_logger
+from app.error_handler import setup_global_exception_handlers, get_error_handler
+from app.questions import initialize_questions, load_questions
+from app.i18n_manager import get_i18n
+from app.auth import AuthManager
+from app.ui.sidebar import SidebarNav
+from app.ui.assessments import AssessmentHub
+from app.ui.exam import ExamManager
+from app.ui.dashboard import AnalyticsDashboard
+from app.ui.journal import JournalFeature
+from app.ui.profile import UserProfileView
 from typing import Optional, Dict, Any
 
 class SoulSenseApp:
