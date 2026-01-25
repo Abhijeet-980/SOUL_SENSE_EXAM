@@ -1,4 +1,6 @@
 
+import signal
+import atexit
 import tkinter as tk
 from tkinter import messagebox
 import logging
@@ -13,6 +15,8 @@ from app.logger import setup_logging
 from app.error_handler import setup_global_exception_handlers
 from app.questions import initialize_questions
 from typing import Optional, Dict, Any
+from app.error_handler import get_error_handler, ErrorSeverity
+from app.logger import get_logger
 
 class SoulSenseApp:
     def __init__(self, root: tk.Tk) -> None:
