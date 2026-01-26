@@ -1,29 +1,29 @@
-
-import tkinter as tk
-from tkinter import messagebox, ttk
-import logging
 import signal
 import atexit
-from app.ui.sidebar import SidebarNav
+import tkinter as tk
+from tkinter import messagebox
+import logging
+from app.ui.app_initializer import AppInitializer
+from app.ui.view_manager import ViewManager
+from app.auth.app_auth import AppAuth
+from app.shutdown_handler import ShutdownHandler
 from app.ui.styles import UIStyles
-from app.ui.dashboard import AnalyticsDashboard
-from app.ui.journal import JournalFeature
-from app.ui.profile import UserProfileView
-from app.ui.exam import ExamManager
-from app.auth import AuthManager
-from app.i18n_manager import get_i18n
-from app.questions import load_questions
-from app.ui.assessments import AssessmentHub
 from app.startup_checks import run_all_checks, get_check_summary, CheckStatus
 from app.exceptions import IntegrityError
-from app.logger import get_logger, setup_logging
-from app.error_handler import (
-    get_error_handler,
-    setup_global_exception_handlers,
-    ErrorSeverity,
-)
-from typing import Optional, Dict, Any, List
-from app.db import get_session
+from app.logger import setup_logging
+from app.error_handler import setup_global_exception_handlers
+from app.questions import initialize_questions
+from typing import Optional, Dict, Any
+from app.error_handler import get_error_handler, ErrorSeverity
+from app.logger import get_logger
+from app.i18n_manager import get_i18n
+from app.auth import AuthManager
+from app.questions import load_questions
+from app.ui.sidebar import SidebarNav
+from app.ui.assessments import AssessmentHub
+from app.ui.exam import ExamManager
+from app.ui.dashboard import AnalyticsDashboard
+from app.ui.journal import JournalFeature
 
 class SoulSenseApp:
     def __init__(self, root: tk.Tk) -> None:
