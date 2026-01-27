@@ -19,6 +19,8 @@ class SidebarNav(tk.Frame):
         self.is_collapsed = False
         self.expanded_width = 250
         self.collapsed_width = 70
+        self.buttons = {}
+        self.active_id = None
         
         # Prevent auto-shrinking
         self.pack_propagate(False)
