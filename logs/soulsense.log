@@ -946,3 +946,108 @@ AttributeError: 'UserProfileView' object has no attribute '_render_export_view'.
 2026-01-27 12:05:04 - __main__ - INFO - [main.py:482] - Initiating graceful application shutdown...
 2026-01-27 12:05:04 - __main__ - INFO - [main.py:491] - Database session committed and removed successfully
 2026-01-27 12:05:04 - __main__ - INFO - [main.py:496] - Application shutdown complete
+2026-01-27 12:15:12 - root - INFO - [logger.py:85] - Logging initialized.
+2026-01-27 12:15:13 - app.startup_checks - INFO - [startup_checks.py:302] - Running startup integrity checks...
+2026-01-27 12:15:13 - app.startup_checks - INFO - [startup_checks.py:272] - Config integrity check passed
+2026-01-27 12:15:13 - app.startup_checks - INFO - [startup_checks.py:320] - ✓ config_integrity: Configuration is valid
+2026-01-27 12:15:13 - app.startup_checks - INFO - [startup_checks.py:195] - Required files check passed
+2026-01-27 12:15:13 - app.startup_checks - INFO - [startup_checks.py:320] - ✓ required_files: All required files and directories present
+2026-01-27 12:15:13 - app.startup_checks - INFO - [startup_checks.py:121] - Database schema check passed
+2026-01-27 12:15:13 - app.startup_checks - INFO - [startup_checks.py:320] - ✓ database_schema: All required tables present
+2026-01-27 12:15:13 - app.startup_checks - INFO - [startup_checks.py:345] - Integrity checks complete: 3 passed, 0 warnings, 0 failed
+2026-01-27 12:15:13 - __main__ - INFO - [main.py:540] - Startup Integrity Check Results:
+========================================
+✓ config_integrity: Configuration is valid
+✓ required_files: All required files and directories present
+✓ database_schema: All required tables present
+========================================
+2026-01-27 12:15:13 - __main__ - INFO - [main.py:570] - Preloading questions into memory...
+2026-01-27 12:15:13 - app.questions - INFO - [questions.py:52] - Loaded 0 active questions into memory.
+2026-01-27 12:15:14 - app.questions - INFO - [questions.py:87] - Questions not initialized, loading now...
+2026-01-27 12:15:14 - app.questions - INFO - [questions.py:52] - Loaded 0 active questions into memory.
+2026-01-27 12:16:09 - __main__ - ERROR - [main.py:362] - Failed to load journal summary: (sqlite3.OperationalError) no such column: journal_entries.user_id
+[SQL: SELECT journal_entries.id AS journal_entries_id, journal_entries.username AS journal_entries_username, journal_entries.user_id AS journal_entries_user_id, journal_entries.entry_date AS journal_entries_entry_date, journal_entries.content AS journal_entries_content, journal_entries.sentiment_score AS journal_entries_sentiment_score, journal_entries.emotional_patterns AS journal_entries_emotional_patterns, journal_entries.sleep_hours AS journal_entries_sleep_hours, journal_entries.sleep_quality AS journal_entries_sleep_quality, journal_entries.energy_level AS journal_entries_energy_level, journal_entries.work_hours AS journal_entries_work_hours, journal_entries.screen_time_mins AS journal_entries_screen_time_mins, journal_entries.stress_level AS journal_entries_stress_level, journal_entries.stress_triggers AS journal_entries_stress_triggers, journal_entries.daily_schedule AS journal_entries_daily_schedule, journal_entries.tags AS journal_entries_tags, journal_entries.is_deleted AS journal_entries_is_deleted, journal_entries.privacy_level AS journal_entries_privacy_level, journal_entries.word_count AS journal_entries_word_count 
+FROM journal_entries 
+WHERE journal_entries.username = ? ORDER BY journal_entries.entry_date DESC
+ LIMIT ? OFFSET ?]
+[parameters: ('aditya', 3, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-01-27 12:16:14 - app.services.exam_service - INFO - [exam_service.py:180] - Exam session started for user: aditya
+2026-01-27 12:16:20 - app.ml.clustering - INFO - [clustering.py:617] - Model loaded from C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\app\ml\models\clustering\emotional_profile_model.pkl
+2026-01-27 12:16:35 - app.db - ERROR - [db.py:49] - Database error: (sqlite3.OperationalError) no such column: journal_entries.user_id
+[SQL: SELECT journal_entries.id AS journal_entries_id, journal_entries.username AS journal_entries_username, journal_entries.user_id AS journal_entries_user_id, journal_entries.entry_date AS journal_entries_entry_date, journal_entries.content AS journal_entries_content, journal_entries.sentiment_score AS journal_entries_sentiment_score, journal_entries.emotional_patterns AS journal_entries_emotional_patterns, journal_entries.sleep_hours AS journal_entries_sleep_hours, journal_entries.sleep_quality AS journal_entries_sleep_quality, journal_entries.energy_level AS journal_entries_energy_level, journal_entries.work_hours AS journal_entries_work_hours, journal_entries.screen_time_mins AS journal_entries_screen_time_mins, journal_entries.stress_level AS journal_entries_stress_level, journal_entries.stress_triggers AS journal_entries_stress_triggers, journal_entries.daily_schedule AS journal_entries_daily_schedule, journal_entries.tags AS journal_entries_tags, journal_entries.is_deleted AS journal_entries_is_deleted, journal_entries.privacy_level AS journal_entries_privacy_level, journal_entries.word_count AS journal_entries_word_count 
+FROM journal_entries 
+WHERE journal_entries.username = ? ORDER BY journal_entries.entry_date DESC]
+[parameters: ('aditya',)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Traceback (most recent call last):
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 922, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: no such column: journal_entries.user_id
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\app\db.py", line 45, in safe_db_context
+    yield session
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\app\ui\journal.py", line 379, in update_inline_results
+    .all()
+     ^^^^^
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2693, in all
+    return self._iter().all()  # type: ignore
+           ^^^^^^^^^^^^
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2847, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2308, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2190, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\orm\context.py", line 293, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1416, in execute
+    return meth(
+           ^^^^^
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 517, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1639, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2344, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\Rushabh Mahajan\Documents\VS Code\SOUL_SENSE_EXAM\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 922, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such column: journal_entries.user_id
+[SQL: SELECT journal_entries.id AS journal_entries_id, journal_entries.username AS journal_entries_username, journal_entries.user_id AS journal_entries_user_id, journal_entries.entry_date AS journal_entries_entry_date, journal_entries.content AS journal_entries_content, journal_entries.sentiment_score AS journal_entries_sentiment_score, journal_entries.emotional_patterns AS journal_entries_emotional_patterns, journal_entries.sleep_hours AS journal_entries_sleep_hours, journal_entries.sleep_quality AS journal_entries_sleep_quality, journal_entries.energy_level AS journal_entries_energy_level, journal_entries.work_hours AS journal_entries_work_hours, journal_entries.screen_time_mins AS journal_entries_screen_time_mins, journal_entries.stress_level AS journal_entries_stress_level, journal_entries.stress_triggers AS journal_entries_stress_triggers, journal_entries.daily_schedule AS journal_entries_daily_schedule, journal_entries.tags AS journal_entries_tags, journal_entries.is_deleted AS journal_entries_is_deleted, journal_entries.privacy_level AS journal_entries_privacy_level, journal_entries.word_count AS journal_entries_word_count 
+FROM journal_entries 
+WHERE journal_entries.username = ? ORDER BY journal_entries.entry_date DESC]
+[parameters: ('aditya',)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-01-27 12:16:35 - __main__ - ERROR - [main.py:455] - Journal error: [E1002] A database error occurred.
+2026-01-27 12:16:42 - root - ERROR - [profile.py:597] - Error loading overview data: (sqlite3.OperationalError) no such column: journal_entries.user_id
+[SQL: SELECT journal_entries.id AS journal_entries_id, journal_entries.username AS journal_entries_username, journal_entries.user_id AS journal_entries_user_id, journal_entries.entry_date AS journal_entries_entry_date, journal_entries.content AS journal_entries_content, journal_entries.sentiment_score AS journal_entries_sentiment_score, journal_entries.emotional_patterns AS journal_entries_emotional_patterns, journal_entries.sleep_hours AS journal_entries_sleep_hours, journal_entries.sleep_quality AS journal_entries_sleep_quality, journal_entries.energy_level AS journal_entries_energy_level, journal_entries.work_hours AS journal_entries_work_hours, journal_entries.screen_time_mins AS journal_entries_screen_time_mins, journal_entries.stress_level AS journal_entries_stress_level, journal_entries.stress_triggers AS journal_entries_stress_triggers, journal_entries.daily_schedule AS journal_entries_daily_schedule, journal_entries.tags AS journal_entries_tags, journal_entries.is_deleted AS journal_entries_is_deleted, journal_entries.privacy_level AS journal_entries_privacy_level, journal_entries.word_count AS journal_entries_word_count 
+FROM journal_entries 
+WHERE journal_entries.username = ? ORDER BY journal_entries.entry_date DESC
+ LIMIT ? OFFSET ?]
+[parameters: ('aditya', 3, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2026-01-27 12:16:47 - __main__ - ERROR - [main.py:362] - Failed to load journal summary: (sqlite3.OperationalError) no such column: journal_entries.user_id
+[SQL: SELECT journal_entries.id AS journal_entries_id, journal_entries.username AS journal_entries_username, journal_entries.user_id AS journal_entries_user_id, journal_entries.entry_date AS journal_entries_entry_date, journal_entries.content AS journal_entries_content, journal_entries.sentiment_score AS journal_entries_sentiment_score, journal_entries.emotional_patterns AS journal_entries_emotional_patterns, journal_entries.sleep_hours AS journal_entries_sleep_hours, journal_entries.sleep_quality AS journal_entries_sleep_quality, journal_entries.energy_level AS journal_entries_energy_level, journal_entries.work_hours AS journal_entries_work_hours, journal_entries.screen_time_mins AS journal_entries_screen_time_mins, journal_entries.stress_level AS journal_entries_stress_level, journal_entries.stress_triggers AS journal_entries_stress_triggers, journal_entries.daily_schedule AS journal_entries_daily_schedule, journal_entries.tags AS journal_entries_tags, journal_entries.is_deleted AS journal_entries_is_deleted, journal_entries.privacy_level AS journal_entries_privacy_level, journal_entries.word_count AS journal_entries_word_count 
+FROM journal_entries 
+WHERE journal_entries.username = ? ORDER BY journal_entries.entry_date DESC
+ LIMIT ? OFFSET ?]
+[parameters: ('aditya', 3, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
