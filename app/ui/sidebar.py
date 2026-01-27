@@ -324,7 +324,8 @@ class SidebarNav(tk.Frame):
     def _animate_sidebar(self, target_width):
         """Step-based width animation"""
         current_width = self.winfo_width()
-        step = 15 # Optimized for smoother performance (was 20)
+        # Balanced speed: 30px step @ 20ms delay ~ 1.5px/ms
+        step = 30
         
         if abs(current_width - target_width) <= step:
             self.configure(width=target_width)
