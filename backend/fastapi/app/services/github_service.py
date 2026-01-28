@@ -67,6 +67,12 @@ class GitHubService:
                 # Multi-stage request (stats being calculated)
                 print(f"[WAIT] GitHub API: Stats are being calculated for {url}. Try again soon.")
                 return []
+            elif response.status_code == 429:
+                # Secondary rate limit / abuse detection
+                retry_after = response.headers.get("Retry-After", "60")
+                print(f"[WARN] GitHub Rate Limit Triggered. Retry-After: {retry_after}s")
+                # Return empty to allow graceful UI fail, or we could sleep and retry
+                return None
             else:
                 print(f"[ERR] GitHub API Error [{response.status_code}] for {url}")
                 print(f"   Response: {response.text}")
@@ -74,6 +80,10 @@ class GitHubService:
         except Exception as e:
             print(f"[ERR] GitHub Request Failed: {e}")
             return None
+
+    async def _get_with_semaphore(self, endpoint: str, semaphore: asyncio.Semaphore) -> Any:
+        async with semaphore:
+            return await self._get(endpoint)
 
     async def get_repo_stats(self) -> Dict[str, Any]:
         """Fetch general repository statistics with high-impact demo defaults."""
@@ -357,15 +367,15 @@ class GitHubService:
 
             links_map = {}
             
-            # 4. Parallel fetch details (Limit to 50 for coverage)
-            semaphore = asyncio.Semaphore(10)
+            # 4. Parallel fetch details (Throttled to 3 to avoid abuse limits)
+            semaphore = asyncio.Semaphore(3)
             
             async def fetch_commit_details(sha):
                 async with semaphore:
                     return await self._get(f"/repos/{self.owner}/{self.repo}/commits/{sha}")
 
             # Increased to 50 for much better density
-            process_count = min(len(commits_list), 50) 
+            process_count = min(len(commits_list), 40) # Slightly reduced for safety
             tasks = [fetch_commit_details(c['sha']) for c in commits_list[:process_count]]
             detailed_commits = await asyncio.gather(*tasks)
 
@@ -428,10 +438,10 @@ class GitHubService:
             # Map each directory to a count of changes
             dir_counts = {}
             
-            # 2. Parallel fetch details (Limit to 50 for better coverage)
-            semaphore = asyncio.Semaphore(10)
-            process_count = min(len(commits_list), 50)
-            tasks = [self._get(f"/repos/{self.owner}/{self.repo}/commits/{c['sha']}") for c in commits_list[:process_count]]
+            # 2. Parallel fetch details (Throttled to 3 to avoid abuse limits)
+            semaphore = asyncio.Semaphore(3)
+            process_count = min(len(commits_list), 40)
+            tasks = [self._get_with_semaphore(f"/repos/{self.owner}/{self.repo}/commits/{c['sha']}", semaphore) for c in commits_list[:process_count]]
             detailed_commits = await asyncio.gather(*tasks)
 
             print(f"[INFO] Sunburst: Processing {len([d for d in detailed_commits if d])} successful commits...")
