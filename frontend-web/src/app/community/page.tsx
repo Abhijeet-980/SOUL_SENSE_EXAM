@@ -128,7 +128,7 @@ export default function CommunityDashboard() {
           className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6"
         >
           <div className="space-y-2">
-            <h1 className="text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 dark:from-blue-400 dark:via-indigo-400 dark:to-purple-400">
+            <h1 className="text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 dark:from-sky-400 dark:via-blue-400 dark:to-indigo-400 drop-shadow-sm">
               COMMUNITY_PULSE
             </h1>
             <p className="text-slate-500 dark:text-slate-400 text-lg font-medium max-w-xl">
@@ -142,11 +142,15 @@ export default function CommunityDashboard() {
             whileTap={{ scale: 0.95 }}
             href="https://github.com/nupurmadaan04/SOUL_SENSE_EXAM/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22"
             target="_blank"
-            className="group px-8 py-4 bg-slate-950 dark:bg-white text-white dark:text-slate-950 font-black rounded-2xl shadow-2xl flex items-center gap-2 hover:bg-blue-600 dark:hover:bg-blue-500 hover:text-white transition-all overflow-hidden relative"
+            className="group px-8 py-4 bg-slate-950 dark:bg-white text-white dark:text-slate-950 font-black rounded-2xl shadow-2xl flex items-center gap-2 transition-all overflow-hidden relative border border-transparent hover:border-blue-500/20 dark:hover:border-blue-400/20"
           >
-            <span className="relative z-10">CONTRIBUTE_NOW</span>
-            <span className="relative z-10">✨</span>
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <span className="relative z-10 group-hover:scale-105 transition-transform duration-300">
+              CONTRIBUTE_NOW
+            </span>
+            <span className="relative z-10 group-hover:rotate-12 transition-transform duration-300">
+              ✨
+            </span>
+            <div className="absolute inset-0 bg-blue-500/10 dark:bg-blue-400/10 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           </motion.a>
         </motion.div>
 
