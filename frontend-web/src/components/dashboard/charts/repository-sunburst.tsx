@@ -70,20 +70,20 @@ export function RepositorySunburst({ data }: { data: SunburstData[] }) {
   };
 
   return (
-    <Card className="col-span-full lg:col-span-2 bg-white border-slate-200 shadow-xl rounded-3xl overflow-hidden group">
+    <Card className="col-span-full lg:col-span-2 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border-slate-200 dark:border-white/5 shadow-xl rounded-3xl overflow-hidden group transition-all duration-300">
       <CardHeader className="pb-2">
-        <CardTitle className="text-lg font-black tracking-tighter flex items-center gap-2 text-slate-900">
-          <FolderTree className="h-4 w-4 text-indigo-600" />
+        <CardTitle className="text-lg font-black tracking-tighter flex items-center gap-2 text-slate-900 dark:text-white">
+          <FolderTree className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
           DIRECTORY_HEATMAP
         </CardTitle>
-        <CardDescription className="text-xs font-medium text-slate-500">
+        <CardDescription className="text-xs font-medium text-slate-500 dark:text-slate-400">
           Hierarchy of repository attention
         </CardDescription>
       </CardHeader>
 
-      <div className="px-6 py-2 border-y border-slate-100 bg-indigo-50/50">
-        <p className="text-[10px] leading-relaxed text-slate-600 font-medium italic">
-          <span className="text-indigo-600 font-bold uppercase tracking-tighter mr-2">
+      <div className="px-6 py-2 border-y border-slate-100 dark:border-white/5 bg-indigo-50/50 dark:bg-indigo-900/20">
+        <p className="text-[10px] leading-relaxed text-slate-600 dark:text-slate-400 font-medium italic">
+          <span className="text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-tighter mr-2">
             Core Insight:
           </span>
           Visualizes **where the energy is going**. Inner rings are root folders; outer rings are
@@ -109,7 +109,7 @@ export function RepositorySunburst({ data }: { data: SunburstData[] }) {
                   key={`cell-l1-${index}`}
                   fill={entry.color}
                   fillOpacity={entry.opacity}
-                  className="hover:fill-opacity-100 transition-all cursor-crosshair"
+                  className="hover:fill-opacity-100 transition-all cursor-crosshair stroke-1 stroke-white/20"
                 />
               ))}
             </Pie>
@@ -129,11 +129,11 @@ export function RepositorySunburst({ data }: { data: SunburstData[] }) {
                   key={`cell-l2-${index}`}
                   fill={entry.color}
                   fillOpacity={entry.opacity}
-                  className="hover:fill-opacity-100 transition-all cursor-crosshair"
+                  className="hover:fill-opacity-100 transition-all cursor-crosshair stroke-1 stroke-white/20"
                 />
               ))}
             </Pie>
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
           </PieChart>
         </ResponsiveContainer>
 
@@ -144,8 +144,8 @@ export function RepositorySunburst({ data }: { data: SunburstData[] }) {
         {/* Legend Overlay */}
         <div className="absolute top-4 right-4 group/info relative">
           <Info className="h-4 w-4 text-slate-300 hover:text-indigo-400 cursor-help transition-colors" />
-          <div className="absolute top-6 right-0 w-48 p-2 rounded-xl bg-white border border-slate-100 shadow-2xl opacity-0 group-hover/info:opacity-100 transition-opacity z-50 pointer-events-none">
-            <p className="text-[9px] text-slate-500 leading-tight">
+          <div className="absolute top-6 right-0 w-48 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-2xl opacity-0 group-hover/info:opacity-100 transition-opacity z-50 pointer-events-none">
+            <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
               Outer ring represents sub-directories. Inner ring shows parent modules. The wider the
               segment, the more commits in that area.
             </p>

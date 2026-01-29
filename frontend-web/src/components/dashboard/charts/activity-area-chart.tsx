@@ -37,10 +37,12 @@ export function ActivityAreaChart({ data }: { data: any[] }) {
   }
 
   return (
-    <Card className="h-full backdrop-blur-xl bg-white/60 dark:bg-slate-900/60 border-white/20 shadow-xl rounded-2xl overflow-hidden">
+    <Card className="h-full backdrop-blur-xl bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all rounded-2xl overflow-hidden group">
       <CardHeader>
-        <CardTitle className="text-xl font-bold">Engineering Velocity</CardTitle>
-        <CardDescription>
+        <CardTitle className="text-lg font-bold text-slate-900 dark:text-white leading-none">
+          Engineering Velocity
+        </CardTitle>
+        <CardDescription className="text-xs text-slate-500 mt-1">
           Commit frequency aggregated by week during the project&apos;s active lifespan
         </CardDescription>
       </CardHeader>
@@ -58,28 +60,37 @@ export function ActivityAreaChart({ data }: { data: any[] }) {
               <XAxis
                 dataKey="date"
                 tickFormatter={(str) => format(parseISO(str), 'MMM d')}
-                stroke="#64748b"
+                stroke="#94a3b8"
                 fontSize={10}
                 tickLine={false}
                 axisLine={false}
                 minTickGap={30}
+                fontWeight={500}
               />
               <YAxis
-                stroke="#64748b"
+                stroke="#94a3b8"
                 fontSize={10}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(val) => `${val}`}
+                fontWeight={500}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: '#0f172a',
-                  border: '1px solid #1e293b',
+                  backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
                   borderRadius: '12px',
-                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2)',
+                  backdropFilter: 'blur(8px)',
                 }}
                 itemStyle={{ color: '#3B82F6', fontSize: '12px', fontWeight: 'bold' }}
-                labelStyle={{ color: '#64748b', fontSize: '10px', marginBottom: '4px' }}
+                labelStyle={{
+                  color: '#94a3b8',
+                  fontSize: '10px',
+                  marginBottom: '4px',
+                  fontWeight: 'bold',
+                  textTransform: 'uppercase',
+                }}
               />
               <Area
                 type="monotone"

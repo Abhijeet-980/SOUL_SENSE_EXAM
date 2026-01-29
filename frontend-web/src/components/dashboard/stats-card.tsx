@@ -33,6 +33,31 @@ export function StatsCard({
     }
   };
 
+  const getThemeStyles = () => {
+    switch (color) {
+      case 'purple':
+        return {
+          bg: 'bg-purple-500/10',
+          text: 'text-purple-600 dark:text-purple-400',
+          border: 'group-hover:border-purple-500/30',
+        };
+      case 'cyan':
+        return {
+          bg: 'bg-cyan-500/10',
+          text: 'text-cyan-600 dark:text-cyan-400',
+          border: 'group-hover:border-cyan-500/30',
+        };
+      default:
+        return {
+          bg: 'bg-blue-500/10',
+          text: 'text-blue-600 dark:text-blue-400',
+          border: 'group-hover:border-blue-500/30',
+        };
+    }
+  };
+
+  const theme = getThemeStyles();
+
   return (
     <motion.div
       whileHover={{ y: -4, transition: { duration: 0.2 } }}
@@ -42,30 +67,20 @@ export function StatsCard({
     >
       <Card
         className={cn(
-          'backdrop-blur-xl bg-opacity-60 dark:bg-black/60 border-white/20 hover:border-blue-500/40 transition-all shadow-xl group relative overflow-hidden rounded-2xl',
+          'backdrop-blur-xl bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-white/5 transition-all shadow-sm hover:shadow-xl group relative overflow-hidden rounded-2xl',
+          theme.border,
           className
         )}
       >
-        {/* Decorative Background Flare */}
-        <div
-          className={cn(
-            'absolute -right-4 -top-4 w-24 h-24 blur-3xl opacity-10 rounded-full',
-            color === 'blue' ? 'bg-blue-500' : color === 'purple' ? 'bg-purple-500' : 'bg-cyan-500'
-          )}
-        />
-
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
           <CardTitle className="text-sm font-semibold tracking-wide text-slate-500 dark:text-slate-400 uppercase">
             {title}
           </CardTitle>
           <div
             className={cn(
-              'p-2 rounded-xl bg-opacity-10 transition-colors group-hover:bg-opacity-20',
-              color === 'blue'
-                ? 'bg-blue-500 text-blue-500'
-                : color === 'purple'
-                  ? 'bg-purple-500 text-purple-500'
-                  : 'bg-cyan-500 text-cyan-500'
+              'p-2 rounded-xl transition-colors group-hover:bg-opacity-80',
+              theme.bg,
+              theme.text
             )}
           >
             <Icon className="h-5 w-5" />
@@ -73,19 +88,17 @@ export function StatsCard({
         </CardHeader>
         <CardContent className="relative z-10">
           <div className="flex items-baseline gap-2">
-            <div className="text-3xl font-black tracking-tight text-foreground">{value}</div>
+            <div className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+              {value}
+            </div>
             {trend && (
-              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/50 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-full border border-slate-200 dark:border-white/5">
                 {getTrendIcon()}
-                <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">
-                  Live
-                </span>
               </div>
             )}
           </div>
           {description && (
             <p className="text-xs font-medium text-slate-500 dark:text-slate-500 mt-2 flex items-center gap-1">
-              <span className="w-1 h-1 rounded-full bg-blue-500/50" />
               {description}
             </p>
           )}

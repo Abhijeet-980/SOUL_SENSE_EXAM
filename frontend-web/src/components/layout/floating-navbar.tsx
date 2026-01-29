@@ -55,13 +55,19 @@ export function FloatingNavbar() {
         animate={{
           y: isVisible ? 0 : -120,
           opacity: isVisible ? 1 : 0,
+          scale: isScrolled ? 0.95 : 1,
         }}
-        transition={{ duration: 0.3, ease: 'easeInOut' }}
+        transition={{
+          type: 'spring',
+          stiffness: 260,
+          damping: 20,
+          opacity: { duration: 0.2 },
+        }}
         className={cn(
-          'pointer-events-auto flex items-center justify-between px-2 md:px-3 py-1.5 rounded-full border transition-all duration-500',
+          'pointer-events-auto flex items-center justify-between px-2 md:px-3 rounded-full border',
           'bg-white/70 dark:bg-slate-950/80 backdrop-blur-xl border-slate-200/50 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.4)]',
           'min-w-[320px] md:min-w-[640px] lg:min-w-[800px]',
-          isScrolled ? 'scale-95 py-1' : 'scale-100'
+          isScrolled ? 'py-1' : 'py-1.5'
         )}
       >
         {/* LEFT: Branding (Minimalist) */}

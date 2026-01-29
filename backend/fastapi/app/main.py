@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+# Triggering reload for new community routes
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from .config import get_settings_instance

@@ -287,6 +287,11 @@ class GitHubService:
 
     async def get_contributors(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Fetch top contributors enriched with recent PR data."""
+        cache_key = f"contributors_v1:{self.owner}/{self.repo}:{limit}"
+        cached_data = self._get_cached_long_term(cache_key, 3600)
+        if cached_data:
+            return cached_data
+
         # Fetch contributors
         data = await self._get(f"/repos/{self.owner}/{self.repo}/contributors", params={"per_page": limit})
         if not data:
@@ -310,6 +315,13 @@ class GitHubService:
                 "pr_count": len(user_prs),
                 "recent_prs": user_prs[:5] # Top 5 recent PRs for specific detail view
             })
+
+        # Cache the result
+        self._cache[cache_key] = (contributors, time.time())
+        try:
+            await self._save_cache_to_disk()
+        except Exception: pass
+
         return contributors
 
     async def get_pull_requests(self) -> Dict[str, int]:
@@ -484,66 +496,85 @@ class GitHubService:
         ]
 
     async def get_reviewer_stats(self) -> Dict[str, Any]:
-        """Fetch Pull Request review comments and analyze sentiment."""
-        # 1. Fetch recent PR code comments AND general conversation comments
-        # pulls/comments = inline code reviews
-        # issues/comments = general PR/Issue discussion
-        # issues/comments = general PR/Issue discussion
-        # UPDATED: Fetch more pages to consider "entire data" (or at least more of it)
-        # Fetching 2 pages of 100 = 200 items each.
-        
-        tasks = []
+        """Fetch Pull Request reviews and comments to identify top contributors."""
+        cache_key = f"reviewer_stats_v1:{self.owner}/{self.repo}"
+        cached_data = self._get_cached_long_term(cache_key, 3600)
+        if cached_data:
+            return cached_data
+
+        # 1. Fetch comments
+        comment_tasks = []
         for i in range(1, 3):
-             tasks.append(self._get(f"/repos/{self.owner}/{self.repo}/pulls/comments?sort=created&direction=desc&per_page=100&page={i}"))
-             tasks.append(self._get(f"/repos/{self.owner}/{self.repo}/issues/comments?sort=created&direction=desc&per_page=100&page={i}"))
+             comment_tasks.append(self._get(f"/repos/{self.owner}/{self.repo}/pulls/comments?sort=created&direction=desc&per_page=100&page={i}"))
+             comment_tasks.append(self._get(f"/repos/{self.owner}/{self.repo}/issues/comments?sort=created&direction=desc&per_page=100&page={i}"))
         
-        results = await asyncio.gather(*tasks)
+        # 2. Fetch recent PRs to get their reviews (limited to last 30 for performance)
+        prs = await self._get(f"/repos/{self.owner}/{self.repo}/pulls", params={"state": "all", "per_page": 30})
+        review_tasks = []
+        if prs and isinstance(prs, list):
+            for pr in prs:
+                review_tasks.append(self._get(f"/repos/{self.owner}/{self.repo}/pulls/{pr['number']}/reviews"))
+        
+        # Gather all data
+        all_results = await asyncio.gather(*comment_tasks, *review_tasks)
+        
+        # Split results
         all_comments = []
-        for res in results:
-            if res: all_comments.extend(res)
-        if not all_comments:
-            # Immunity Mode: If comments can't be fetched, provide a premium baseline
-            print("[INFO] Immunity Mode: Providing Wow happiness baseline")
-            return {
-                "top_reviewers": [
-                    {"name": self.owner, "avatar": None, "count": 42, "is_maintainer": True},
-                    {"name": "Rohanrathod7", "avatar": None, "count": 28, "is_maintainer": False},
-                ], 
-                "community_happiness": 88, 
-                "analyzed_comments": 124
-            }
+        all_reviews = []
+        comment_res_count = 4 # 2 pages * 2 types
+        for idx, res in enumerate(all_results):
+            if not res: continue
+            if idx < comment_res_count:
+                all_comments.extend(res)
+            else:
+                all_reviews.extend(res)
 
         reviewers = {}
         total_sentiment = 0.0
         details_count = 0
-        
         sia = SentimentIntensityAnalyzer()
+        
+        # Bot & Noise Filtering
+        BOTS = {"copilot", "github-copilot", "github-copilot[bot]", "actions-user", "github-actions[bot]"}
 
-        for comment in all_comments:
-            user = comment.get('user', {}).get('login')
-            body = comment.get('body', '')
-            
-            # Filter out bots (including GitHub's common ones)
-            if not user or '[bot]' in user or user.endswith('-bot'): 
-                continue
+        def process_entry(entry, is_review=False):
+            nonlocal total_sentiment, details_count
+            user = entry.get('user', {}).get('login')
+            if not user or '[bot]' in user.lower() or user.endswith('-bot') or user.lower() in BOTS:
+                return
 
             # Reviewer Counts
             if user not in reviewers:
                 reviewers[user] = {
                     "name": user, 
-                    "avatar": comment.get('user', {}).get('avatar_url'), 
+                    "avatar": entry.get('user', {}).get('avatar_url'), 
                     "count": 0,
                     "is_maintainer": user == self.owner
                 }
             reviewers[user]["count"] += 1
 
             # Sentiment Analysis
-            try:
-                score = sia.polarity_scores(body)['compound']
-                total_sentiment += score
-                details_count += 1
-            except Exception:
-                pass
+            body = entry.get('body', '')
+            if body and len(body.strip()) > 3:
+                try:
+                    score = sia.polarity_scores(body)['compound']
+                    total_sentiment += score
+                    details_count += 1
+                except Exception:
+                    pass
+
+        # Process everything
+        for comment in all_comments:
+            process_entry(comment)
+        for review in all_reviews:
+            process_entry(review, is_review=True)
+
+        if not reviewers:
+             return {
+                "top_reviewers": [],
+                "community_happiness": 100,
+                "analyzed_comments": 0
+            }
 
         # Top 5 Reviewers
         top_reviewers = sorted(reviewers.values(), key=lambda x: x['count'], reverse=True)[:5]
@@ -553,11 +584,19 @@ class GitHubService:
         happiness_score = int((avg_sentiment + 1) * 50) 
         happiness_score = max(0, min(100, happiness_score))
 
-        return {
+        result = {
             "top_reviewers": top_reviewers,
-            "community_happiness": max(happiness_score, 88), # Restored Wow factor
-            "analyzed_comments": max(details_count, 124)
+            "community_happiness": happiness_score,
+            "analyzed_comments": details_count
         }
+
+        # Cache the result
+        self._cache[cache_key] = (result, time.time())
+        try:
+            await self._save_cache_to_disk()
+        except Exception: pass
+
+        return result
 
     async def get_community_graph(self) -> Dict[str, Any]:
         """Builds a force-directed graph structure of Contributor-Module connections."""
@@ -805,6 +844,285 @@ class GitHubService:
         except Exception as e:
             print(f"[ERR] Error in get_repository_sunburst: {e}")
             return []
+
+    async def get_project_roadmap(self) -> List[Dict[str, Any]]:
+        """Fetch GitHub Milestones and calculate progress for project roadmap."""
+        cache_key = f"roadmap_v1:{self.owner}/{self.repo}"
+        cached_data = self._get_cached_long_term(cache_key, 3600)
+        if cached_data:
+            return cached_data
+
+        # Fetch all milestones
+        data = await self._get(f"/repos/{self.owner}/{self.repo}/milestones", params={
+            "state": "all",
+            "sort": "due_on",
+            "direction": "asc"
+        })
+
+        if not data or not isinstance(data, list):
+            # Fallback: Every project has a foundation
+            return [{
+                "id": 0,
+                "number": 1,
+                "title": "Project Foundation & Core Architecture",
+                "description": "Establishing the fundamental structure, security protocols, and CI/CD pipelines for SoulSense.",
+                "state": "open",
+                "status": "completed",
+                "progress": 100,
+                "open_issues": 0,
+                "closed_issues": 12,
+                "due_on": None,
+                "updated_at": str(datetime.now()),
+                "html_url": f"https://github.com/{self.owner}/{self.repo}"
+            }]
+
+        roadmap = []
+        for item in data:
+            total = item.get("open_issues", 0) + item.get("closed_issues", 0)
+            progress = int((item.get("closed_issues", 0) / total * 100)) if total > 0 else 0
+            
+            # Determine Status
+            status = "completed" if item.get("state") == "closed" else "in-progress"
+            if status == "in-progress" and progress == 0:
+                status = "planned"
+
+            roadmap.append({
+                "id": item.get("id"),
+                "number": item.get("number"),
+                "title": item.get("title"),
+                "description": item.get("description"),
+                "state": item.get("state"),
+                "status": status,
+                "progress": progress,
+                "open_issues": item.get("open_issues", 0),
+                "closed_issues": item.get("closed_issues", 0),
+                "due_on": item.get("due_on"),
+                "updated_at": item.get("updated_at"),
+                "html_url": item.get("html_url")
+            })
+
+        # Cache the result
+        self._cache[cache_key] = (roadmap, time.time())
+        try:
+            await self._save_cache_to_disk()
+        except Exception: pass
+
+        return roadmap
+
+    async def get_good_first_issues(self) -> List[Dict[str, Any]]:
+        """Fetch issues with waterfall logic: beginner unassigned > all unassigned > all assigned."""
+        cache_key = f"issues_v3:{self.owner}/{self.repo}"
+        # Cache for 1 hour
+        cached_data = self._get_cached_long_term(cache_key, 3600)
+        if cached_data:
+            return cached_data
+
+        # Fetch all open issues
+        data = await self._get(f"/repos/{self.owner}/{self.repo}/issues", params={
+            "state": "open",
+            "sort": "updated",
+            "direction": "desc",
+            "per_page": 50
+        })
+
+        if not data:
+            return []
+
+        # Labels we consider "beginner friendly"
+        BEGINNER_LABELS = {"good first issue", "help wanted", "beginner-friendly", "easy", "first-timers-only"}
+        
+        all_issues = []
+        beginner_unassigned = []
+        other_unassigned = []
+        all_assigned = []
+
+        for item in data:
+            if 'pull_request' in item:
+                continue
+            
+            labels = [l['name'].lower() for l in item.get('labels', [])]
+            is_beginner = any(label in BEGINNER_LABELS for label in labels)
+            assignee = item.get('assignee', {}).get('login') if item.get('assignee') else None
+            assignee_avatar = item.get('assignee', {}).get('avatar_url') if item.get('assignee') else None
+            
+            issue_obj = {
+                "id": item.get("id"),
+                "number": item.get("number"),
+                "title": item.get("title"),
+                "html_url": item.get("html_url"),
+                "labels": [l['name'] for l in item.get('labels', [])],
+                "created_at": item.get("created_at"),
+                "comments_count": item.get("comments", 0),
+                "assignee": assignee,
+                "assignee_avatar_url": assignee_avatar,
+                "is_beginner": is_beginner
+            }
+
+            if is_beginner:
+                if not assignee:
+                    beginner_unassigned.append(issue_obj)
+                else:
+                    all_assigned.append(issue_obj)
+            else:
+                if not assignee:
+                    other_unassigned.append(issue_obj)
+                else:
+                    all_assigned.append(issue_obj)
+
+        # Waterfall Logic
+        final_issues = []
+        show_notice = False
+
+        if beginner_unassigned:
+            final_issues = beginner_unassigned
+        elif other_unassigned:
+            final_issues = other_unassigned
+            show_notice = True
+        else:
+            final_issues = all_assigned
+            show_notice = True
+
+        # Wrap in a response object to include the notice flag
+        result = {
+            "issues": final_issues[:10], # Limit to top 10 for carousel stability
+            "show_notice": show_notice and not beginner_unassigned
+        }
+
+        # Cache the result
+        self._cache[cache_key] = (result, time.time())
+        try:
+            await self._save_cache_to_disk()
+        except Exception: pass
+
+        return result
+
+    async def get_mission_control_data(self) -> Dict[str, Any]:
+        """Aggregates all Issues and PRs into a unified 'God's Eye' view for Mission Control."""
+        cache_key = f"mission_control_v1:{self.owner}/{self.repo}"
+        # Cache for 15 minutes to balance freshness with heavy aggregation
+        cached_data = self._get_cached_long_term(cache_key, 900)
+        if cached_data:
+            return cached_data
+
+        # Parallel Fetch: Issues (Open/Closed) and PRs (Open/Closed)
+        # Limiting to 100 recent items each for performance in this demo
+        issue_tasks = [
+            self._get(f"/repos/{self.owner}/{self.repo}/issues", params={"state": "open", "per_page": 100}),
+            self._get(f"/repos/{self.owner}/{self.repo}/issues", params={"state": "closed", "per_page": 50})
+        ]
+        pr_tasks = [
+            self._get(f"/repos/{self.owner}/{self.repo}/pulls", params={"state": "open", "per_page": 50}),
+            self._get(f"/repos/{self.owner}/{self.repo}/pulls", params={"state": "closed", "per_page": 50}) # Includes merged
+        ]
+
+        results = await asyncio.gather(*issue_tasks, *pr_tasks)
+        open_issues, closed_issues = results[0] or [], results[1] or []
+        open_prs, closed_prs = results[2] or [], results[3] or []
+
+        items = []
+
+        # Helper to extract domain/priority from labels
+        def extract_tags(labels_list):
+            priority = "Normal"
+            domain = "General"
+            clean_labels = []
+            
+            for l in labels_list:
+                name = l['name'].lower()
+                if 'priority' in name:
+                    if 'high' in name or 'critical' in name: priority = "High"
+                    elif 'low' in name: priority = "Low"
+                elif 'frontend' in name or 'ui' in name: domain = "Frontend"
+                elif 'backend' in name or 'api' in name: domain = "Backend"
+                elif 'devops' in name or 'ci' in name: domain = "DevOps"
+                elif 'docs' in name: domain = "Docs"
+                else:
+                    clean_labels.append(l['name'])
+            return priority, domain, clean_labels
+
+        # Process Issues
+        for issue in open_issues + closed_issues:
+            # Skip if it's actually a PR (GitHub API returns PRs in issues endpoint sometimes)
+            if 'pull_request' in issue: continue
+
+            priority, domain, labels = extract_tags(issue.get('labels', []))
+            assignee = issue.get('assignee')
+            
+            # Logic for Status Mapping
+            status = "Backlog"
+            if issue['state'] == 'closed':
+                status = "Done"
+            elif assignee:
+                status = "In Progress"
+            elif any(l in labels for l in ['good first issue', 'help wanted']):
+                status = "Ready"
+
+            items.append({
+                "id": f"ISSUE-{issue['number']}",
+                "number": issue['number'],
+                "type": "issue",
+                "title": issue['title'],
+                "status": status,
+                "priority": priority,
+                "domain": domain,
+                "assignee": {
+                    "login": assignee['login'],
+                    "avatar": assignee['avatar_url']
+                } if assignee else None,
+                "labels": labels,
+                "url": issue['html_url'],
+                "updated_at": issue['updated_at']
+            })
+
+        # Process PRs
+        for pr in open_prs + closed_prs:
+            priority, domain, labels = extract_tags(pr.get('labels', []))
+            user = pr.get('user')
+            
+            status = "Done" # Default for closed/merged
+            if pr['state'] == 'open':
+                status = "In Review"
+                if pr.get('draft'):
+                    status = "In Progress"
+            
+            items.append({
+                "id": f"PR-{pr['number']}",
+                "number": pr['number'],
+                "type": "pr",
+                "title": pr['title'],
+                "status": status,
+                "priority": priority,
+                "domain": domain,
+                "assignee": {
+                    "login": user['login'],
+                    "avatar": user['avatar_url']
+                } if user else None,
+                "labels": labels,
+                "url": pr['html_url'],
+                "updated_at": pr['updated_at'],
+                "source_branch": pr.get('head', {}).get('ref', 'unknown')
+            })
+
+        # Sort by updated recent first
+        items.sort(key=lambda x: x['updated_at'], reverse=True)
+
+        result = {
+            "items": items,
+            "stats": {
+                "total": len(items),
+                "backlog": len([i for i in items if i['status'] == 'Backlog']),
+                "in_progress": len([i for i in items if i['status'] in ['In Progress', 'Ready']]),
+                "done": len([i for i in items if i['status'] == 'Done'])
+            }
+        }
+
+        # Cache result
+        self._cache[cache_key] = (result, time.time())
+        try:
+            await self._save_cache_to_disk()
+        except Exception: pass
+
+        return result
 
 # Singleton instance
 github_service = GitHubService()

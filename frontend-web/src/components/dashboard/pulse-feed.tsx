@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Image from 'next/image';
 import {
   GitCommit,
   GitPullRequest,
@@ -81,19 +82,21 @@ export function ActivityPulse({ events = [] }: { events: PulseEvent[] }) {
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Pill-Styled Box (Matches Image Layout) */}
-      <div className="flex items-center h-8 bg-slate-100/10 dark:bg-slate-900/40 backdrop-blur-xl border border-slate-300/30 dark:border-white/10 rounded-full overflow-hidden shadow-lg transition-all group-hover:border-blue-500/40 cursor-pointer w-[340px]">
+      <div className="flex items-center h-8 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200 dark:border-white/5 rounded-full overflow-hidden shadow-sm transition-all group-hover:border-blue-500/40 group-hover:shadow-md cursor-pointer w-[340px]">
         {/* Left Side: Avatar + Action (Ticker) */}
         <div className="flex items-center gap-2 pl-2 pr-3 flex-grow min-w-0 h-full transition-colors">
           <div className="flex-shrink-0">
             {currentEvent.avatar ? (
-              <img
+              <Image
                 src={currentEvent.avatar}
                 alt={currentEvent.user}
+                width={20}
+                height={20}
                 className="w-5 h-5 rounded-full border border-white/20"
               />
             ) : (
-              <div className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center border border-white/10">
-                <User className="w-3 h-3 text-slate-500" />
+              <div className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-white/10">
+                <User className="w-3 h-3 text-slate-400" />
               </div>
             )}
           </div>
@@ -119,10 +122,10 @@ export function ActivityPulse({ events = [] }: { events: PulseEvent[] }) {
         </div>
 
         {/* Vertical Divider */}
-        <div className="h-4 w-[1px] bg-slate-300/30 dark:bg-white/10 flex-shrink-0" />
+        <div className="h-4 w-[1px] bg-slate-200 dark:bg-white/10 flex-shrink-0" />
 
         {/* Right Side: Blinking Dot + Status */}
-        <div className="flex items-center gap-2 px-3 h-full hover:bg-white/5 transition-colors flex-shrink-0">
+        <div className="flex items-center gap-2 px-3 h-full hover:bg-slate-50 dark:hover:bg-white/5 transition-colors flex-shrink-0">
           <div className="relative">
             <div
               className={`w-1.5 h-1.5 rounded-full animate-pulse ${currentEvent.type === 'system' ? 'bg-orange-500' : 'bg-emerald-500'}`}
@@ -169,9 +172,11 @@ export function ActivityPulse({ events = [] }: { events: PulseEvent[] }) {
                 >
                   <div className="flex-shrink-0 mt-0.5 relative">
                     {event.avatar ? (
-                      <img
+                      <Image
                         src={event.avatar}
                         alt={event.user}
+                        width={28}
+                        height={28}
                         className="w-7 h-7 rounded-full border border-slate-200 dark:border-white/10"
                       />
                     ) : (

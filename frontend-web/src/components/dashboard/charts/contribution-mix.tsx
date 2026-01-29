@@ -20,22 +20,25 @@ export function ContributionMixChart({ data }: { data: any[] }) {
         ];
 
   return (
-    <Card className="col-span-full md:col-span-1 lg:col-span-3 backdrop-blur-xl bg-opacity-60 dark:bg-black/60 border-white/20 shadow-xl rounded-2xl overflow-hidden relative group">
+    <Card className="col-span-full md:col-span-1 lg:col-span-3 backdrop-blur-xl bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all rounded-2xl overflow-hidden relative group">
       <CardHeader className="pb-0 flex flex-row items-start justify-between">
         <div>
-          <CardTitle className="text-xl font-bold">Project Persona</CardTitle>
-          <CardDescription>Weighted impact by contribution type</CardDescription>
+          <CardTitle className="text-lg font-bold text-slate-900 dark:text-white leading-none">
+            Project Persona
+          </CardTitle>
+          <CardDescription className="text-xs text-slate-500 mt-1">
+            Weighted impact by contribution type
+          </CardDescription>
         </div>
-        <div className="p-2 rounded-full hover:bg-slate-800 transition-colors cursor-help group/info relative">
-          <Info className="h-4 w-4 text-slate-500" />
-          <div className="absolute right-0 top-10 w-64 p-3 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl opacity-0 group-hover/info:opacity-100 transition-opacity z-50 pointer-events-none">
+        <div className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-help group/info relative">
+          <Info className="h-4 w-4 text-slate-400" />
+          <div className="absolute right-0 top-10 w-64 p-4 rounded-xl bg-slate-900/95 border border-slate-700 shadow-2xl opacity-0 group-hover/info:opacity-100 transition-opacity z-50 pointer-events-none backdrop-blur-md">
             <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-2">
               Metric Methodology
             </p>
-            <p className="text-xs text-slate-300 leading-relaxed">
+            <p className="text-xs text-slate-300 leading-relaxed font-medium">
               This breakdown evaluates the **volume of events** (commits, PR comments, issue
-              actions) normalized across different repository domains to show where the community is
-              focusing its energy.
+              actions) normalized across different repository domains.
             </p>
           </div>
         </div>
@@ -67,14 +70,15 @@ export function ContributionMixChart({ data }: { data: any[] }) {
                 </Pie>
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#0f172a',
-                    border: '1px solid #1e293b',
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
                     borderRadius: '12px',
-                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2)',
+                    backdropFilter: 'blur(8px)',
                   }}
                   itemStyle={{
                     color: '#e2e8f0',
-                    fontSize: '10px',
+                    fontSize: '11px',
                     fontWeight: 'bold',
                     textTransform: 'uppercase',
                   }}
@@ -91,7 +95,7 @@ export function ContributionMixChart({ data }: { data: any[] }) {
                   return total > 0 ? total : '100%';
                 })()}
               </span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
                 Total Events
               </span>
             </div>
@@ -102,28 +106,28 @@ export function ContributionMixChart({ data }: { data: any[] }) {
             {chartData.map((item, i) => (
               <div
                 key={i}
-                className="flex flex-col gap-0.5 group/item border-l-2 border-transparent hover:border-slate-700 dark:hover:border-slate-400 pl-3 transition-all"
+                className="flex flex-col gap-0.5 group/item border-l-2 border-transparent hover:border-slate-200 dark:hover:border-slate-700 pl-3 transition-all"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div
-                      className="w-2.5 h-2.5 rounded-full shadow-sm"
+                      className="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/10"
                       style={{ backgroundColor: item.color }}
                     />
-                    <span className="text-[11px] font-black uppercase tracking-tight text-slate-900 dark:text-slate-100">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
                       {item.name}
                     </span>
                   </div>
                   <div className="flex flex-col items-end">
-                    <span className="text-xs font-mono font-black text-blue-600 dark:text-blue-400">
+                    <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400">
                       {item.value}%
                     </span>
-                    <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tighter">
+                    <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">
                       {item.count} {item.unit}
                     </span>
                   </div>
                 </div>
-                <p className="text-[10px] font-medium text-slate-500 group-hover/item:text-slate-800 dark:group-hover/item:text-slate-300 transition-colors">
+                <p className="text-[10px] font-medium text-slate-500 group-hover/item:text-slate-700 dark:group-hover/item:text-slate-400 transition-colors line-clamp-1">
                   {item.description}
                 </p>
               </div>
@@ -132,9 +136,9 @@ export function ContributionMixChart({ data }: { data: any[] }) {
         </div>
 
         {/* Footer Methodology Info */}
-        <div className="mt-4 pt-4 border-t border-slate-200/5 flex items-center justify-between text-[9px] font-bold text-slate-500 uppercase tracking-widest px-2">
+        <div className="mt-4 pt-4 border-t border-slate-100 dark:border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest px-1">
           <span>Basis: Event Volume</span>
-          <span className="text-blue-500/50">Normalized Scale</span>
+          <span className="text-blue-500/80">Normalized Scale</span>
         </div>
       </CardContent>
     </Card>

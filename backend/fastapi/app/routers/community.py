@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from backend.fastapi.app.services.github_service import github_service
+from app.services.github_service import github_service
 
 router = APIRouter(tags=["Community Dashboard"])
 
@@ -50,3 +50,18 @@ async def get_repository_sunburst():
 async def get_pulse_feed(limit: int = 15):
     """Get recent repository activity for a live pulse feed."""
     return await github_service.get_pulse_feed(limit)
+
+@router.get("/issues")
+async def get_good_first_issues():
+    """Get beginner-friendly issues for new contributors."""
+    return await github_service.get_good_first_issues()
+
+@router.get("/roadmap")
+async def get_project_roadmap():
+    """Get project milestones for the roadmap progress."""
+    return await github_service.get_project_roadmap()
+
+@router.get("/mission-control")
+async def get_mission_control_data():
+    """Returns aggregated data for the Mission Control center (God's Eye View)."""
+    return await github_service.get_mission_control_data()

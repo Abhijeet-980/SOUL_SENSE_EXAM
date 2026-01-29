@@ -48,21 +48,29 @@ export function ReviewerMetrics({ data }: ReviewerMetricsProps) {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 col-span-full">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 col-span-full">
       {/* Top Reviewers */}
-      <Card className="backdrop-blur-md bg-opacity-50 dark:bg-black/40 border-white/10">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Award className="h-5 w-5 text-purple-500" />
-            Top Reviewers
+      <Card className="backdrop-blur-xl bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-3">
+            <div className="p-2 bg-purple-500/10 rounded-lg">
+              <Award className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white leading-none">
+                Top Reviewers
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Engineers ensuring architectural integrity
+              </p>
+            </div>
           </CardTitle>
-          <CardDescription>Heroes who ensure code quality</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className="space-y-3">
             {top_reviewers.length === 0 ? (
-              <div className="text-center text-sm text-slate-500 py-4">
-                No reviews found recently.
+              <div className="text-center text-sm text-slate-500 py-8 italic">
+                Scanning repository for recent peer reviews...
               </div>
             ) : (
               top_reviewers.map((reviewer, i) => (
@@ -71,25 +79,31 @@ export function ReviewerMetrics({ data }: ReviewerMetricsProps) {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.1 }}
                   key={reviewer.name}
-                  className="flex items-center justify-between group/item p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"
+                  className="flex items-center justify-between group/item p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 transition-all duration-200"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="font-mono text-sm text-slate-400 w-4">#{i + 1}</div>
-                    <Avatar className="h-8 w-8 ring-2 ring-transparent group-hover/item:ring-blue-500/30 transition-all">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="flex-shrink-0 font-mono text-[10px] font-bold text-slate-400 w-4 text-center">
+                      #{i + 1}
+                    </div>
+                    <Avatar className="h-8 w-8 ring-2 ring-white dark:ring-slate-800 flex-shrink-0">
                       <AvatarImage src={reviewer.avatar} />
-                      <AvatarFallback>{reviewer.name[0]}</AvatarFallback>
+                      <AvatarFallback className="bg-slate-100 dark:bg-slate-800 text-[10px] font-black">
+                        {reviewer.name[0].toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold tracking-tight">{reviewer.name}</span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm font-bold text-slate-800 dark:text-slate-200 group-hover/item:text-purple-600 dark:group-hover/item:text-purple-400 transition-colors truncate">
+                        {reviewer.name}
+                      </span>
                       {reviewer.is_maintainer && (
-                        <span className="text-[8px] font-black uppercase tracking-widest text-purple-500 leading-none mt-0.5">
+                        <span className="text-[8px] font-bold uppercase tracking-wider text-purple-500 leading-none">
                           Maintainer
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="text-xs font-black px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 group-hover/item:text-blue-500 transition-colors">
-                    {reviewer.count} REVIEWS
+                  <div className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400">
+                    {reviewer.count} reviews
                   </div>
                 </motion.div>
               ))
@@ -99,28 +113,54 @@ export function ReviewerMetrics({ data }: ReviewerMetricsProps) {
       </Card>
 
       {/* Community Happiness */}
-      <Card className="backdrop-blur-md bg-opacity-50 dark:bg-black/40 border-white/10">
-        <CardHeader>
-          <CardTitle>Community Happiness</CardTitle>
-          <CardDescription>Based on {analyzed_comments} recent PR comments</CardDescription>
+      <Card className="backdrop-blur-xl bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-3">
+            <div className="p-2 bg-emerald-500/10 rounded-lg">
+              <Smile className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white leading-none">
+                Community Health
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Based on {analyzed_comments} recent interactions
+              </p>
+            </div>
+          </CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col items-center justify-center pt-4 pb-8">
-          <div className="mb-4">{getSentimentIcon(community_happiness)}</div>
-          <div className="text-3xl font-extrabold mb-1">{community_happiness}%</div>
-          <div className="text-sm font-medium text-slate-400 mb-6">
-            {getSentimentLabel(community_happiness)}
+        <CardContent className="flex flex-col items-center justify-center pt-8 pb-10">
+          <div className="relative">
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="mb-4 p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-900 rounded-full shadow-lg ring-1 ring-slate-100 dark:ring-white/10"
+            >
+              {getSentimentIcon(community_happiness)}
+            </motion.div>
+            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-widest rounded-full shadow-sm whitespace-nowrap">
+              {getSentimentLabel(community_happiness)}
+            </div>
           </div>
 
+          <div className="mt-6 text-4xl font-black text-slate-900 dark:text-white">
+            {community_happiness}%
+          </div>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-6">
+            Sentiment Score
+          </p>
+
           {/* Meter Bar */}
-          <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden relative">
-            <div
-              className="h-full bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 transition-all duration-1000 ease-out"
-              style={{ width: `${community_happiness}%` }}
+          <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden relative">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${community_happiness}%` }}
+              className="h-full bg-gradient-to-r from-red-500 via-yellow-400 to-emerald-500 transition-all duration-1000 ease-out"
             />
           </div>
-          <div className="flex justify-between w-full text-xs text-slate-600 mt-2 px-1">
+          <div className="flex justify-between w-full text-[9px] font-bold uppercase tracking-widest text-slate-400 mt-2 px-1">
             <span>Critical</span>
-            <span>Neutral</span>
+            <span>Stable</span>
             <span>Vibrant</span>
           </div>
         </CardContent>
