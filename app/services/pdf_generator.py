@@ -17,100 +17,214 @@ logger = logging.getLogger(__name__)
 class PDFReportGenerator:
     def __init__(self, filename: str) -> None:
         self.filename = filename
-        self.styles = getSampleStyleSheet()
         self.elements: List[Any] = []
         
-        # Custom styles
-        self.styles.add(ParagraphStyle(
-            name='CenterTitle',
-            parent=self.styles['Heading1'],
-            alignment=1, # Center
-            spaceAfter=20
-        ))
-        self.styles.add(ParagraphStyle(
-            name='JustifiedBody',
-            parent=self.styles['Normal'],
-            alignment=4, # Justify
-            spaceAfter=12
-        ))
-
-    def generate(self, username: str, score_data: Dict[str, Any], insights: List[str], sentiment_score: float) -> bool:
+    def generate(self, username: str, score_data: Dict[str, Any], insights: List[str], responses: List[int], questions: List[Any], sentiment_score: float, deep_dives: List[Any] = None) -> bool:
         """
-        Generate the PDF report.
-        
-        Args:
-            username (str): The user's name
-            score_data (dict): Dictionary containing score details (total, breakdown)
-            insights (list): List of AI insight strings
-            sentiment_score (float): The sentiment analysis score
+        Generate the PDF report with Soul Sense branding.
         """
         try:
-            # Title
-            self.elements.append(Paragraph("Soul Sense - Emotional Intelligence Report", self.styles['CenterTitle']))
-            self.elements.append(Spacer(1, 0.2 * inch))
+            # Setup styles (matching ExportService)
+            styles = getSampleStyleSheet()
             
-            # User Info Table
-            data = [
-                ["Name:", username],
-                ["Date:", datetime.now().strftime("%Y-%m-%d %H:%M")],
-                ["Total Score:", f"{score_data.get('total_score', 0)} / {score_data.get('max_score', 100)}"]
+            # Custom Styles
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Title'],
+                fontSize=24,
+                textColor=colors.HexColor('#0F172A'),
+                spaceAfter=30,
+                alignment=1 # Center
+            )
+            
+            h2_style = ParagraphStyle(
+                'CustomH2',
+                parent=styles['Heading2'],
+                fontSize=16,
+                textColor=colors.HexColor('#3B82F6'),
+                spaceBefore=20,
+                spaceAfter=10,
+                borderPadding=5,
+                borderColor=colors.HexColor('#E2E8F0'),
+                borderWidth=0,
+                allowWidows=0
+            )
+            
+            normal_style = styles['Normal']
+            normal_style.fontSize = 11
+            normal_style.spaceAfter = 8
+            normal_style.alignment = 4 # Justify
+
+            # --- CONTENT ---
+            
+            # Title Page area (Header handled by on_page)
+            self.elements.append(Spacer(1, 1*inch))
+            self.elements.append(Paragraph("Assessment Result", title_style))
+            self.elements.append(Spacer(1, 0.5*inch))
+            
+            # User Info Grid
+            info_data = [
+                ["Participant", username],
+                ["Date", datetime.now().strftime("%B %d, %Y")],
+                ["Time", datetime.now().strftime("%I:%M %p")],
+                ["Assessment Type", "Emotional Intelligence (EQ)"]
             ]
             
-            t = Table(data, hAlign='LEFT')
-            t.setStyle(TableStyle([
+            t_info = Table(info_data, colWidths=[2*inch, 4*inch])
+            t_info.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
+                ('BACKGROUND', (0,0), (0,-1), colors.HexColor('#F8FAFC')),
                 ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
-                ('FONTNAME', (1,0), (1,-1), 'Helvetica'),
-                ('TEXTCOLOR', (0,0), (-1,-1), colors.black),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('TEXTCOLOR', (0,0), (-1,-1), colors.HexColor('#475569')),
+                ('PADDING', (0,0), (-1,-1), 10),
             ]))
-            self.elements.append(t)
-            self.elements.append(Spacer(1, 0.3 * inch))
+            self.elements.append(t_info)
+            self.elements.append(Spacer(1, 0.5 * inch))
             
-            # Score Visualization (Chart)
+            # Score Visualization
+            # Note: We kept the logic to create the chart
             chart_img = self._create_chart(score_data['total_score'], score_data['max_score'], sentiment_score)
             if chart_img:
-                self.elements.append(Image(chart_img, width=6*inch, height=3*inch))
+                self.elements.append(Image(chart_img, width=6.5*inch, height=3.5*inch))
                 self.elements.append(Spacer(1, 0.3 * inch))
 
-            # Executive Summary (Interpretation)
-            self.elements.append(Paragraph("Executive Summary", self.styles['Heading2']))
+            # Interpretation
+            self.elements.append(Paragraph("Executive Summary", h2_style))
             summary = self._get_interpretation(score_data['total_score'], score_data['max_score'])
-            self.elements.append(Paragraph(summary, self.styles['JustifiedBody']))
             
-            # Sentiment Analysis Section
-            self.elements.append(Paragraph("Emotional Sentiment Analysis", self.styles['Heading2']))
-            sentiment_text = f"Your emotional sentiment score is {sentiment_score:.1f} (Scale: -100 to +100)."
+            # Wrap summary in a nice box
+            t_summary = Table([[Paragraph(summary, normal_style)]], colWidths=[6*inch])
+            t_summary.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F0F9FF')), # Light blue
+                ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#BAE6FD')),
+                ('PADDING', (0,0), (-1,-1), 12),
+            ]))
+            self.elements.append(t_summary)
+            
+            # Sentiment Section
+            self.elements.append(Paragraph("Emotional Sentiment Analysis", h2_style))
+            sentiment_text = f"Your emotional sentiment score is <b>{sentiment_score:.1f}</b> (Scale: -100 to +100)."
             if sentiment_score > 20:
                 sentiment_text += " This indicates a generally positive and optimistic outlook."
             elif sentiment_score < -20:
                 sentiment_text += " This suggests you may be experiencing some negative emotions or stress."
             else:
                 sentiment_text += " This indicates a balanced and neutral emotional state."
-            self.elements.append(Paragraph(sentiment_text, self.styles['JustifiedBody']))
+            
+            self.elements.append(Paragraph(sentiment_text, normal_style))
+            self.elements.append(Spacer(1, 0.2*inch))
+
+            # --- DEEP DIVE INSIGHTS ---
+            if deep_dives:
+                self.elements.append(Paragraph("Deep Dive Insights", h2_style))
+                self.elements.append(Paragraph("Detailed breakdown of specific emotional metrics based on your responses:", normal_style))
+                self.elements.append(Spacer(1, 10))
+                
+                # Header
+                dd_header = [['Category', 'Score', 'Rating']]
+                dd_rows = []
+                
+                for dd in deep_dives:
+                    cat_name = dd.assessment_type.replace('_', ' ').title()
+                    score_display = f"{int(dd.total_score)}/100" 
+                    
+                    rating = "N/A"
+                    text_color = colors.black
+                    
+                    # Simple heuristic 
+                    if dd.total_score >= 70:
+                        rating = "High"
+                        text_color = colors.HexColor('#DC2626') if 'anxiety' in dd.assessment_type or 'depression' in dd.assessment_type else colors.HexColor('#16A34A')
+                    elif dd.total_score >= 40:
+                        rating = "Moderate"
+                        text_color = colors.HexColor('#CA8A04')
+                    else:
+                        rating = "Low"
+                        text_color = colors.HexColor('#16A34A') if 'anxiety' in dd.assessment_type or 'depression' in dd.assessment_type else colors.HexColor('#DC2626')
+                        
+                    dd_rows.append([cat_name, score_display, rating])
+
+                t_deep = Table(dd_header + dd_rows, colWidths=[3*inch, 1.5*inch, 1.5*inch])
+                t_deep.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
+                    ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                    ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
+                    ('PADDING', (0,0), (-1,-1), 8),
+                    ('ALIGN', (1,0), (-1,-1), 'CENTER'),
+                    ('ALIGN', (0,0), (0,-1), 'LEFT'),
+                ]))
+                self.elements.append(t_deep)
+                self.elements.append(Spacer(1, 20))
 
             # AI Insights
             if insights:
-                self.elements.append(Paragraph("AI-Driven Insights & Recommendations", self.styles['Heading2']))
+                self.elements.append(Paragraph("Actionable Insights", h2_style))
+                
+                # Format insights as a styled list/table
+                insight_data = []
                 for insight in insights:
-                    # Clean up insight text if needed
-                    text = insight.strip()
-                    if not text.startswith("•"):
-                        text = "• " + text
-                    self.elements.append(Paragraph(text, self.styles['JustifiedBody']))
+                     text = insight.strip()
+                     if text.startswith("•"): text = text[1:].strip()
+                     insight_data.append(["•", Paragraph(text, normal_style)])
+                     
+                t_insights = Table(insight_data, colWidths=[0.3*inch, 5.7*inch])
+                t_insights.setStyle(TableStyle([
+                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                    ('TEXTCOLOR', (0,0), (0,-1), colors.HexColor('#3B82F6')), # Blue bullets
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                ]))
+                self.elements.append(t_insights)
 
             # Disclaimer
             self.elements.append(Spacer(1, 0.5 * inch))
-            self.elements.append(Paragraph("Disclaimer: This tool is for educational purposes only and not a substitute for professional psychological advice.", self.styles['Italic']))
+            disclaimer = Paragraph("Disclaimer: This tool is for educational purposes only and not a substitute for professional psychological advice.", 
+                                 ParagraphStyle('Disc', parent=normal_style, fontSize=8, textColor=colors.grey, alignment=1))
+            self.elements.append(disclaimer)
 
-            # Build PDF
-            doc = SimpleDocTemplate(self.filename, pagesize=letter)
-            doc.build(self.elements)
+            # Build PDF with Header/Footer
+            doc = SimpleDocTemplate(
+                self.filename, 
+                pagesize=letter,
+                rightMargin=72, leftMargin=72,
+                topMargin=72, bottomMargin=72
+            )
+            
+            doc.build(self.elements, onFirstPage=self._on_page, onLaterPages=self._on_page)
             logger.info(f"PDF Report generated successfully: {self.filename}")
             return True
 
         except Exception as e:
             logger.error(f"Failed to generate PDF report: {e}", exc_info=True)
             return False
+
+
+    def _on_page(self, canvas, doc):
+        """Draw Header and Footer"""
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        
+        canvas.saveState()
+        canvas.setFont('Helvetica', 9)
+        canvas.setFillColor(colors.grey)
+        
+        # Footer - Page Number
+        page_num = canvas.getPageNumber()
+        canvas.drawCentredString(letter[0]/2, 0.5*inch, f"Page {page_num}")
+        
+        # Footer - Brand
+        canvas.drawRightString(letter[0]-0.8*inch, 0.5*inch, "Soul Sense | Assessment Report")
+        
+        # Header line
+        canvas.setStrokeColor(colors.HexColor('#E2E8F0'))
+        canvas.line(0.8*inch, letter[1]-0.8*inch, letter[0]-0.8*inch, letter[1]-0.8*inch)
+        
+        # Optional: Add Logo Placeholder Text
+        canvas.setFont('Helvetica-Bold', 12)
+        canvas.setFillColor(colors.HexColor('#0F172A'))
+        canvas.drawString(0.8*inch, letter[1]-0.6*inch, "Soul Sense")
+        
+        canvas.restoreState()
+
 
     def _create_chart(self, score: float, max_score: float, sentiment: float) -> Optional[io.BytesIO]:
         """Create a matplotlib chart and return it as a BytesIO object"""
@@ -166,7 +280,7 @@ class PDFReportGenerator:
                     "feedback from trusted friends or mentors.")
 
 
-def generate_pdf_report(username: str, score: float, max_score: float, percentage: float, age: int, responses: List[int], questions: List[Any], sentiment_score: Optional[float] = None, filepath: Optional[str] = None) -> str:
+def generate_pdf_report(username: str, score: float, max_score: float, percentage: float, age: int, responses: List[int], questions: List[Any], sentiment_score: Optional[float] = None, filepath: Optional[str] = None, deep_dives: List[Any] = None) -> str:
     """
     Wrapper function to generate PDF report.
     This is the function imported by results.py.
@@ -211,10 +325,13 @@ def generate_pdf_report(username: str, score: float, max_score: float, percentag
         # Create and generate report
         generator = PDFReportGenerator(filename)
         success = generator.generate(
-            username,
-            score_data,
-            insights,
-            sentiment_score or 0
+            username=username,
+            score_data=score_data,
+            insights=insights,
+            responses=responses,
+            questions=questions,
+            sentiment_score=sentiment_score or 0,
+            deep_dives=deep_dives
         )
         
         if success:

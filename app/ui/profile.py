@@ -1453,96 +1453,14 @@ class UserProfileView:
         btn_frame = tk.Frame(inner, bg=self.colors.get("card_bg"))
         btn_frame.pack(anchor="w")
         
-        def do_export_json():
-            loading = None
-            try:
-                from app.utils.file_validation import validate_file_path, sanitize_filename, ValidationError
-                from tkinter import filedialog
-                import json
-                
-                # 1. Prepare Data
-                user = ProfileService.get_user_profile(self.app.username)
-                if not user:
-                    messagebox.showerror("Error", "User not found.")
-                    return
-                
-                export_data = {
-                    "username": user.username,
-                    "exported_at": datetime.now().isoformat(),
-                    "profile": {},
-                    "medical": {},
-                    "strengths": {},
-                    "emotional_patterns": {}
-                }
-                
-                if user.personal_profile:
-                    p = user.personal_profile
-                    export_data["profile"] = {
-                        "bio": p.bio, "occupation": p.occupation, "email": p.email,
-                        "life_events": json.loads(p.life_events) if p.life_events else []
-                    }
-                    
-                if user.medical_profile:
-                    m = user.medical_profile
-                    export_data["medical"] = {
-                        "allergies": m.allergies, "medications": m.medications,
-                        "conditions": m.medical_conditions, "blood_type": m.blood_type
-                    }
-                    
-                if user.strengths:
-                    s = user.strengths
-                    export_data["strengths"] = {
-                        "top": json.loads(s.top_strengths) if s.top_strengths else [],
-                        "goals": s.goals
-                    }
-
-                # 2. Sanitize Filename
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                safe_username = sanitize_filename(self.app.username)
-                default_name = f"SoulSense_Export_{safe_username}_{timestamp}.json"
-                
-                # 3. Ask for Save Location
-                filename = filedialog.asksaveasfilename(
-                    title="Export Data",
-                    initialfile=default_name,
-                    defaultextension=".json",
-                    filetypes=[("JSON Data", "*.json")]
-                )
-                
-                if not filename:
-                    return
-
-                # 4. Validate Path
-                try:
-                    filename = validate_file_path(filename, allowed_extensions=[".json"])
-                except ValidationError as ve:
-                    messagebox.showerror("Security Error", str(ve))
-                    return
-                
-                # Show loading overlay during file write
-                loading = show_loading(self.window, "Exporting your data...")
-                self.window.update()  # Force UI update
-                
-                # 5. Write File
-                from app.utils.atomic import atomic_write
-                
-                with atomic_write(filename, 'w', encoding='utf-8') as f:
-                    json.dump(export_data, f, indent=2, ensure_ascii=False)
-                
-                hide_loading(loading)
-                loading = None
-                    
-                messagebox.showinfo("Export Success", f"Data exported successfully to:\n{filename}")
-                
-            except Exception as e:
-                hide_loading(loading)
-                logging.error(f"Export failed: {e}")
-                messagebox.showerror("Export Error", f"Failed to export data: {e}")
+        def open_export_wizard():
+            from app.ui.export_dialog import ExportWizard
+            ExportWizard(self.window, self.app)
 
         tk.Button(
             btn_frame,
-            text="📄 Export as JSON",
-            command=do_export_json,
+            text="📥 Open Export Wizard",
+            command=open_export_wizard,
             font=self.styles.get_font("md", "bold"),
             bg=self.colors.get("primary"),
             fg="white",
@@ -1550,6 +1468,15 @@ class UserProfileView:
             padx=20, pady=10,
             cursor="hand2"
         ).pack(side="left")
+
+        # Optional: Add description of formats
+        tk.Label(
+            inner,
+            text="\nSupported Formats: JSON (Backup), CSV (Excel), PDF (Report)",
+            font=self.styles.get_font("xs"),
+            bg=self.colors.get("card_bg"),
+            fg="gray"
+        ).pack(anchor="w", pady=(10, 0))
 
     def _render_settings_view(self, parent):
         """Render embedded settings view"""

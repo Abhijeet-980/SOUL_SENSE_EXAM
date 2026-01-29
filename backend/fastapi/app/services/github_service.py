@@ -96,16 +96,19 @@ class GitHubService:
             )
         return self._client
 
-    async def _get(self, endpoint: str, params: Dict = None) -> Any:
+    async def _get(self, endpoint: str, params: Dict = None, ttl: Optional[int] = None) -> Any:
         # Check cache (Memory & Disk implied since we loaded disk at start)
         cache_key = f"{endpoint}:{str(params)}"
+        effective_ttl = ttl if ttl is not None else self.CACHE_TTL
+
         if cache_key in self._cache:
             data, timestamp = self._cache[cache_key]
             # If we have cache, return it immediately if fresh, OR if we want to be safe against rate limits
             # But let's try to fetch fresh first, then fallback to cache if rate limited
-            if time.time() - timestamp < self.CACHE_TTL:
+            if time.time() - timestamp < effective_ttl:
                 # If it's very fresh (< 1 hour), just return it to save API calls
-                if time.time() - timestamp < 3600:
+                # For custom short TTLs (like 300s), we respect the effective_ttl
+                if time.time() - timestamp < 3600 or ttl is not None:
                     return data
 
         client = self._get_client()
@@ -153,9 +156,9 @@ class GitHubService:
                  return self._cache[cache_key][0]
             return None
 
-    async def _get_with_semaphore(self, endpoint: str, semaphore: asyncio.Semaphore) -> Any:
+    async def _get_with_semaphore(self, endpoint: str, semaphore: asyncio.Semaphore, ttl: Optional[int] = None) -> Any:
         async with semaphore:
-            return await self._get(endpoint)
+            return await self._get(endpoint, ttl=ttl)
 
     async def get_pulse_feed(self, limit: int = 15) -> List[Dict[str, Any]]:
         """Fetch recent repository events and format them for a live pulse feed."""
@@ -165,7 +168,7 @@ class GitHubService:
         if cached_data:
             return cached_data
 
-        events = await self._get(f"/repos/{self.owner}/{self.repo}/events", params={"per_page": 30})
+        events = await self._get(f"/repos/{self.owner}/{self.repo}/events", params={"per_page": 30}, ttl=300)
         
         if not events:
             # Fallback for Immunity Mode / API Failure
@@ -249,7 +252,7 @@ class GitHubService:
 
     async def get_repo_stats(self) -> Dict[str, Any]:
         """Fetch general repository statistics with high-impact demo defaults."""
-        data = await self._get(f"/repos/{self.owner}/{self.repo}")
+        data = await self._get(f"/repos/{self.owner}/{self.repo}", ttl=10800)
         
         # Real values from GitHub
         real_stars = data.get("stargazers_count", 0) if data else 0
@@ -267,9 +270,9 @@ class GitHubService:
             "html_url": f"https://github.com/{self.owner}/{self.repo}"
         }
 
-    async def get_recent_prs(self, limit: int = 100) -> List[Dict[str, Any]]:
+    async def get_recent_prs(self, limit: int = 100, ttl: Optional[int] = None) -> List[Dict[str, Any]]:
         """Fetch the most recent PRs from the repository."""
-        data = await self._get(f"/repos/{self.owner}/{self.repo}/pulls", params={"state": "all", "sort": "created", "direction": "desc", "per_page": limit})
+        data = await self._get(f"/repos/{self.owner}/{self.repo}/pulls", params={"state": "all", "sort": "created", "direction": "desc", "per_page": limit}, ttl=ttl)
         if not data:
             return []
         
@@ -288,17 +291,18 @@ class GitHubService:
     async def get_contributors(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Fetch top contributors enriched with recent PR data."""
         cache_key = f"contributors_v1:{self.owner}/{self.repo}:{limit}"
-        cached_data = self._get_cached_long_term(cache_key, 3600)
+        # Cache for 3 Hours (10800s) as requested
+        cached_data = self._get_cached_long_term(cache_key, 10800)
         if cached_data:
             return cached_data
 
         # Fetch contributors
-        data = await self._get(f"/repos/{self.owner}/{self.repo}/contributors", params={"per_page": limit})
+        data = await self._get(f"/repos/{self.owner}/{self.repo}/contributors", params={"per_page": limit}, ttl=10800)
         if not data:
             return []
             
         # Fetch recent PRs (last 100) to map them to contributors efficiently
-        recent_prs = await self.get_recent_prs(100)
+        recent_prs = await self.get_recent_prs(100, ttl=10800)
         
         contributors = []
         for contributor in data:
@@ -498,22 +502,24 @@ class GitHubService:
     async def get_reviewer_stats(self) -> Dict[str, Any]:
         """Fetch Pull Request reviews and comments to identify top contributors."""
         cache_key = f"reviewer_stats_v1:{self.owner}/{self.repo}"
-        cached_data = self._get_cached_long_term(cache_key, 3600)
+        # Cache for 3 Hours (10800s) as requested
+        cached_data = self._get_cached_long_term(cache_key, 10800)
         if cached_data:
             return cached_data
 
         # 1. Fetch comments
         comment_tasks = []
         for i in range(1, 3):
-             comment_tasks.append(self._get(f"/repos/{self.owner}/{self.repo}/pulls/comments?sort=created&direction=desc&per_page=100&page={i}"))
-             comment_tasks.append(self._get(f"/repos/{self.owner}/{self.repo}/issues/comments?sort=created&direction=desc&per_page=100&page={i}"))
+             comment_tasks.append(self._get(f"/repos/{self.owner}/{self.repo}/pulls/comments?sort=created&direction=desc&per_page=100&page={i}", ttl=10800))
+             comment_tasks.append(self._get(f"/repos/{self.owner}/{self.repo}/issues/comments?sort=created&direction=desc&per_page=100&page={i}", ttl=10800))
         
         # 2. Fetch recent PRs to get their reviews (limited to last 30 for performance)
-        prs = await self._get(f"/repos/{self.owner}/{self.repo}/pulls", params={"state": "all", "per_page": 30})
+        # Use 3-hour TTL
+        prs = await self._get(f"/repos/{self.owner}/{self.repo}/pulls", params={"state": "all", "per_page": 30}, ttl=10800)
         review_tasks = []
         if prs and isinstance(prs, list):
             for pr in prs:
-                review_tasks.append(self._get(f"/repos/{self.owner}/{self.repo}/pulls/{pr['number']}/reviews"))
+                review_tasks.append(self._get(f"/repos/{self.owner}/{self.repo}/pulls/{pr['number']}/reviews", ttl=10800))
         
         # Gather all data
         all_results = await asyncio.gather(*comment_tasks, *review_tasks)
@@ -600,10 +606,11 @@ class GitHubService:
 
     async def get_community_graph(self) -> Dict[str, Any]:
         """Builds a force-directed graph structure of Contributor-Module connections."""
-        cache_key = f"graph:{self.owner}/{self.repo}"
-        cached_data = self._get_cached_long_term(cache_key, 86400) # 24 Hour Cache
+        cache_key = f"community_graph_v1:{self.owner}/{self.repo}"
+        # Cache for 3 Days (259200s) as requested
+        cached_data = self._get_cached_long_term(cache_key, 259200)
         if cached_data:
-             return cached_data
+            return cached_data
 
         try:
             # 1. Fetch ALL contributors first (Seeding)
@@ -630,7 +637,8 @@ class GitHubService:
             links_map = {}
             # 3. Get recent commits (Last 100 for deep insights)
             commits_url = f"/repos/{self.owner}/{self.repo}/commits"
-            commits_list = await self._get(commits_url, params={"per_page": 100})
+            # Use 3-day TTL
+            commits_list = await self._get(commits_url, params={"per_page": 100}, ttl=259200)
 
             # Immunity Mode: If commits_list is None (403), we still want a living graph
             if not commits_list:
@@ -744,7 +752,8 @@ class GitHubService:
     async def get_repository_sunburst(self) -> List[Dict[str, Any]]:
         """Calculates directory-level contribution density for a sunburst visualization."""
         cache_key = f"sunburst:{self.owner}/{self.repo}"
-        cached_data = self._get_cached_long_term(cache_key, 86400) # 24 Hour Cache
+        # Cache for 3 Days (259200s) as requested
+        cached_data = self._get_cached_long_term(cache_key, 259200)
         if cached_data:
              return cached_data
 
@@ -761,7 +770,8 @@ class GitHubService:
             if commits_list and self.settings.github_token:
                 semaphore = asyncio.Semaphore(3)
                 process_count = min(len(commits_list), 40)
-                tasks = [self._get_with_semaphore(f"/repos/{self.owner}/{self.repo}/commits/{c['sha']}", semaphore) for c in commits_list[:process_count]]
+                # Use 3-day TTL for details
+                tasks = [self._get_with_semaphore(f"/repos/{self.owner}/{self.repo}/commits/{c['sha']}", semaphore, ttl=259200) for c in commits_list[:process_count]]
                 detailed_commits = await asyncio.gather(*tasks)
             elif commits_list:
                 print("[INFO] Lite Mode: Skip Sunburst deep-analysis (Unauthenticated)")
@@ -912,8 +922,8 @@ class GitHubService:
     async def get_good_first_issues(self) -> List[Dict[str, Any]]:
         """Fetch issues with waterfall logic: beginner unassigned > all unassigned > all assigned."""
         cache_key = f"issues_v3:{self.owner}/{self.repo}"
-        # Cache for 1 hour
-        cached_data = self._get_cached_long_term(cache_key, 3600)
+        # Cache for 5 minutes (300s) for "Near Real-Time" Priority Tasks
+        cached_data = self._get_cached_long_term(cache_key, 300)
         if cached_data:
             return cached_data
 
@@ -923,7 +933,7 @@ class GitHubService:
             "sort": "updated",
             "direction": "desc",
             "per_page": 50
-        })
+        }, ttl=300)
 
         if not data:
             return []
@@ -1006,13 +1016,14 @@ class GitHubService:
 
         # Parallel Fetch: Issues (Open/Closed) and PRs (Open/Closed)
         # Limiting to 100 recent items each for performance in this demo
+        # Using 15-minute TTL (900s) as requested for Mission Control
         issue_tasks = [
-            self._get(f"/repos/{self.owner}/{self.repo}/issues", params={"state": "open", "per_page": 100}),
-            self._get(f"/repos/{self.owner}/{self.repo}/issues", params={"state": "closed", "per_page": 50})
+            self._get(f"/repos/{self.owner}/{self.repo}/issues", params={"state": "open", "per_page": 100}, ttl=900),
+            self._get(f"/repos/{self.owner}/{self.repo}/issues", params={"state": "closed", "per_page": 50}, ttl=900)
         ]
         pr_tasks = [
-            self._get(f"/repos/{self.owner}/{self.repo}/pulls", params={"state": "open", "per_page": 50}),
-            self._get(f"/repos/{self.owner}/{self.repo}/pulls", params={"state": "closed", "per_page": 50}) # Includes merged
+            self._get(f"/repos/{self.owner}/{self.repo}/pulls", params={"state": "open", "per_page": 50}, ttl=900),
+            self._get(f"/repos/{self.owner}/{self.repo}/pulls", params={"state": "closed", "per_page": 50}, ttl=900) # Includes merged
         ]
 
         results = await asyncio.gather(*issue_tasks, *pr_tasks)

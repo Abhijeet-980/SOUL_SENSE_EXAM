@@ -739,10 +739,8 @@ class ExamManager:
                          lambda: messagebox.showinfo("History", "Historical comparison charts coming soon!"), 
                          "accent")
                          
-        # Button: Export PDF (Placeholder)
-        create_action_btn("📄 Export PDF", 
-                         lambda: messagebox.showinfo("Export", "PDF Export functionality coming soon!"), 
-                         "success")
+        # Button: Export PDF
+        create_action_btn("📄 Export PDF", self.export_pdf, "success")
 
         # Return Home Button (Secondary style, on the right)
         tk.Button(action_frame, text="Close / Dashboard", 
@@ -752,3 +750,66 @@ class ExamManager:
         
         # Force a refresh if needed
         container.update()
+
+    def export_pdf(self):
+        """Export simplified result PDF immediately after test"""
+        try:
+            from app.services.pdf_generator import generate_pdf_report
+            from tkinter import filedialog
+            from app.utils.file_validation import validate_file_path, sanitize_filename
+            
+            # Generate default filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_username = sanitize_filename(self.app.username)
+            default_name = f"EQ_Report_{safe_username}_{timestamp}.pdf"
+            
+            # Ask user for location
+            filename = filedialog.asksaveasfilename(
+                title="Save PDF Report",
+                initialfile=default_name,
+                defaultextension=".pdf",
+                filetypes=[("PDF Documents", "*.pdf"), ("All Files", "*.*")]
+            )
+            
+            if not filename:
+                return # User cancelled
+
+            # Show loading
+            self.app.root.config(cursor="watch")
+            self.app.root.update()
+
+            try:
+                # Fetch Deep Dives if available (for PDF)
+                deep_dives = []
+                try:
+                    from app.services.exam_service import ExamService
+                    if self.app.current_user_id:
+                        deep_dives = ExamService.get_assessment_results(
+                            user_id=self.app.current_user_id,
+                            minutes_lookback=15
+                        )
+                except Exception as e:
+                    logging.warning(f"Could not fetch deep dives for PDF: {e}")
+
+                # Prepare data for report using current app state
+                result_path = generate_pdf_report(
+                    self.app.username,
+                    self.app.current_score,
+                    self.app.current_max_score,
+                    self.app.current_percentage,
+                    self.app.age,
+                    self.app.responses,
+                    self.app.questions,
+                    self.app.sentiment_score if hasattr(self.app, 'sentiment_score') else None,
+                    filepath=filename,
+                    deep_dives=deep_dives # Pass deep dives
+                )
+                
+                messagebox.showinfo("Success", f"Report saved successfully:\n{result_path}")
+                
+            finally:
+                self.app.root.config(cursor="")
+                
+        except Exception as e:
+            logging.error(f"PDF Export failed: {e}")
+            messagebox.showerror("Export Error", f"Failed to generate PDF:\n{str(e)}")

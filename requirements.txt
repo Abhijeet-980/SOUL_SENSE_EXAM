@@ -49,3 +49,4 @@ psycopg2-binary
 
 # Configuration
 python-dotenv==1.0.0
+reportlab

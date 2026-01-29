@@ -125,8 +125,8 @@ class ColorSchemes:
         # Modern Layout Tokens
         "sidebar_bg": "#3B82F6", # Brand Blue
         "sidebar_fg": "#FFFFFF",
-        "sidebar_hover": "#2563EB", # Darker Blue
-        "sidebar_active": "#1D4ED8", # Even Darker
+        "sidebar_hover": "#1D4ED8", # Much Darker Blue (High Contrast)
+        "sidebar_active": "#1E3A8A", # Deepest Blue
         "sidebar_divider": "#60A5FA",
         
         "input_bg": "#F8FAFC",

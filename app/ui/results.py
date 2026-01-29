@@ -6,10 +6,7 @@ import random
 from app.db import get_connection, get_session, safe_db_context
 from app.models import Score
 from app.constants import BENCHMARK_DATA
-try:
-    from app.services.pdf_generator import generate_pdf_report
-except ImportError:
-    generate_pdf_report = None
+from app.services.pdf_generator import generate_pdf_report
 import json
 from app.models import AssessmentResult
 from typing import Any, Dict, List, Optional, Tuple
@@ -297,6 +294,18 @@ class ResultsManager:
             loading = show_loading(self.app.root, "Generating PDF report...")
             self.app.root.update()  # Force UI update
 
+            # Fetch Deep Dives if available (for PDF)
+            deep_dives = []
+            try:
+                from app.services.exam_service import ExamService
+                if self.app.current_user_id:
+                    deep_dives = ExamService.get_assessment_results(
+                        user_id=self.app.current_user_id,
+                        minutes_lookback=15 # Assuming this is fresh result
+                    )
+            except Exception as e:
+                logging.warning(f"Could not fetch deep dives for PDF: {e}")
+
             # Prepare data for report
             result_path = generate_pdf_report(
                 self.app.username,
@@ -307,7 +316,8 @@ class ResultsManager:
                 self.app.responses,
                 self.app.questions,
                 self.app.sentiment_score if hasattr(self.app, 'sentiment_score') else None,
-                filepath=filename
+                filepath=filename,
+                deep_dives=deep_dives # Pass deep dives
             )
             
             hide_loading(loading)
@@ -317,7 +327,8 @@ class ResultsManager:
                 messagebox.showinfo("Success", f"Report saved successfully:\n{result_path}")
             
         except Exception as e:
-            hide_loading(loading)
+            if loading:
+                hide_loading(loading)
             messagebox.showerror("Export Error", f"Failed to generate PDF:\n{str(e)}")
             logging.error(f"PDF Export failed: {e}")
 

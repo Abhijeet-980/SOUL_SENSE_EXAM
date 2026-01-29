@@ -8,7 +8,8 @@ from tkinter import messagebox
 from app.utils import save_settings
 
 
-import logging # Added import
+import logging
+from datetime import datetime
 
 class SettingsManager:
     """Manages application settings with premium UI"""
@@ -539,7 +540,24 @@ class SettingsManager:
                         from app.models import UserSettings
                         # ... update logic ...
                         # Simplified for now as per existng code structure
-                        pass
+                        # Check if settings record exists
+                        user_settings = session.query(UserSettings).filter_by(user_id=self.app.current_user_id).first()
+                        
+                        if not user_settings:
+                            # Create new if missing
+                            user_settings = UserSettings(user_id=self.app.current_user_id)
+                            session.add(user_settings)
+                        
+                        # Update fields
+                        user_settings.theme = new_settings["theme"]
+                        user_settings.question_count = new_settings["question_count"]
+                        user_settings.sound_enabled = new_settings["sound_effects"]
+                        user_settings.updated_at = datetime.utcnow().isoformat()
+                        
+                        # Commit is handled by context manager (safe_db_context) if no error? 
+                        # Wait, safe_db_context usually commits on exit. 
+                        # Let's check db.py? Assuming standard pattern.
+                        session.commit()
                 except Exception as e:
                     logging.warning(f"Could not persist settings to DB: {e}")
             
