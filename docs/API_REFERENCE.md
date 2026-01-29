@@ -12,6 +12,56 @@ https://api.soulsense.com/api/v1
 
 All API endpoints are prefixed with `/api/v1`.
 
+## Versioning
+
+### Current Version
+
+**API Version:** `1.0.0`
+
+The SoulSense API follows [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH):
+
+- **MAJOR**: Breaking changes that are not backward compatible
+- **MINOR**: New features that are backward compatible
+- **PATCH**: Bug fixes and small improvements that are backward compatible
+
+### Versioning Scheme
+
+- **URL Path Versioning**: All endpoints include the major version in the path (`/api/v1/`)
+- **Header Versioning**: Each response includes `X-API-Version` header with the exact version
+- **Content Negotiation**: Future versions may support content negotiation for minor versions
+
+### Checking API Version
+
+You can check the current API version in several ways:
+
+1. **Health Endpoint**: `GET /api/v1/health/`
+   ```json
+   {
+     "status": "healthy",
+     "timestamp": "2023-01-15T12:00:00Z",
+     "version": "1.0.0"
+   }
+   ```
+
+2. **Response Headers**: All API responses include:
+   ```
+   X-API-Version: 1.0
+   ```
+
+### Version Compatibility
+
+- **v1.x.x**: Current stable version with full backward compatibility within v1
+- **Breaking Changes**: Will be released as v2.x.x with advance notice
+- **Deprecation**: Deprecated endpoints will be marked in documentation and responses
+
+### Migration Guide
+
+When new major versions are released:
+1. Review the changelog for breaking changes
+2. Test your integration with the new version
+3. Update your client code as needed
+4. Migrate to the new version within the deprecation period
+
 ## Authentication
 
 The API uses JWT (JSON Web Token) authentication. Include the token in the `Authorization` header as a Bearer token:
