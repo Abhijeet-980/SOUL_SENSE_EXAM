@@ -17,7 +17,6 @@
 - [Quick Start](#-quick-start)
 - [Installation](#-installation)
 - [Usage](#-usage)
-- [Features](#-features)
 - [Development](#-development)
 - [Testing](#-testing)
 - [Contributing](#-contributing)
@@ -103,14 +102,18 @@ User Input → GUI Events → Business Logic → Data Validation → Database �
 - **Pattern Recognition**: Stress indicators, growth mindset, self-reflection tracking
 - **Outlier Detection**: Statistical analysis using Z-score, IQR, and ensemble methods
 - **Trend Analysis**: Emotional journey visualization over time
+- **ML Integration**: Custom model training on user data
+- **Benchmarking**: Population-level EQ score comparisons
 
 ### User Experience
 
 - **Multi-language**: English, Hindi, Spanish with easy switching
 - **Daily Journal**: AI-powered emotional reflection with personalized insights
-- **Rich Profiles**: Medical history, personal strengths, emotional patterns
+- **AI Prompts**: Personalized journaling suggestions based on emotional patterns
+- **Rich Profiles**: Medical history, personal details, strengths assessment
+- **Secure Authentication**: bcrypt password hashing with JWT tokens
 - **Settings Sync**: Cross-device preference synchronization
-- **Data Management**: Backup, restore, and data export capabilities
+- **Data Management**: Backup, restore, and data export capabilities (JSON/text formats)
 
 ### Developer Experience
 
@@ -254,40 +257,7 @@ python scripts/outlier_analysis.py --user john_doe
 
 ---
 
-## 🔧 Features
-
-### Assessment Engine
-
-- **Question Bank**: 50+ validated EQ questions across 5 categories
-- **Adaptive Filtering**: Age-appropriate question selection (10-120 years)
-- **Scoring Algorithm**: Weighted calculation with interpretation bands
-- **Result Categories**: Self-Awareness, Emotional Regulation, Empathy, Social Skills, Motivation
-
-### Journal & Reflection
-
-- **Sentiment Analysis**: Real-time emotional tone detection
-- **Pattern Recognition**: Identifies stress indicators and growth patterns
-- **AI Prompts**: Personalized journaling suggestions
-- **Trend Tracking**: Emotional journey visualization
-- **Export Options**: JSON and text format exports
-
-### User Management
-
-- **Secure Authentication**: bcrypt password hashing with JWT tokens
-- **Profile System**: Medical history, personal details, strengths assessment
-- **Settings Sync**: Cross-device preference synchronization
-- **Data Privacy**: Local storage with user-controlled backups
-
-### Analytics & Insights
-
-- **Statistical Analysis**: Outlier detection and data quality assessment
-- **ML Integration**: Custom model training on user data
-- **Benchmarking**: Population-level EQ score comparisons
-- **Reporting**: Comprehensive assessment statistics
-
----
-
-## 💻 Development
+##  Development
 
 ### Project Structure
 
