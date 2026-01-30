@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import '@/styles/globals.css';
-import { ThemeProvider, FloatingNavbar } from '@/components/layout';
+import { ThemeProvider } from '@/components/layout';
+import { NavbarController } from '@/components/layout/navbar-controller';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
@@ -28,7 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange
         >
-          <FloatingNavbar />
+          <NavbarController />
           {children}
         </ThemeProvider>
       </body>
