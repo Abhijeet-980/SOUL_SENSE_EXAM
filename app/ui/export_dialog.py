@@ -276,8 +276,9 @@ class ExportWizard(tk.Toplevel):
             self.after(0, lambda: self._on_export_success(filename))
             
         except Exception as e:
-            logger.error(f"Export thread failed: {e}")
-            self.after(0, lambda: self._on_export_error(str(e)))
+            error_msg = str(e)
+            logger.error(f"Export thread failed: {error_msg}")
+            self.after(0, lambda: self._on_export_error(error_msg))
 
     def _on_export_success(self, filename):
         hide_loading(self.loading_overlay)
