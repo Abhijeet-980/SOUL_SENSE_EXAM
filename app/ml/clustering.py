@@ -7,12 +7,37 @@ from pathlib import Path
 import json
 import pickle
 
-# ML imports
-from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from sklearn.decomposition import PCA
-from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
-from sklearn.manifold import TSNE
+# ML imports - lazy loaded to avoid slow startup
+_sklearn_imports = None
+
+def _get_sklearn_imports():
+    global _sklearn_imports
+    if _sklearn_imports is None:
+        from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
+        from sklearn.preprocessing import StandardScaler, MinMaxScaler
+        from sklearn.decomposition import PCA
+        from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
+        from sklearn.manifold import TSNE
+        _sklearn_imports = {
+            'KMeans': KMeans,
+            'DBSCAN': DBSCAN,
+            'AgglomerativeClustering': AgglomerativeClustering,
+            'StandardScaler': StandardScaler,
+            'MinMaxScaler': MinMaxScaler,
+            'PCA': PCA,
+            'silhouette_score': silhouette_score,
+            'calinski_harabasz_score': calinski_harabasz_score,
+            'davies_bouldin_score': davies_bouldin_score,
+            'TSNE': TSNE
+        }
+    return _sklearn_imports
+
+# Remove top-level sklearn imports
+# from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
+# from sklearn.preprocessing import StandardScaler, MinMaxScaler
+# from sklearn.decomposition import PCA
+# from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
+# from sklearn.manifold import TSNE
 
 # Optional visualization imports
 try:
@@ -380,14 +405,24 @@ class EmotionalProfileClusterer:
         self.n_clusters = n_clusters
         self.random_state = random_state
         
-        self.scaler = StandardScaler()
-        self.pca = PCA(n_components=2)
+        self.scaler = None
+        self.pca = None
         self.kmeans = None
         self.hierarchical = None
         self.dbscan = None
         
         self.feature_extractor = EmotionalFeatureExtractor()
         self.is_fitted = False
+
+    def _get_scaler(self):
+        if self.scaler is None:
+            self.scaler = _get_sklearn_imports()['StandardScaler']()
+        return self.scaler
+
+    def _get_pca(self):
+        if self.pca is None:
+            self.pca = _get_sklearn_imports()['PCA'](n_components=2)
+        return self.pca
         self.cluster_centers_ = None
         self.labels_ = None
         self.user_profiles = {}
@@ -443,7 +478,7 @@ class EmotionalProfileClusterer:
         # Standardize features to zero mean and unit variance
         # This ensures all features contribute equally to clustering regardless of scale
         # Formula: X_scaled = (X - mean) / std
-        X_scaled = self.scaler.fit_transform(X)
+        X_scaled = self._get_scaler().fit_transform(X)
 
         # STEP 4: OPTIMAL CLUSTER NUMBER DETECTION
         # Use silhouette analysis to find statistically optimal number of clusters
@@ -461,7 +496,7 @@ class EmotionalProfileClusterer:
         # 3. Update centers as mean of assigned points
         # 4. Repeat until convergence or max iterations
         # Mathematical foundation: Minimizes within-cluster sum of squared distances
-        self.kmeans = KMeans(
+        self.kmeans = _get_sklearn_imports()['KMeans'](
             n_clusters=self.n_clusters,
             random_state=self.random_state,  # Ensures reproducible results
             n_init=10,                       # Try 10 different initializations, pick best
@@ -480,7 +515,7 @@ class EmotionalProfileClusterer:
         # 3. Repeat until desired number of clusters reached
         # Ward linkage: Minimizes increase in within-cluster variance
         if len(X_scaled) >= self.n_clusters:
-            self.hierarchical = AgglomerativeClustering(
+            self.hierarchical = _get_sklearn_imports()['AgglomerativeClustering'](
                 n_clusters=self.n_clusters,
                 linkage='ward'  # Ward's method minimizes within-cluster variance
             )
@@ -517,7 +552,7 @@ class EmotionalProfileClusterer:
         #
         # USE CASE: Identifies users with anomalous emotional profiles that don't
         # fit typical patterns, potentially indicating unique needs or data issues
-        self.dbscan = DBSCAN(eps=0.5, min_samples=2)
+        self.dbscan = _get_sklearn_imports()['DBSCAN'](eps=0.5, min_samples=2)
         dbscan_labels = self.dbscan.fit_predict(X_scaled)
         # DBSCAN labels: -1 for noise/outliers, 0+ for clusters
 
@@ -542,7 +577,7 @@ class EmotionalProfileClusterer:
         # Algorithm: Find principal components that maximize variance
         # Mathematical foundation: Eigenvalue decomposition of covariance matrix
         if len(X_scaled) >= 2:
-            X_pca = self.pca.fit_transform(X_scaled)
+            X_pca = self._get_pca().fit_transform(X_scaled)
         else:
             X_pca = X_scaled
 
@@ -659,7 +694,7 @@ class EmotionalProfileClusterer:
         # STEP 5: FEATURE SCALING
         # Apply same standardization transformation used during training
         # Formula: X_scaled = (X - mean_train) / std_train
-        X_scaled = self.scaler.transform(X)
+        X_scaled = self._get_scaler().transform(X)
 
         # STEP 6: CLUSTER PREDICTION USING K-MEANS
         # Assign to nearest cluster centroid using Euclidean distance
@@ -714,7 +749,7 @@ class EmotionalProfileClusterer:
         X = np.nan_to_num(X, nan=0.0)
         
         # Scale and predict
-        X_scaled = self.scaler.transform(X)
+        X_scaled = self._get_scaler().transform(X)
         cluster_id = self.kmeans.predict(X_scaled)[0]
         
         # Calculate confidence based on distance to cluster center
@@ -810,12 +845,12 @@ class EmotionalProfileClusterer:
         # Evaluate clustering quality for each candidate k
         for k in k_range:
             # Fit K-Means for current k value
-            kmeans = KMeans(n_clusters=k, random_state=self.random_state, n_init=10)
+            kmeans = _get_sklearn_imports()['KMeans'](n_clusters=k, random_state=self.random_state, n_init=10)
             labels = kmeans.fit_predict(X)
 
             try:
                 # Calculate average silhouette score for this clustering
-                score = silhouette_score(X, labels)
+                score = _get_sklearn_imports()['silhouette_score'](X, labels)
             except ValueError:
                 # Silhouette score undefined for single cluster or other edge cases
                 score = -1.0
@@ -888,7 +923,7 @@ class EmotionalProfileClusterer:
         # Calculate silhouette score with error handling
         try:
             # silhouette_score computes average silhouette coefficient across all samples
-            metrics['silhouette_score'] = float(silhouette_score(X, labels))
+            metrics['silhouette_score'] = float(_get_sklearn_imports()['silhouette_score'](X, labels))
         except Exception as e:
             logger.warning(f"Silhouette score calculation failed: {e}")
             metrics['silhouette_score'] = 0.0
@@ -896,7 +931,7 @@ class EmotionalProfileClusterer:
         # Calculate Calinski-Harabasz index
         try:
             # Measures between-cluster vs within-cluster dispersion ratio
-            metrics['calinski_harabasz'] = float(calinski_harabasz_score(X, labels))
+            metrics['calinski_harabasz'] = float(_get_sklearn_imports()['calinski_harabasz_score'](X, labels))
         except Exception as e:
             logger.warning(f"Calinski-Harabasz score calculation failed: {e}")
             metrics['calinski_harabasz'] = 0.0
@@ -904,7 +939,7 @@ class EmotionalProfileClusterer:
         # Calculate Davies-Bouldin index
         try:
             # Measures average cluster similarity to nearest cluster
-            metrics['davies_bouldin'] = float(davies_bouldin_score(X, labels))
+            metrics['davies_bouldin'] = float(_get_sklearn_imports()['davies_bouldin_score'](X, labels))
         except Exception as e:
             logger.warning(f"Davies-Bouldin score calculation failed: {e}")
             metrics['davies_bouldin'] = float('inf')

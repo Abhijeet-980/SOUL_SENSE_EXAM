@@ -29,28 +29,58 @@ class AuthManager:
             logging.error(f"Password verification failed: {e}")
             return False
 
-    def register_user(self, username, password):
+    def register_user(self, name, email, age, gender, password):
         # Enhanced validation
-        if len(username) < 3:
-            return False, "Username must be at least 3 characters"
+        if len(name) < 2:
+            return False, "Name must be at least 2 characters"
         if len(password) < 8:
             return False, "Password must be at least 8 characters"
         if not self._validate_password_strength(password):
             return False, "Password must contain uppercase, lowercase, number and special character"
+        if age < 13 or age > 120:
+            return False, "Age must be between 13 and 120"
+        if gender not in ["Male", "Female", "Other", "Prefer not to say"]:
+            return False, "Invalid gender selection"
 
         session = get_session()
         try:
-            existing_user = session.query(User).filter_by(username=username).first()
+            # Check if username (name) already exists
+            existing_user = session.query(User).filter_by(username=name).first()
             if existing_user:
                 return False, "Username already exists"
 
+            # Check if email already exists
+            from app.models import PersonalProfile
+            existing_email = session.query(PersonalProfile).filter_by(email=email).first()
+            if existing_email:
+                return False, "Email already exists"
+
             password_hash = self.hash_password(password)
+            
+            # Calculate date_of_birth from age
+            from datetime import datetime
+            current_year = datetime.utcnow().year
+            birth_year = current_year - age
+            date_of_birth = f"{birth_year}-01-01"  # Approximate
+            
             new_user = User(
-                username=username,
+                username=name,
                 password_hash=password_hash,
                 created_at=datetime.utcnow().isoformat()
             )
             session.add(new_user)
+            session.flush()  # Get the user id
+            
+            # Create personal profile
+            profile = PersonalProfile(
+                user_id=new_user.id,
+                email=email,
+                date_of_birth=date_of_birth,
+                gender=gender,
+                last_updated=datetime.utcnow().isoformat()
+            )
+            session.add(profile)
+            
             session.commit()
             return True, "Registration successful"
 
