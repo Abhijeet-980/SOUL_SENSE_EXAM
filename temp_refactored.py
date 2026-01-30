@@ -1,3 +1,5 @@
+import signal
+import atexit
 import tkinter as tk
 from tkinter import messagebox
 import logging
@@ -12,6 +14,16 @@ from app.logger import setup_logging
 from app.error_handler import setup_global_exception_handlers
 from app.questions import initialize_questions
 from typing import Optional, Dict, Any
+from app.error_handler import get_error_handler, ErrorSeverity
+from app.logger import get_logger
+from app.i18n_manager import get_i18n
+from app.auth import AuthManager
+from app.questions import load_questions
+from app.ui.sidebar import SidebarNav
+from app.ui.assessments import AssessmentHub
+from app.ui.exam import ExamManager
+from app.ui.dashboard import AnalyticsDashboard
+from app.ui.journal import JournalFeature
 
 class SoulSenseApp:
     def __init__(self, root: tk.Tk) -> None:
@@ -22,26 +34,6 @@ class SoulSenseApp:
         self.view_manager = ViewManager(self)
         self.auth_handler = AppAuth(self)
         self.shutdown_handler = ShutdownHandler(self)
-        
-        # State for optimization
-        self.is_animating = False
-
-        # Expose some attributes for backward compatibility
-        self.colors = self.initializer.app.colors
-        self.fonts = self.initializer.app.fonts
-        self.username = self.initializer.app.username
-        self.current_user_id = self.initializer.app.current_user_id
-        self.settings = self.initializer.app.settings
-        self.questions = self.initializer.app.questions
-        self.main_container = self.initializer.app.main_container
-        self.sidebar = self.initializer.app.sidebar
-        self.content_area = self.initializer.app.content_area
-        self.exam_manager = self.initializer.app.exam_manager
-        self.ui_styles = self.initializer.app.ui_styles
-        self.logger = self.initializer.app.logger
-        self.i18n = self.initializer.app.i18n
-        self.age = self.initializer.app.age
-        self.age_group = self.initializer.app.age_group
 
     def switch_view(self, view_id):
         """Delegate view switching to ViewManager"""
@@ -92,11 +84,6 @@ class SoulSenseApp:
         """Delegate to ShutdownHandler"""
         self.shutdown_handler.graceful_shutdown()
 
-    def logout(self):
-        """Handle user logout with confirmation"""
-        if messagebox.askyesno("Confirm Logout", "Are you sure you want to log out? Any unsaved changes will be lost."):
-            self.initializer.logout_user()
-
 # --- Global Error Handlers ---
 
 def show_error(title, message, exception=None):
@@ -126,6 +113,7 @@ if __name__ == "__main__":
 
     try:
         # Run startup integrity checks before initializing the app
+        logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
 
         try:
@@ -160,6 +148,7 @@ if __name__ == "__main__":
         # All checks passed, start the application
 
         # Initialize Questions Cache (Preload)
+        from app.questions import initialize_questions
         logger.info("Preloading questions into memory...")
         if not initialize_questions():
             logger.warning("Initial question preload failed. Application will attempt lazy-loading.")
@@ -169,7 +158,6 @@ if __name__ == "__main__":
         # Register tkinter-specific exception handler
         def tk_report_callback_exception(exc_type, exc_value, exc_tb):
             """Handle exceptions in tkinter callbacks."""
-            from app.error_handler import get_error_handler, ErrorSeverity
             handler = get_error_handler()
             handler.log_error(
                 exc_value,
@@ -192,7 +180,6 @@ if __name__ == "__main__":
             app.logger.info(f"Received signal {signum}, initiating shutdown")
             app.graceful_shutdown()
 
-        import signal
         signal.signal(signal.SIGINT, signal_handler)
 
         # Try to register SIGTERM handler, but don't fail if it's not available
@@ -203,7 +190,6 @@ if __name__ == "__main__":
             app.logger.debug("SIGTERM not available on this platform, skipping registration")
 
         # Register atexit handler as backup
-        import atexit
         atexit.register(app.graceful_shutdown)
 
         root.mainloop()
@@ -212,7 +198,6 @@ if __name__ == "__main__":
         pass  # Clean exit from integrity failure
     except Exception as e:
         import traceback
-        from app.error_handler import get_error_handler, ErrorSeverity
         handler = get_error_handler()
         handler.log_error(e, module="main", operation="startup", severity=ErrorSeverity.CRITICAL)
         traceback.print_exc()

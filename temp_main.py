@@ -126,6 +126,7 @@ if __name__ == "__main__":
 
     try:
         # Run startup integrity checks before initializing the app
+        logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
 
         try:
