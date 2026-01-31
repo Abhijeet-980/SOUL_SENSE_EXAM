@@ -14,6 +14,7 @@ type RegisterFormData = z.infer<typeof registrationSchema>;
 
 export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (data: RegisterFormData) => {
     setIsLoading(true);

@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, CheckCircle2 } from 'lucide-react';
 import { Form, FormField } from '@/components/forms';
 import { Button, Input } from '@/components/ui';
 import { AuthLayout, SocialLogin } from '@/components/auth';
 import { loginSchema } from '@/lib/validation';
+import { useAuth } from '@/hooks/useAuth';
 import { z } from 'zod';
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -15,15 +17,55 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [loginSuccess, setLoginSuccess] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  const { login, isAuthenticated, isLoading: authLoading } = useAuth();
+  const router = useRouter();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      router.push('/');
+    }
+  }, [isAuthenticated, authLoading, router]);
 
   const handleSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    console.log('Login data:', data);
-    setIsLoading(false);
-    // TODO: Implement actual login logic
+    setLoginError(null);
+
+    try {
+      const success = await login(data.email, data.password, data.rememberMe || false);
+
+      if (success) {
+        setLoginSuccess(true);
+        // Short delay to show success state before redirect
+        setTimeout(() => {
+          router.push('/');
+        }, 500);
+      } else {
+        setLoginError('Invalid email or password. Please try again.');
+      }
+    } catch {
+      setLoginError('An error occurred. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  // Show loading state while checking auth
+  if (authLoading) {
+    return (
+      <AuthLayout
+        title="Welcome back"
+        subtitle="Checking your session..."
+      >
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout
@@ -33,6 +75,27 @@ export default function LoginPage() {
       <Form schema={loginSchema} onSubmit={handleSubmit} className="space-y-5">
         {(methods) => (
           <>
+            {loginError && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm"
+              >
+                {loginError}
+              </motion.div>
+            )}
+
+            {loginSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400 text-sm flex items-center gap-2"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Login successful! Redirecting...
+              </motion.div>
+            )}
+
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -90,13 +153,15 @@ export default function LoginPage() {
               transition={{ delay: 0.3 }}
               className="flex items-center justify-between"
             >
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex items-center gap-2 cursor-pointer group">
                 <input
                   type="checkbox"
                   {...methods.register('rememberMe')}
-                  className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                  className="h-4 w-4 rounded border-input bg-background text-brand-primary focus:ring-brand-primary focus:ring-offset-background cursor-pointer"
                 />
-                <span className="text-sm text-muted-foreground">Remember me</span>
+                <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+                  Remember me
+                </span>
               </label>
               <Link
                 href="/forgot-password"
@@ -113,13 +178,18 @@ export default function LoginPage() {
             >
               <Button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || loginSuccess}
                 className="w-full h-11 bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity"
               >
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Signing in...
+                  </>
+                ) : loginSuccess ? (
+                  <>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Success!
                   </>
                 ) : (
                   'Sign in'
@@ -155,3 +225,4 @@ export default function LoginPage() {
     </AuthLayout>
   );
 }
+

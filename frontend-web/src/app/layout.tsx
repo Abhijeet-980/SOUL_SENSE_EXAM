@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import '@/styles/globals.css';
-import { ThemeProvider } from '@/components/layout';
-import { NavbarController } from '@/components/layout/navbar-controller';
+import { ThemeProvider, NavbarController } from '@/components/layout';
+import { AuthProvider } from '@/hooks/useAuth';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
@@ -29,8 +29,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange
         >
-          <NavbarController />
-          {children}
+          <AuthProvider>
+            <NavbarController />
+            {children}
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>
