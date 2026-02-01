@@ -16,7 +16,7 @@ from .db_service import get_db
 from ..root_models import User, LoginAttempt, PersonalProfile, RefreshToken
 from ..config import get_settings
 from ..constants.errors import ErrorCode
-from ..constants.security import BCRYPT_ROUNDS, REFRESH_TOKEN_EXPIRE_DAYS
+from ..constants.security_constants import BCRYPT_ROUNDS, REFRESH_TOKEN_EXPIRE_DAYS
 from ..exceptions import AuthException
 
 settings = get_settings()

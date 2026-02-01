@@ -9,7 +9,7 @@ from ..schemas import UserCreate, Token, UserResponse, ErrorResponse
 from ..services.db_service import get_db
 from ..services.auth_service import AuthService
 from ..constants.errors import ErrorCode
-from ..constants.security import REFRESH_TOKEN_EXPIRE_DAYS
+from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
 from ..exceptions import AuthException
 from api.root_models import User
 from sqlalchemy.orm import Session
