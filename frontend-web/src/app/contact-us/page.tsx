@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { Send, Loader2, Mail, User, MessageSquare, FileText, CheckCircle } from 'lucide-react';
 import { Form, FormField } from '@/components/forms';
 import { Button, Input } from '@/components/ui';
-import { Footer } from '@/components/layout';
+import { Footer, Section } from '@/components/layout';
 import { contactSchema } from '@/lib/validation';
 import { z } from 'zod';
 
@@ -52,29 +52,29 @@ export default function ContactUsPage() {
 
     return (
         <div className="flex flex-col min-h-screen">
-            <main className="flex-grow pt-24 pb-16">
+            <main className="flex-grow">
                 {/* Hero Section */}
-                <section className="relative overflow-hidden">
-                    {/* Background Effects */}
-                    <div className="absolute inset-0 -z-10">
-                        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5" />
-                        <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse" />
-                        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000" />
+                <Section className="pt-32 lg:pt-48 overflow-hidden relative min-h-screen flex flex-col justify-center">
+                    {/* Background Effects matching Hero style */}
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full -z-10 pointer-events-none">
+                        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 blur-[120px] rounded-full animate-pulse" />
+                        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-secondary/20 blur-[120px] rounded-full" />
+                        <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 via-transparent to-secondary/5" />
                     </div>
 
-                    <div className="container mx-auto px-6 lg:px-8">
+                    <div className="container mx-auto">
                         <motion.div
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.5 }}
                             className="text-center mb-12"
                         >
-                            <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+                            <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight mb-4">
                                 <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
                                     Get in Touch
                                 </span>
                             </h1>
-                            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                            <p className="text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
                                 Have questions about Soul Sense? We&apos;d love to hear from you. Send us a message
                                 and we&apos;ll respond as soon as possible.
                             </p>
@@ -85,7 +85,7 @@ export default function ContactUsPage() {
                                 initial={{ opacity: 0, y: 30 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.5, delay: 0.1 }}
-                                className="glass-card p-8 md:p-10"
+                                className="glass-card p-8 md:p-10 border-white/10"
                             >
                                 {isSuccess ? (
                                     <motion.div
@@ -292,7 +292,7 @@ export default function ContactUsPage() {
                             </motion.div>
                         </div>
                     </div>
-                </section>
+                </Section>
             </main>
             <Footer />
         </div>
