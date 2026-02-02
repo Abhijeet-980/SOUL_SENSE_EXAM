@@ -70,9 +70,9 @@ from sqlalchemy import text
 from app.config import CONFIG_PATH, DEFAULT_CONFIG
 from app.questions import initialize_questions, _ALL_QUESTIONS
 
-# Pre-load app modules so patch can find them
-import app.main
-import app.ui.styles
+# Pre-load app modules removed to allow mocks to take effect
+# import app.main
+# import app.ui.styles
 
 def test_integrity_checks_pass(temp_db):
     """

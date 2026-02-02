@@ -205,5 +205,14 @@ def mock_app(mocker):
     
     # Configure root as a separate mock
     mock_app.root = mocker.Mock()
+    # Ensure geometry methods return ints to verify math in logic
+    mock_app.root.winfo_x.return_value = 0
+    mock_app.root.winfo_y.return_value = 0
+    mock_app.root.winfo_width.return_value = 800
+    mock_app.root.winfo_height.return_value = 600
+    mock_app.root.winfo_screenwidth.return_value = 1920
+    mock_app.root.winfo_screenheight.return_value = 1080
+    mock_app.root.winfo_reqwidth.return_value = 800
+    mock_app.root.winfo_reqheight.return_value = 600
     
     return mock_app
