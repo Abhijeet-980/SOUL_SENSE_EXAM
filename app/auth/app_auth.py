@@ -182,13 +182,166 @@ class AppAuth:
                  
         # Keyboard usability: Bind Enter to login
         login_win.bind("<Return>", lambda e: do_login())
+        self.login_window.bind("<Return>", lambda e: do_login()) # Changed login_win to self.login_window
 
-        tk.Button(login_win, text="Create Account", command=do_register,
+        tk.Button(self.login_window, text="Create Account", command=do_register, # Changed login_win to self.login_window
                  font=("Segoe UI", 10), bg=self.app.colors["bg"], fg=self.app.colors["primary"],
                  bd=0, cursor="hand2").pack()
         # --- BIND KEYS TO ACTIONS ---
-        login_win.bind('<Return>', do_login)   # Enter Key -> Logs in
-        login_win.bind('<Escape>', clear_fields) # Esc Key -> Clears text
+        self.login_window.bind('<Return>', do_login)   # Enter Key -> Logs in # Changed login_win to self.login_window
+        self.login_window.bind('<Escape>', clear_fields) # Esc Key -> Clears text # Changed login_win to self.login_window
+
+        # Forgot Password button
+        tk.Button(self.login_window, text="Forgot Password?", command=self.show_forgot_password,
+                 font=("Segoe UI", 9), bg=self.app.colors["bg"], fg=self.app.colors["text_secondary"],
+                 bd=0, cursor="hand2").pack(pady=(5, 0))
+
+    def show_forgot_password(self):
+        """Show Forgot Password Dialog"""
+        if hasattr(self, 'login_window') and self.login_window:
+            self.login_window.destroy()
+            
+        fp_window = tk.Toplevel(self.app.root)
+        fp_window.title("Reset Password")
+        fp_window.geometry("400x300")
+        fp_window.configure(bg=self.app.colors["bg"])
+        
+        # Center the window
+        screen_width = fp_window.winfo_screenwidth()
+        screen_height = fp_window.winfo_screenheight()
+        x = (screen_width - 400) // 2
+        y = (screen_height - 300) // 2
+        fp_window.geometry(f"400x300+{x}+{y}")
+        
+        # UI Elements
+        tk.Label(fp_window, text="Forgot Password", font=("Segoe UI", 16, "bold"), 
+                bg=self.app.colors["bg"], fg=self.app.colors["text_primary"]).pack(pady=20)
+                
+        tk.Label(fp_window, text="Enter your email address to receive a reset code.", 
+                font=("Segoe UI", 10), bg=self.app.colors["bg"], fg=self.app.colors["text_secondary"]).pack(pady=(0, 20))
+        
+        email_var = tk.StringVar()
+        tk.Label(fp_window, text="Email", font=("Segoe UI", 10, "bold"), 
+                bg=self.app.colors["bg"], fg=self.app.colors["text_primary"]).pack(anchor="w", padx=40)
+        email_entry = tk.Entry(fp_window, textvariable=email_var, font=("Segoe UI", 10), width=30)
+        email_entry.pack(pady=5)
+        email_entry.focus()
+        
+        def on_send():
+            email = email_var.get()
+            if not email:
+                messagebox.showerror("Error", "Please enter your email.")
+                return
+                
+            success, msg = self.auth_manager.initiate_password_reset(email)
+            if success:
+                messagebox.showinfo("Success", msg)
+                fp_window.destroy()
+                self.show_verify_otp(email)
+            else:
+                messagebox.showerror("Error", msg)
+        
+        tk.Button(fp_window, text="Send Code", command=on_send, 
+                 bg=self.app.colors["primary"], fg="white", font=("Segoe UI", 10, "bold"), 
+                 padx=20, pady=5, relief="flat").pack(pady=20)
+                 
+        # Back to Login
+        tk.Button(fp_window, text="Back to Login", 
+                 command=lambda: [fp_window.destroy(), self.show_login_screen()],
+                 bg=self.app.colors["bg"], fg=self.app.colors["primary"], 
+                 font=("Segoe UI", 9), relief="flat", cursor="hand2").pack()
+
+    def show_verify_otp(self, email):
+        """Show OTP Verification Dialog"""
+        otp_window = tk.Toplevel(self.app.root)
+        otp_window.title("Verify Code")
+        otp_window.geometry("400x300")
+        otp_window.configure(bg=self.app.colors["bg"])
+        
+        # Center
+        screen_width = otp_window.winfo_screenwidth()
+        screen_height = otp_window.winfo_screenheight()
+        x = (screen_width - 400) // 2
+        y = (screen_height - 300) // 2
+        otp_window.geometry(f"400x300+{x}+{y}")
+        
+        tk.Label(otp_window, text="Enter Verification Code", font=("Segoe UI", 14, "bold"), 
+                bg=self.app.colors["bg"], fg=self.app.colors["text_primary"]).pack(pady=20)
+                
+        tk.Label(otp_window, text=f"Code sent to {email}", 
+                font=("Segoe UI", 9), bg=self.app.colors["bg"], fg=self.app.colors["text_secondary"]).pack(pady=(0, 20))
+        
+        code_var = tk.StringVar()
+        tk.Entry(otp_window, textvariable=code_var, font=("Segoe UI", 14), width=10, justify="center").pack(pady=10)
+        
+        def on_verify():
+            code = code_var.get()
+            if len(code) != 6:
+                messagebox.showerror("Error", "Code must be 6 digits.")
+                return
+            
+            # We don't verify against server just yet, we pass code to next step?
+            # Security: Best to verify here?
+            # The AuthManager.complete_password_reset verification happens in next step along with new password.
+            # But UX is better if we verify code first.
+            # To verify code without password, we need a new method verify_otp_only?
+            # Or we just pass it to next step.
+            # Let's pass to next step.
+            otp_window.destroy()
+            self.show_reset_password_dialog(email, code)
+
+        tk.Button(otp_window, text="Verify", command=on_verify, 
+                 bg=self.app.colors["primary"], fg="white", font=("Segoe UI", 10, "bold"), 
+                 padx=20, pady=5).pack(pady=20)
+
+    def show_reset_password_dialog(self, email, code):
+        """Show New Password Dialog"""
+        reset_window = tk.Toplevel(self.app.root)
+        reset_window.title("Set New Password")
+        reset_window.geometry("400x400")
+        reset_window.configure(bg=self.app.colors["bg"])
+        
+        # Center
+        screen_width = reset_window.winfo_screenwidth()
+        screen_height = reset_window.winfo_screenheight()
+        x = (screen_width - 400) // 2
+        y = (screen_height - 400) // 2
+        reset_window.geometry(f"400x400+{x}+{y}")
+        
+        tk.Label(reset_window, text="New Password", font=("Segoe UI", 16, "bold"), 
+                bg=self.app.colors["bg"], fg=self.app.colors["text_primary"]).pack(pady=20)
+        
+        pass_var = tk.StringVar()
+        tk.Label(reset_window, text="Password", font=("Segoe UI", 10, "bold"), 
+                bg=self.app.colors["bg"], fg=self.app.colors["text_primary"]).pack(anchor="w", padx=40)
+        pass_entry = tk.Entry(reset_window, textvariable=pass_var, show="•", font=("Segoe UI", 10), width=30)
+        pass_entry.pack(pady=5)
+        
+        # Reuse meter
+        meter = PasswordStrengthMeter(reset_window, self.app.colors)
+        meter.pack(padx=40, pady=5, fill="x")
+        
+        def check_strength(*args):
+            meter.update_strength(pass_var.get())
+        pass_var.trace("w", check_strength)
+        
+        def on_reset():
+            new_pass = pass_var.get()
+            success, msg = self.auth_manager.complete_password_reset(email, code, new_pass)
+            if success:
+                messagebox.showinfo("Success", msg)
+                reset_window.destroy()
+                self.show_login_screen()
+            else:
+                messagebox.showerror("Error", msg)
+                # If code is invalid, might need to restart flow
+                if "expired" in msg.lower():
+                    reset_window.destroy()
+                    self.show_forgot_password()
+
+        tk.Button(reset_window, text="Set Password", command=on_reset, 
+                 bg=self.app.colors["primary"], fg="white", font=("Segoe UI", 10, "bold"), 
+                 padx=20, pady=5).pack(pady=20)
 
     def show_signup_screen(self):
         """Show signup popup window"""

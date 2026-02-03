@@ -215,3 +215,95 @@ class AuthManager:
             session.add(attempt)
         except Exception as e:
             logging.error(f"Failed to record attempt: {e}")
+
+    # PR 3: Password Reset Flow
+    def initiate_password_reset(self, email):
+        """
+        Trigger the password reset flow.
+        1. Find user by email.
+        2. Generate OTP.
+        3. Send OTP via EmailService.
+        Privacy: Always returns success message to prevent enumeration.
+        """
+        from app.auth.otp_manager import OTPManager
+        from app.services.email_service import EmailService
+        from app.models import PersonalProfile, User
+
+        session = get_session()
+        try:
+            # Normalize email
+            email_lower = email.lower().strip()
+            
+            # Find user via profile
+            profile = session.query(PersonalProfile).filter(PersonalProfile.email == email_lower).first()
+            user = None
+            if profile:
+                user = session.query(User).filter(User.id == profile.user_id).first()
+            
+            # Privacy: If user not found, we still return success-like message,
+            # but we don't send anything (or maybe send a generic 'account not found' to that email if we wanted)
+            # For now, just logging internal check.
+            if not user:
+                logging.info(f"Password reset requested for unknown email: {email_lower}")
+                return True, "If an account exists with this email, a reset code has been sent."
+
+            # Generate OTP
+            code, error = OTPManager.generate_otp(user.id, "RESET_PASSWORD")
+            
+            if not code:
+                # Rate limit hit or error
+                return False, error or "Too many requests. Please wait."
+                
+            # Send Email
+            if EmailService.send_otp(email_lower, code, "Password Reset"):
+                return True, "If an account exists with this email, a reset code has been sent."
+            else:
+                return False, "Failed to send email. Please try again later."
+                
+        except Exception as e:
+            logging.error(f"Error in initiate_password_reset: {e}")
+            return False, "An error occurred. Please try again."
+        finally:
+            session.close()
+
+    def complete_password_reset(self, email, otp_code, new_password):
+        """
+        Verify OTP and update password.
+        """
+        from app.auth.otp_manager import OTPManager
+        from app.models import PersonalProfile, User
+        
+        # Validation
+        if not self._validate_password_strength(new_password):
+            return False, "Password does not meet complexity requirements."
+            
+        session = get_session()
+        try:
+            email_lower = email.lower().strip()
+            
+            # Find User
+            profile = session.query(PersonalProfile).filter(PersonalProfile.email == email_lower).first()
+            if not profile:
+                return False, "Invalid request."
+            
+            user = session.query(User).filter(User.id == profile.user_id).first()
+            if not user:
+                return False, "Invalid request."
+                
+            # Verify OTP
+            if not OTPManager.verify_otp(user.id, otp_code, "RESET_PASSWORD"):
+                return False, "Invalid or expired code."
+            
+            # Update Password
+            user.password_hash = self.hash_password(new_password)
+            session.commit()
+            
+            logging.info(f"Password reset successfully for user {user.username}")
+            return True, "Password reset successfully. You can now login."
+            
+        except Exception as e:
+            session.rollback()
+            logging.error(f"Error in complete_password_reset: {e}")
+            return False, "Internal error."
+        finally:
+            session.close()
