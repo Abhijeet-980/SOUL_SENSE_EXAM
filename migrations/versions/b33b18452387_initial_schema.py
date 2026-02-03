@@ -151,6 +151,18 @@ def upgrade() -> None:
             batch_op.alter_column('tags', existing_type=sa.TEXT(), type_=sa.String(), existing_nullable=True)
 
 
+    # --- LOGIN ATTEMPTS ---
+    if 'login_attempts' not in tables:
+        op.create_table('login_attempts',
+            sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column('username', sa.String(), nullable=True),
+            sa.Column('is_successful', sa.Boolean(), nullable=True),
+            sa.Column('timestamp', sa.DateTime(), nullable=True),
+            sa.Column('ip_address', sa.String(), nullable=True),
+            sa.PrimaryKeyConstraint('id')
+        )
+
+
 
 def downgrade() -> None:
     """Downgrade schema."""

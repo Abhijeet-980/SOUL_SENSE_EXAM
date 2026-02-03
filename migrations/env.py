@@ -70,6 +70,10 @@ def run_migrations_online() -> None:
     connectable = create_engine(target_url)
 
     with connectable.connect() as connection:
+        # PR 1 Fix: Disable foreign keys for SQLite batch migrations
+        from sqlalchemy import text
+        connection.execute(text("PRAGMA foreign_keys=OFF"))
+        
         context.configure(
             connection=connection, 
             target_metadata=target_metadata,

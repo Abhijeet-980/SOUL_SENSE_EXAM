@@ -31,6 +31,12 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
     last_login = Column(String, nullable=True)
+    
+    # PR 1: Security & Lifecycle Fields
+    is_active = Column(Boolean, default=True, nullable=False)
+    otp_secret = Column(String, nullable=True) # TOTP Secret
+    is_2fa_enabled = Column(Boolean, default=False, nullable=False)
+    last_activity = Column(String, nullable=True) # Track idle time
 
     scores = relationship("Score", back_populates="user", cascade="all, delete-orphan")
     responses = relationship("Response", back_populates="user", cascade="all, delete-orphan")
@@ -55,6 +61,27 @@ class LoginAttempt(Base):
     ip_address = Column(String)
     timestamp = Column(DateTime, default=datetime.utcnow)
     is_successful = Column(Boolean)
+    
+    # PR 1: Audit Auditing
+    user_agent = Column(String, nullable=True)
+    failure_reason = Column(String, nullable=True)
+
+class OTP(Base):
+    """
+    One-Time Passwords for Password Reset and 2FA challenges.
+    """
+    __tablename__ = 'otp_codes'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=False)
+    code_hash = Column(String, nullable=False)
+    type = Column(String, nullable=False) # 'RESET_PASSWORD', 'LOGIN_CHALLENGE'
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    is_used = Column(Boolean, default=False)
+    attempts = Column(Integer, default=0)
+
+    user = relationship("User")
 
 
 class RefreshToken(Base):

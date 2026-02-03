@@ -41,7 +41,7 @@ class AuthManager:
             return False, "Password must contain uppercase, lowercase, number and special character", "REG006"
         if age < 13 or age > 120:
             return False, "Age must be between 13 and 120", "REG007"
-        if gender not in ["Male", "Female", "Other", "Prefer not to say"]:
+        if gender not in ["M", "F", "Other", "Prefer not to say"]:
             return False, "Invalid gender selection", "REG008"
 
         session = get_session()
@@ -113,6 +113,12 @@ class AuthManager:
                     user = session.query(User).filter(User.id == profile.user_id).first()
 
             if user and self.verify_password(password, user.password_hash):
+                # PR 1: Check if account is active
+                if hasattr(user, 'is_active') and not user.is_active:
+                    self._record_login_attempt(session, id_lower, False, reason="account_deactivated")
+                    session.commit()
+                    return False, "Account is deactivated. Please contact support.", "AUTH003"
+
                 # Update last login
                 try:
                     user.last_login = datetime.utcnow().isoformat()
@@ -127,7 +133,7 @@ class AuthManager:
                 self._generate_session_token()
                 return True, "Login successful", None
             else:
-                self._record_login_attempt(session, id_lower, False)
+                self._record_login_attempt(session, id_lower, False, reason="invalid_credentials")
                 session.commit()
                 return False, "Incorrect username or password", "AUTH001"
 
@@ -195,7 +201,7 @@ class AuthManager:
         finally:
             session.close()
 
-    def _record_login_attempt(self, session, username, success):
+    def _record_login_attempt(self, session, username, success, reason=None):
         """Record login attempt to DB."""
         try:
             from app.models import LoginAttempt
@@ -203,7 +209,8 @@ class AuthManager:
                 username=username,
                 is_successful=success,
                 timestamp=datetime.utcnow(),
-                ip_address="desktop"
+                ip_address="desktop",
+                failure_reason=reason
             )
             session.add(attempt)
         except Exception as e:

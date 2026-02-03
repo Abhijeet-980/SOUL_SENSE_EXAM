@@ -23,6 +23,7 @@ numpy
 
 # Security - Password Hashing
 bcrypt==5.0.0
+cryptography>=41.0.0
 
 # Testing (optional)
 pytest==8.4.0

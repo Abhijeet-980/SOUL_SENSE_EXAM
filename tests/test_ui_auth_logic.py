@@ -3,6 +3,35 @@ from unittest.mock import MagicMock, patch
 import tkinter as tk
 from app.auth.app_auth import AppAuth, PasswordStrengthMeter
 
+# Define MockWidget locally to ensure it is available and correctly used
+class MockWidget(MagicMock):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self._config = kwargs
+        # Ensure geometry methods return ints by default
+        self.winfo_screenwidth = MagicMock(return_value=1920)
+        self.winfo_screenheight = MagicMock(return_value=1080)
+        self.winfo_x = MagicMock(return_value=0)
+        self.winfo_y = MagicMock(return_value=0)
+        self.winfo_width = MagicMock(return_value=1000)
+        self.winfo_height = MagicMock(return_value=800)
+        self.update_idletasks = MagicMock()
+        
+    def cget(self, key):
+        return self._config.get(key, "")
+        
+    def configure(self, **kwargs):
+        self._config.update(kwargs)
+        
+    def config(self, **kwargs):
+        self.configure(**kwargs)
+        
+    def __getitem__(self, key):
+         return self._config.get(key, "")
+
+    def __setitem__(self, key, value):
+        self._config[key] = value
+
 @pytest.fixture
 def mock_app_with_colors(mock_app):
     """Enhanced mock app with required UI colors"""
@@ -14,65 +43,77 @@ def mock_app_with_colors(mock_app):
         "surface": "#FFFFFF",
         "border": "#E2E8F0"
     }
+    # Ensure root uses MockWidget logic for geometry
+    mock_app.root = MockWidget()
     return mock_app
 
 def test_password_strength_meter(mock_app_with_colors):
     """Test the PasswordStrengthMeter visual indicator logic"""
-    # Create a real root for widget testing (headless safe via conftest mocks)
-    root = tk.Tk()
-    meter = PasswordStrengthMeter(root, mock_app_with_colors.colors)
-    
-    # Test default
-    assert "Password Strength" in meter.label.cget("text")
-    
-    # Test very strong password
-    meter.update_strength("ComplexPass123!")
-    # Score should be high (>=8 chars, upper, lower, digit, special)
-    assert "Strong" in meter.label.cget("text")
-    
-    # Test weak password
-    meter.update_strength("abc")
-    assert "Weak" in meter.label.cget("text") or "Too Weak" in meter.label.cget("text")
-    
-    root.destroy()
+    # Force patch Tk and Label locally to ensure MockWidget usage
+    with patch("tkinter.Label", side_effect=MockWidget) as mock_lbl, \
+         patch("tkinter.Frame", side_effect=MockWidget) as mock_frm, \
+         patch("tkinter.Tk", side_effect=MockWidget) as mock_tk_cls:
+         
+        root = mock_tk_cls.return_value
+        meter = PasswordStrengthMeter(root, mock_app_with_colors.colors)
+        
+        # Test default
+        # meter.label is the mock returned by tk.Label, which is a MockWidget instance
+        assert "Password Strength" in meter.label.cget("text")
+        
+        # Test very strong password
+        meter.update_strength("ComplexPass123!")
+        assert "Strong" in meter.label.cget("text")
+        
+        # Test weak password
+        meter.update_strength("abc")
+        pfx = meter.label.cget("text")
+        assert "Weak" in pfx or "Too Weak" in pfx
 
 def test_app_auth_initialization(mock_app_with_colors):
     """Verify AppAuth can be initialized and triggers start flow"""
-    # Prevent the delayed Tcl call from firing during test
     with patch("app.auth.app_auth.AppAuth.start_login_flow") as mock_start:
         auth = AppAuth(mock_app_with_colors)
         assert auth.app == mock_app_with_colors
         assert auth.auth_manager is not None
         assert mock_start.called
 
-@patch("tkinter.Toplevel")
-def test_show_login_screen_creation(mock_toplevel, mock_app_with_colors):
+def test_show_login_screen_creation(mock_app_with_colors):
     """Verify show_login_screen creates a Toplevel window with correct properties"""
-    # Mock root methods used during window creation
-    mock_app_with_colors.root.winfo_x.return_value = 0
-    mock_app_with_colors.root.winfo_y.return_value = 0
-    mock_app_with_colors.root.winfo_width.return_value = 1000
-    mock_app_with_colors.root.winfo_height.return_value = 800
+    # Create a specific MockWidget instance to verify calls on it
+    toplevel_instance = MockWidget()
     
-    with patch("app.auth.app_auth.AppAuth.start_login_flow"):
+    # Patch Toplevel to return our tracked instance
+    with patch("tkinter.Toplevel", return_value=toplevel_instance) as mock_toplevel, \
+         patch("tkinter.Label", side_effect=MockWidget), \
+         patch("tkinter.Entry", side_effect=MockWidget), \
+         patch("tkinter.Button", side_effect=MockWidget), \
+         patch("tkinter.Frame", side_effect=MockWidget), \
+         patch("tkinter.Checkbutton", side_effect=MockWidget), \
+         patch("app.auth.app_auth.AppAuth.start_login_flow"):
+        
         auth = AppAuth(mock_app_with_colors)
         auth.show_login_screen()
         
         assert mock_toplevel.called
-        # Verify the window was made transient and modal
-        window_mock = mock_toplevel.return_value
-        assert window_mock.transient.called
-        assert window_mock.grab_set.called
+        
+        # Check standard calls on the instance we injected
+        assert toplevel_instance.transient.called
+        assert toplevel_instance.grab_set.called
 
-@patch("tkinter.Toplevel")
-def test_show_signup_screen_creation(mock_toplevel, mock_app_with_colors):
+def test_show_signup_screen_creation(mock_app_with_colors):
     """Verify signup screen creation"""
-    mock_app_with_colors.root.winfo_x.return_value = 0
-    mock_app_with_colors.root.winfo_y.return_value = 0
-    mock_app_with_colors.root.winfo_width.return_value = 1000
-    mock_app_with_colors.root.winfo_height.return_value = 800
+    toplevel_instance = MockWidget()
     
-    with patch("app.auth.app_auth.AppAuth.start_login_flow"):
+    with patch("tkinter.Toplevel", return_value=toplevel_instance) as mock_toplevel, \
+         patch("tkinter.Label", side_effect=MockWidget), \
+         patch("tkinter.Entry", side_effect=MockWidget), \
+         patch("tkinter.Button", side_effect=MockWidget), \
+         patch("tkinter.Frame", side_effect=MockWidget), \
+         patch("tkinter.Checkbutton", side_effect=MockWidget), \
+         patch("tkinter.OptionMenu", side_effect=MockWidget), \
+         patch("app.auth.app_auth.AppAuth.start_login_flow"):
+         
         auth = AppAuth(mock_app_with_colors)
         auth.show_signup_screen()
         assert mock_toplevel.called
