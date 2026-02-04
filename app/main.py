@@ -24,6 +24,9 @@ from app.ui.view_manager import ViewManager
 from app.auth.app_auth import AppAuth
 # Graceful shutdown and cleanup coordination
 from app.shutdown_handler import ShutdownHandler
+# PR 2: Lifecycle Management
+from app.auth.idle_watcher import IdleWatcher
+from app.services.lifecycle import deactivate_dormant_accounts
 
 # === UTILITY MODULES ===
 from app.ui.styles import UIStyles  # UI theming and styling
@@ -107,6 +110,12 @@ class SoulSenseApp:
         # User profile data
         self.age = self.initializer.app.age
         self.age_group = self.initializer.app.age_group
+        
+        # PR 2: Initialize Idle Watcher (Starts stopped)
+        self.idle_watcher = IdleWatcher(self.root, self.handle_idle_logout)
+        
+        # PR 2: Start lifecycle tasks
+        self._start_lifecycle_tasks()
 
     def switch_view(self, view_id):
         """Delegate view switching to ViewManager"""
@@ -167,7 +176,33 @@ class SoulSenseApp:
         3. Delegating actual logout logic to the initializer
         """
         if messagebox.askyesno("Confirm Logout", "Are you sure you want to log out? Any unsaved changes will be lost."):
+            self.stop_idle_watch()
             self.initializer.logout_user()
+
+    def handle_idle_logout(self):
+        """Callback for IdleWatcher to force logout without confirmation"""
+        self.stop_idle_watch()
+        messagebox.showinfo("Session Expired", "You have been logged out due to inactivity.")
+        self.initializer.logout_user()
+
+    def start_idle_watch(self):
+        """Start the idle watcher"""
+        if hasattr(self, 'idle_watcher'):
+            self.idle_watcher.start()
+
+    def stop_idle_watch(self):
+        """Stop the idle watcher"""
+        if hasattr(self, 'idle_watcher'):
+            self.idle_watcher.stop()
+            
+    def _start_lifecycle_tasks(self):
+        """Start background maintenance tasks"""
+        try:
+            # Run account deactivation in background to not block startup
+            import threading
+            threading.Thread(target=deactivate_dormant_accounts, daemon=True).start()
+        except Exception as e:
+            self.logger.error(f"Failed to start lifecycle tasks: {e}")
 
 # --- Global Error Handlers ---
 

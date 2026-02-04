@@ -149,7 +149,11 @@ class AuthManager:
 
                 # Update last login
                 try:
-                    user.last_login = datetime.utcnow().isoformat()
+                    now_iso = datetime.utcnow().isoformat()
+                    user.last_login = now_iso
+                    # PR 2: Update last_activity on login (Issue fix)
+                    user.last_activity = now_iso
+                    
                     # Audit success
                     self._record_login_attempt(session, id_lower, True)
                     session.commit()
@@ -171,6 +175,18 @@ class AuthManager:
             session.close()
 
     def logout_user(self):
+        # PR 2: Update last_activity on logout to capture session end
+        if self.current_user:
+            try:
+                session = get_session()
+                user = session.query(User).filter(User.username == self.current_user).first()
+                if user:
+                    user.last_activity = datetime.utcnow().isoformat()
+                    session.commit()
+                session.close()
+            except Exception as e:
+                logging.error(f"Failed to update logout time: {e}")
+
         self.current_user = None
         self.session_token = None
         self.session_expiry = None

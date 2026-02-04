@@ -663,6 +663,10 @@ class AppAuth:
 
     def _post_login_init(self):
         """Initialize UI after login"""
+        # PR 2: Start idle monitoring
+        if hasattr(self.app, 'start_idle_watch'):
+            self.app.start_idle_watch()
+            
         if hasattr(self.app, 'sidebar'):
             self.app.sidebar.update_user_info()
             self.app.sidebar.pack(side="left", fill="y")
