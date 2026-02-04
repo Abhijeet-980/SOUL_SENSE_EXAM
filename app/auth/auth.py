@@ -252,6 +252,37 @@ class AuthManager:
         finally:
             session.close()
 
+    def get_lockout_remaining_seconds(self, username):
+        """
+        Return seconds remaining in lockout, or 0 if not locked out.
+        Used by GUI to display countdown timer.
+        """
+        session = get_session()
+        try:
+            from app.models import LoginAttempt
+            
+            since_time = datetime.utcnow() - timedelta(seconds=self.lockout_duration)
+            
+            # Get the most recent failed attempt
+            recent_failures = session.query(LoginAttempt).filter(
+                LoginAttempt.username == username,
+                LoginAttempt.is_successful == False,
+                LoginAttempt.timestamp >= since_time
+            ).order_by(LoginAttempt.timestamp.desc()).all()
+            
+            if len(recent_failures) >= 5:
+                # Find the 5th most recent failed attempt (the one that triggered lockout)
+                fifth_failure = recent_failures[4]
+                lockout_end = fifth_failure.timestamp + timedelta(seconds=self.lockout_duration)
+                remaining = (lockout_end - datetime.utcnow()).total_seconds()
+                return max(0, int(remaining))
+            return 0
+        except Exception as e:
+            logging.error(f"Lockout remaining check failed: {e}")
+            return 0
+        finally:
+            session.close()
+
     def _record_login_attempt(self, session, username, success, reason=None):
         """Record login attempt to DB."""
         try:

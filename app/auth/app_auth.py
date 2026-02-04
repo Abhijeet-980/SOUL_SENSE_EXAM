@@ -226,6 +226,26 @@ class AppAuth:
                                        bg=self.app.colors["bg"], fg=self.app.colors["text_primary"])
         remember_me_cb.pack(anchor="w", pady=(0, 10))
 
+        # Rate Limit Warning Label (Issue #565)
+        rate_limit_label = tk.Label(entry_frame, text="", font=("Segoe UI", 9, "bold"), 
+                                    bg=self.app.colors["bg"], fg="#EF4444")
+        rate_limit_label.pack(anchor="w", pady=(0, 5))
+        
+        # Track countdown timer ID for cleanup
+        self._rate_limit_timer_id = None
+        
+        def update_countdown(remaining_seconds, login_btn):
+            """Update countdown timer every second."""
+            if remaining_seconds > 0:
+                rate_limit_label.config(text=f"⏳ Too many attempts. Please wait {remaining_seconds} seconds...")
+                login_btn.config(state="disabled", bg="#9CA3AF")
+                self._rate_limit_timer_id = login_win.after(1000, lambda: update_countdown(remaining_seconds - 1, login_btn))
+            else:
+                # Countdown finished - re-enable login
+                rate_limit_label.config(text="")
+                login_btn.config(state="normal", bg=self.app.colors["primary"])
+                self._rate_limit_timer_id = None
+
         def do_login(event=None):
             user = username_entry.get().strip()
             pwd = password_entry.get().strip()
@@ -262,6 +282,14 @@ class AppAuth:
                 # 2FA Required
                 # Temporarily save session attempt?
                 self.show_2fa_login_dialog(user, login_win)
+            elif err_code == "AUTH002":
+                # Rate limit exceeded - show countdown (Issue #565)
+                remaining = self.auth_manager.get_lockout_remaining_seconds(user)
+                if remaining > 0:
+                    update_countdown(remaining, login_btn)
+                else:
+                    # Fallback: show error if can't determine remaining time
+                    rate_limit_label.config(text="⏳ Too many attempts. Please wait and try again.")
             else:
                 tmb.showerror("Login Failed", msg)
 
@@ -274,10 +302,11 @@ class AppAuth:
         def do_register():
             self.show_signup_screen()
 
-        # Buttons
-        tk.Button(login_win, text="Login", command=do_login,
+        # Buttons - store reference for rate limit control
+        login_btn = tk.Button(login_win, text="Login", command=do_login,
                  font=("Segoe UI", 12, "bold"), bg=self.app.colors["primary"], fg="white",
-                 width=20).pack(pady=10)
+                 width=20)
+        login_btn.pack(pady=10)
                  
         # Keyboard usability: Bind Enter to login
         login_win.bind("<Return>", lambda e: do_login())
