@@ -275,6 +275,7 @@ class Score(Base):
     age = Column(Integer, index=True)  # Added index
     detailed_age_group = Column(String, index=True)  # Added index
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)  # Added index
+    session_id = Column(String, index=True, nullable=True) # PR 6.1: API Session ID
     timestamp = Column(String, default=lambda: datetime.utcnow().isoformat(), index=True)  # Added timestamp and index
 
     user = relationship("User", back_populates="scores")
@@ -297,6 +298,7 @@ class Response(Base):
     age_group = Column(String, index=True)  # Added index
     detailed_age_group = Column(String, index=True)  # Added index
     timestamp = Column(String, default=lambda: datetime.utcnow().isoformat(), index=True)  # Added index
+    session_id = Column(String, index=True, nullable=True) # PR 6.1: API Session ID
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)  # Added index
 
     user = relationship("User", back_populates="responses")

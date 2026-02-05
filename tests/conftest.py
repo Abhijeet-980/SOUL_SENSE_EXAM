@@ -31,7 +31,10 @@ import os
 import sys
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from app.models import Base
+import backend.fastapi.api.root_models as backend_models
+
 import tkinter as tk
 
 # Import fixtures for re-export (allows using them without explicit import)
@@ -69,11 +72,17 @@ def temp_db(monkeypatch):
     # Create valid in-memory DB URL for SQLite
     test_url = "sqlite:///:memory:"
     
-    # Create engine and session
-    test_engine = create_engine(test_url, echo=False)
+    # Create engine with StaticPool for in-memory DB in multi-threaded tests
+    test_engine = create_engine(
+        test_url, 
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool
+    )
     
-    # Create tables (IMPORTANT: this verifies models are correct)
+    # Create tables on both Base instances (if they differ due to importlib)
     Base.metadata.create_all(bind=test_engine)
+    if hasattr(backend_models, "Base") and backend_models.Base is not Base:
+        backend_models.Base.metadata.create_all(bind=test_engine)
     
     # Create session factory
     TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
@@ -97,6 +106,14 @@ def temp_db(monkeypatch):
     try:
         monkeypatch.setattr("app.ml.clustering.get_session", lambda: TestSessionLocal())
     except Exception:
+        pass
+    
+    # Patch backend db_service (FastAPI)
+    try:
+        import backend.fastapi.api.services.db_service as backend_db
+        monkeypatch.setattr(backend_db, "engine", test_engine)
+        monkeypatch.setattr(backend_db, "SessionLocal", TestSessionLocal)
+    except ImportError:
         pass
     
     # Clear application caches (memory + disk)
