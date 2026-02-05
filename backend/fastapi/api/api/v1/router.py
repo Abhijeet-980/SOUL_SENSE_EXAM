@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from ...routers import (
     auth, users, profiles, assessments, 
     questions, analytics, journal, health,
-    settings_sync, community, contact, exams
+    settings_sync, community, contact, exams, export
 )
 
 api_router = APIRouter()
@@ -23,4 +23,5 @@ api_router.include_router(journal.router, prefix="/journal", tags=["Journal"])
 api_router.include_router(settings_sync.router, prefix="/sync", tags=["Settings Sync"])
 api_router.include_router(community.router, prefix="/community", tags=["Community"])
 api_router.include_router(contact.router, prefix="/contact", tags=["Contact"])
+api_router.include_router(export.router, prefix="/export", tags=["Exports"])
 
