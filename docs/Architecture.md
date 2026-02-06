@@ -1,4 +1,5 @@
-###  🧠 Soul Sense EQ Test — System Architecture
+### 🧠 Soul Sense EQ Test — System Architecture
+
 # 1. Overview
 
 Soul Sense EQ Test is a desktop-based Emotional Intelligence (EQ) assessment system built using Python, Tkinter, and SQLite.
@@ -17,6 +18,22 @@ The system follows a layered architecture with the GUI acting as a thin interact
 #
 
 # 2. High-Level Architecture
+
+The system supports two frontend experiences: a legacy Tkinter interface and a modern Tauri-based desktop shell.
+
+### A. Modern Desktop Shell (Tauri)
+
+```mermaid
+graph TB
+    A[Tauri Desktop Shell<br/>Native Wrapper] --> B[Next.js Frontend<br/>Webview]
+    A --> C[Python Sidecar executable<br/>Bundled FastAPI]
+    B --> D[REST API Calls<br/>Localhost:8000]
+    C --> D
+    C --> E[(SQLite Database)]
+```
+
+### B. Legacy Desktop App (Tkinter)
+
 ```bash
 ┌────────────────────┐
 │   Tkinter GUI      │
@@ -40,6 +57,7 @@ The system follows a layered architecture with the GUI acting as a thin interact
 └──────────────────┘
 
 ```
+
 # 3. GUI Layer (Tkinter)
 
 Location: `app/main.py`
@@ -52,11 +70,13 @@ Location: `app/main.py`
 - Displaying scores, interpretations, and insights
 
 **Design principles:**
+
 - No direct database access
 - No business logic embedded in UI widgets
 - All logic delegated to application modules
 
 Typical GUI Flow:
+
 ```bash
 Login / Sign Up
       ↓
@@ -68,6 +88,7 @@ Journal (Optional)
       ↓
 Logout
 ```
+
 #
 
 # 4. Application Logic Layer
@@ -81,19 +102,22 @@ This layer contains the core business logic and domain rules.
 - Session lifecycle management
 - User-specific data isolation
 
-4.2 EQ Test Logic
+  4.2 EQ Test Logic
+
 - Question retrieval from the database
 - Likert-scale response handling
 - EQ score computation
 - Score interpretation mapping
 
-4.3 Journal & Emotional Analysis
+  4.3 Journal & Emotional Analysis
+
 - Daily emotional reflection storage
 - Sentiment scoring of journal entries
 - Pattern detection (stress indicators, growth mindset, self-reflection)
 - Emotional trend tracking over time
 
-4.4 Shared Utilities (app/utils.py)
+  4.4 Shared Utilities (app/utils.py)
+
 - Validation helpers
 - Common formatting logic
 - Reusable constants and helpers
@@ -103,18 +127,20 @@ This layer contains the core business logic and domain rules.
 # 5. Data Access Layer
 
 5.1 Database Management (`app/db.py`)
+
 - Centralized SQLite connection handling
 - Runtime-safe schema initialization
 - Backward-compatible schema migrations
 - Transaction safety and consistency
 
-5.2 Models (`app/models.py`)
+  5.2 Models (`app/models.py`)
+
 - Declarative database models for:
-    - Users
-    - Questions
-    - Responses
-    - Scores
-    - Journal entries
+  - Users
+  - Questions
+  - Responses
+  - Scores
+  - Journal entries
 
 SQLite remains the authoritative persistence layer for simplicity and portability.
 
@@ -126,11 +152,13 @@ Tool: Alembic
 Location: migrations/
 
 Responsibilities:
+
 - Controlled schema evolution
 - Safe upgrades without data loss
 - Versioned migration scripts
 
 Migration strategy:
+
 - Backward-compatible changes only
 - No destructive operations
 - Explicit version control
@@ -141,15 +169,18 @@ Script: `scripts/load_questions.py`
 Source: `data/questions.txt`
 
 Key properties:
+
 - One-time execution
 - Idempotent loading
 - Questions become read-only at runtime
 - Ensures consistent scoring behavior
 
 #
+
 # 8. Data Flow
 
 EQ Test Flow
+
 ```bash
 User Input
   ↓
@@ -163,7 +194,9 @@ SQLite Persistence
   ↓
 Result Interpretation
 ```
+
 Journal Flow
+
 ```bash
 User Entry
   ↓
@@ -177,6 +210,7 @@ Historical Trend View
 ```
 
 #
+
 # 9. Testing Architecture
 
 Framework: Pytest
@@ -189,6 +223,7 @@ Testing characteristics:
 - Isolated and deterministic test cases
 
 Coverage includes:
+
 - Authentication flows
 - Database migrations
 - EQ scoring logic
@@ -197,7 +232,7 @@ Journal persistence and analysis
 
 #
 
-# 10. Future ML Integration 
+# 10. Future ML Integration
 
 The architecture supports incremental machine learning integration without structural changes.
 
@@ -209,6 +244,7 @@ Planned integration areas:
 - Personalized reflection and EQ growth recommendations
 
 Integration strategy:
+
 - ML logic isolated in dedicated modules
 - No GUI coupling
 - No breaking schema changes

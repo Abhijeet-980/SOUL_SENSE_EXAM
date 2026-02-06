@@ -8,15 +8,13 @@ import { FormMessage } from './FormMessage';
 import { Input } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
-interface FormFieldProps<T extends FieldValues> {
+interface FormFieldProps<T extends FieldValues> extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  'name' | 'children'
+> {
   control: Control<T>;
   name: Path<T>;
   label?: string;
-  placeholder?: string;
-  type?: string;
-  required?: boolean;
-  disabled?: boolean;
-  className?: string;
   children?: (field: any) => React.ReactNode;
 }
 
@@ -30,6 +28,7 @@ export function FormField<T extends FieldValues>({
   disabled = false,
   className = '',
   children,
+  ...props
 }: FormFieldProps<T>) {
   const {
     field,
@@ -47,6 +46,7 @@ export function FormField<T extends FieldValues>({
 
   const fieldProps = {
     ...field,
+    ...props,
     placeholder,
     type,
     required,
@@ -69,4 +69,3 @@ export function FormField<T extends FieldValues>({
     </div>
   );
 }
-

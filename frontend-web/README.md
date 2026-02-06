@@ -6,36 +6,50 @@ A modern Next.js 14 dashboard for the Soul Sense EQ Test platform.
 
 ## 🚀 Getting Started
 
-### 1. Installation
+### 1. Tauri Desktop Shell (Recommended)
+
+The modern way to run Soul Sense is via the Tauri shell, which manages both the frontend and the backend sidecar.
 
 ```bash
-backend: 
-
-cd backend/fastapi
-python start_server.py --y
-
-frontend:
-
-cd frontend-web
+# Install dependencies
 npm install
-npm run dev
 
+# Run in Development mode
+npm run tauri dev
 ```
 
-### 2. Development
+### 2. Standalone Web Frontend
+
+If you want to run the web app in a browser:
 
 ```bash
+# Terminal 1: Backend
+python ../backend/fastapi/start_server.py --y
+
+# Terminal 2: Frontend
+npm install
 npm run dev
 ```
 
 👉 Open [http://localhost:3005](http://localhost:3005)
 
-> [!IMPORTANT]
-> **Backend Required**: Ensure the FastAPI server is running on port 8000 for data fetching to work.
+---
+
+## 🖥️ Desktop Architecture (Tauri)
+
+This project uses **Tauri v2** to provide a native desktop experience:
+
+- **Frontend**: Served from the Next.js `out` directory (Static Export).
+- **Backend Sidecar**: The Python FastAPI server is bundled as a standalone executable and automatically managed by the Tauri shell.
+- **IPC**: Communication happens over Localhost/HTTP.
+
+> [!NOTE]
+> **Port Management**: In Tauri mode, the shell automatically handles port 3005 (Frontend) and port 8000 (Backend). Do not run standalone servers simultaneously to avoid port conflicts.
 >
-> ```bash
-> python backend/fastapi/start_server.py
-> ```
+> **Live Updates**:
+>
+> - **Frontend**: Saving files triggers **HMR** (instant updates in the window).
+> - **Backend**: Changes to Python code require a **rebuild** of the sidecar binary. Run `.\scripts\setup_tauri_env.ps1` from the root to update.
 
 ---
 

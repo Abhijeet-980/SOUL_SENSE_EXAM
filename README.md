@@ -71,9 +71,10 @@ graph TB
 
 | Component              | Technology         | Purpose                                  |
 | ---------------------- | ------------------ | ---------------------------------------- |
-| **Frontend (Desktop)** | Tkinter            | User interface for desktop users         |
-| **Frontend (Web)**     | Next.js            | Modern web client (React/TS)             |
-| **Backend**            | Python/FastAPI     | REST API for web/mobile clients          |
+| **Desktop Shell**      | Tauri (Rust)       | Modern native wrapper for the Web UI     |
+| **Frontend (Desktop)** | Tkinter            | Legacy lightweight desktop UI            |
+| **Frontend (Web)**     | Next.js            | Modern web & desktop UI (React/TS)       |
+| **Backend (Sidecar)**  | Python/FastAPI     | Bundled API service for local data flow  |
 | **Database**           | SQLite             | Local data persistence                   |
 | **ML Engine**          | NLTK, scikit-learn | Sentiment analysis and pattern detection |
 | **Auth System**        | bcrypt, JWT        | Secure user authentication               |
@@ -167,24 +168,51 @@ python backend/fastapi/start_server.py
 
 _API will be available at http://localhost:8000. Use `--y` for non-interactive mode._
 
-#### **C. Web Frontend**
+#### **C. Modern Desktop Shell (Recommended)**
+
+This command automatically starts the Next.js frontend and the Python Backend sidecar in a single native window.
 
 ```bash
-backend: 
-
-cd backend/fastapi
-python start_server.py --y
-
-frontend:
-
 cd frontend-web
 npm install
-npm run dev
-
-
+npm run tauri dev
 ```
 
-_Web app will be available at http://localhost:3005. Requires Backend API to be running._
+_Note: The first run will install Rust dependencies and may take a few minutes. Requires Rust to be installed (see [Setup Script](#-setup-script))._
+
+#### **D. Standalone Web Frontend**
+
+```bash
+# Terminal 1: Backend
+python backend/fastapi/start_server.py --y
+
+# Terminal 2: Frontend
+cd frontend-web
+npm run dev
+```
+
+_Web app will be available at http://localhost:3005._
+
+---
+
+## 🛠️ Setup Script
+
+For contributors, we provide a setup script to ensure your environment is ready for Tauri development:
+
+`powershell`bash
+
+# Windows (PowerShell)
+
+.\scripts\setup_tauri_env.ps1
+
+````
+
+This script checks for Rust, installs the Tauri CLI, and verifies your configuration.
+
+> [!TIP]
+> **Development Workflow**:
+> - **Frontend Changes**: Reflected **instantly** in the Tauri window via HMR.
+> - **Backend Changes**: Require a **rebuild**. Rerun `.\scripts\setup_tauri_env.ps1` to sync Python logic.
 
 ---
 
@@ -192,7 +220,7 @@ _Web app will be available at http://localhost:3005. Requires Backend API to be 
 > **Developer Workflow**: If you are contributing specifically to the Web frontend, ensure the **Backend API** is running in a separate terminal so the dashboard and community features can fetch data.
 
 > [!NOTE]
-> For detailed architecture and contribution guidelines, see [frontend-web/README.md](frontend-web/README.md).
+> For detailed architecture, sidecar management, and contribution guidelines, see [docs/Architecture.md](docs/Architecture.md) and [frontend-web/README.md](frontend-web/README.md).
 
 ## 🎮 Usage
 
@@ -229,7 +257,7 @@ journal = requests.post("http://localhost:8000/api/v1/journal", headers=headers,
     "content": "Today was productive but stressful...",
     "tags": ["work", "stress"]
 })
-```
+````
 
 #### CLI Tools
 

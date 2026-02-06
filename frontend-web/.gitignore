@@ -92,3 +92,10 @@ build/
 
 # Optional eslint cache
 .eslintcache
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/*.exe
+src-tauri/binaries/*.bin
+!src-tauri/binaries/.gitkeep

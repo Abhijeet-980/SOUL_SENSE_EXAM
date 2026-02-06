@@ -45,6 +45,7 @@ export default function CommunityDashboard() {
   useEffect(() => {
     async function fetchData() {
       try {
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
         const [
           statsRes,
           contributorsRes,
@@ -57,16 +58,16 @@ export default function CommunityDashboard() {
           issuesRes,
           roadmapRes,
         ] = await Promise.all([
-          fetch('/api/v1/community/stats'),
-          fetch('/api/v1/community/contributors?limit=20'),
-          fetch('/api/v1/community/activity'),
-          fetch('/api/v1/community/mix'),
-          fetch('/api/v1/community/reviews'),
-          fetch('/api/v1/community/graph'),
-          fetch('/api/v1/community/sunburst'),
-          fetch('/api/v1/community/pulse'),
-          fetch('/api/v1/community/issues'),
-          fetch('/api/v1/community/roadmap'),
+          fetch(`${API_BASE}/community/stats`),
+          fetch(`${API_BASE}/community/contributors?limit=20`),
+          fetch(`${API_BASE}/community/activity`),
+          fetch(`${API_BASE}/community/mix`),
+          fetch(`${API_BASE}/community/reviews`),
+          fetch(`${API_BASE}/community/graph`),
+          fetch(`${API_BASE}/community/sunburst`),
+          fetch(`${API_BASE}/community/pulse`),
+          fetch(`${API_BASE}/community/issues`),
+          fetch(`${API_BASE}/community/roadmap`),
         ]);
 
         if (

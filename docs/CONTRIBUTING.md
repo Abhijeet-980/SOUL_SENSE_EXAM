@@ -98,16 +98,27 @@ Please ensure all tests pass (or known failures are marked `xfail`) before submi
 
 #### 4. Frontend Quality Checks (Web)
 
+#### 4. Frontend Quality Checks (Web & Desktop)
+
 If you are working in the `frontend-web` directory:
 
-1.  **Strict Linting**: Architectural boundaries and import rules are checked via ESLint.
+1.  **Environment Setup**: Ensure Rust is installed and configured.
+    ```powershell
+    # Run the setup script
+    .\scripts\setup_tauri_env.ps1
+    ```
+2.  **Strict Linting**: Architectural boundaries and import rules are checked via ESLint.
     ```bash
     cd frontend-web
     npm run lint
     ```
-2.  **Production Build**: Ensure the application compiles without errors.
+3.  **Production Build**: Ensure the application compiles without errors (including static export).
     ```bash
     npm run build
+    ```
+4.  **Tauri Verification**: Check that the desktop shell launches correctly.
+    ```bash
+    npm run tauri dev
     ```
 
 ---
