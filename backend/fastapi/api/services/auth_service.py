@@ -346,6 +346,15 @@ class AuthService:
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
+        # 3. Disposable Email Check
+        from .security_service import SecurityService
+        if SecurityService.is_disposable_email(email_lower):
+            raise APIException(
+                code=ErrorCode.REG_DISPOSABLE_EMAIL,
+                message="Registration with disposable email domains is not allowed",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
         try:
             hashed_pw = self.hash_password(user_data.password)
             new_user = User(
