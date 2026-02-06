@@ -53,6 +53,9 @@ class UserService:
         Raises:
             HTTPException: If username already exists
         """
+        # Normalize username
+        username = username.strip().lower()
+
         # Check if username already exists
         if self.get_user_by_username(username):
             raise HTTPException(
@@ -104,14 +107,16 @@ class UserService:
             )
 
         # Update username if provided
-        if username and username != user.username:
-            # Check if new username is already taken
-            if self.get_user_by_username(username):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Username already taken"
-                )
-            user.username = username
+        if username:
+            username = username.strip().lower()
+            if username != user.username:
+                # Check if new username is already taken
+                if self.get_user_by_username(username):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Username already taken"
+                    )
+                user.username = username
 
         # Update password if provided
         if password:

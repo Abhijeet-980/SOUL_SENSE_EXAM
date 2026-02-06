@@ -27,7 +27,7 @@ class HealthResponse(BaseModel):
 
 class UserCreate(BaseModel):
     """Schema for creating a new user."""
-    username: str = Field(..., min_length=3, max_length=50, description="Unique username")
+    username: str = Field(..., min_length=3, max_length=20, description="Unique username")
     password: str = Field(..., min_length=8, description="Password (min 8 characters)")
     email: EmailStr = Field(..., description="User's email address")
     first_name: str = Field(..., min_length=1, max_length=50, description="User's first name")
@@ -35,11 +35,45 @@ class UserCreate(BaseModel):
     age: Optional[int] = Field(None, ge=13, le=120, description="User's age")
     gender: Optional[str] = Field(None, description="User's gender")
 
+    @field_validator('username', 'email', mode='before')
+    @classmethod
+    def normalize_identifiers(cls, v: str) -> str:
+        if isinstance(v, str):
+            v_norm = v.strip().lower()
+            return v_norm
+        return v
+
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v: str) -> str:
+        import re
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', v):
+            raise ValueError('Username must start with a letter and contain only alphanumeric characters and underscores')
+        
+        reserved = {'admin', 'root', 'support', 'soulsense', 'system', 'official'}
+        if v in reserved:
+            raise ValueError('This username is reserved')
+        return v
+
+    @field_validator('first_name', 'last_name', mode='before')
+    @classmethod
+    def trim_names(cls, v: Optional[str]) -> Optional[str]:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
 
 class UserLogin(BaseModel):
     """Schema for user login."""
     username: str
     password: str
+
+    @field_validator('username', mode='before')
+    @classmethod
+    def normalize_username(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
 
 
 class TwoFactorLoginRequest(BaseModel):
@@ -64,12 +98,26 @@ class PasswordResetRequest(BaseModel):
     """Schema for requesting a password reset."""
     email: EmailStr = Field(..., description="User's registered email")
 
+    @field_validator('email', mode='before')
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
+
 
 class PasswordResetComplete(BaseModel):
     """Schema for completing password reset."""
     email: EmailStr
     otp_code: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
     new_password: str = Field(..., min_length=8, description="New password")
+
+    @field_validator('email', mode='before')
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
 
 
 class Token(BaseModel):
@@ -223,8 +271,37 @@ class QuestionCategoryResponse(BaseModel):
 
 class UserUpdate(BaseModel):
     """Schema for updating user information."""
-    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    username: Optional[str] = Field(None, min_length=3, max_length=20)
     password: Optional[str] = Field(None, min_length=8)
+
+    @field_validator('username', mode='before')
+    @classmethod
+    def normalize_username(cls, v: Optional[str]) -> Optional[str]:
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
+
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        import re
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', v):
+            raise ValueError('Username must start with a letter and contain only alphanumeric characters and underscores')
+        
+        reserved = {'admin', 'root', 'support', 'soulsense', 'system', 'official'}
+        if v in reserved:
+            raise ValueError('This username is reserved')
+        return v
+    
+    @field_validator('password', mode='before')
+    @classmethod
+    def trim_password(cls, v: Optional[str]) -> Optional[str]:
+        if isinstance(v, str):
+            # We DON'T lowercase passwords, but trimming whitespace at ends is common
+            return v.strip()
+        return v
 
 
 class UserDetail(BaseModel):
@@ -367,6 +444,13 @@ class PersonalProfileUpdate(BaseModel):
     life_pov: Optional[str] = None
     high_pressure_events: Optional[str] = None
     avatar_path: Optional[str] = None
+
+    @field_validator('email', mode='before')
+    @classmethod
+    def normalize_email(cls, v: Optional[str]) -> Optional[str]:
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
 
 
 class PersonalProfileResponse(BaseModel):
