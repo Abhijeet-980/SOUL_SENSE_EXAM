@@ -47,7 +47,6 @@ def mock_app_with_colors(mock_app):
     mock_app.root = MockWidget()
     return mock_app
 
-@pytest.mark.serial
 def test_password_strength_meter(mock_app_with_colors):
     """Test the PasswordStrengthMeter visual indicator logic"""
     # Force patch Tk and Label locally to ensure MockWidget usage
@@ -71,7 +70,6 @@ def test_password_strength_meter(mock_app_with_colors):
         pfx = meter.label.cget("text")
         assert "Weak" in pfx or "Too Weak" in pfx
 
-@pytest.mark.serial
 def test_app_auth_initialization(mock_app_with_colors):
     """Verify AppAuth can be initialized and triggers start flow"""
     with patch("app.auth.app_auth.AppAuth.start_login_flow") as mock_start:
@@ -80,7 +78,6 @@ def test_app_auth_initialization(mock_app_with_colors):
         assert auth.auth_manager is not None
         assert mock_start.called
 
-@pytest.mark.serial
 def test_show_login_screen_creation(mock_app_with_colors):
     """Verify show_login_screen creates a Toplevel window with correct properties"""
     # Create a specific MockWidget instance to verify calls on it
@@ -104,7 +101,6 @@ def test_show_login_screen_creation(mock_app_with_colors):
         assert toplevel_instance.transient.called
         assert toplevel_instance.grab_set.called
 
-@pytest.mark.serial
 def test_show_signup_screen_creation(mock_app_with_colors):
     """Verify signup screen creation"""
     toplevel_instance = MockWidget()
