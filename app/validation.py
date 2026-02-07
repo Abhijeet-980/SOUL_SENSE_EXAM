@@ -25,7 +25,8 @@ XSS_PATTERNS = [
 EMAIL_REGEX = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
 EMAIL_REGEX_STRICT = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
 PHONE_REGEX = r"^\+?[\d\s-]{10,}$"
-USERNAME_REGEX = r"^[a-zA-Z0-9_-]+$"
+USERNAME_REGEX = r"^[a-zA-Z][a-zA-Z0-9_]{2,19}$"
+RESERVED_USERNAMES = {'admin', 'root', 'support', 'soulsense', 'system', 'official'}
 
 # Standard Ranges
 RANGES = {
@@ -81,8 +82,11 @@ def validate_username(username: str) -> Tuple[bool, str]:
         return False, f"Username must be 3-{MAX_USERNAME_LENGTH} characters."
     
     if not re.match(USERNAME_REGEX, username):
-        return False, "Username can only contain letters, numbers, hyphens and underscores."
+        return False, "Username must start with a letter and contain 3-20 letters, numbers, or underscores."
     
+    if username.strip().lower() in RESERVED_USERNAMES:
+        return False, "This username is reserved."
+
     if detect_malicious_input(username):
         return False, "Invalid username format."
     

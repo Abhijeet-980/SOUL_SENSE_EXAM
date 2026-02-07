@@ -9,7 +9,7 @@ from app.utils import save_settings
 
 
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 
 class SettingsManager:
     """Manages application settings with premium UI"""
@@ -695,7 +695,7 @@ class SettingsManager:
                         user_settings.theme = new_settings["theme"]
                         user_settings.question_count = new_settings["question_count"]
                         user_settings.sound_enabled = new_settings["sound_effects"]
-                        user_settings.updated_at = datetime.utcnow().isoformat()
+                        user_settings.updated_at = datetime.now(UTC).isoformat()
                         
                         # Commit is handled by context manager (safe_db_context) if no error? 
                         # Wait, safe_db_context usually commits on exit. 
