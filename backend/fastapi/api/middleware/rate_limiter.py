@@ -2,6 +2,7 @@ import time
 from typing import Dict, Optional, Tuple
 from cachetools import TTLCache
 import logging
+from fastapi import Request, HTTPException, status
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,7 @@ password_reset_limiter = RateLimiter(max_requests=3, window_seconds=3600)
 # Analytics limiter: 30 requests per minute
 analytics_limiter = RateLimiter(max_requests=30, window_seconds=60)
 
-async def rate_limit_analytics(request: "Request"):
-    from fastapi import HTTPException, status
+async def rate_limit_analytics(request: Request):
     is_limited, wait_time = analytics_limiter.is_rate_limited(request.client.host)
     if is_limited:
         raise HTTPException(
