@@ -362,6 +362,8 @@ function RegisterFormContent({
 export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
   const router = useRouter();
 
   const handleSubmit = async (data: RegisterFormData, methods: UseFormReturn<RegisterFormData>) => {
@@ -381,21 +383,25 @@ export default function RegisterPage() {
         }),
       });
 
-      if (response.ok) {
-        router.push('/login?registered=true');
-      } else {
-        const errorData = await response.json();
-        const code = errorData.detail?.code;
+      const result = await response.json();
 
-        if (code === 'REG001') {
-          methods.setError('username', { message: 'Username already taken' });
-        } else if (code === 'REG002') {
-          methods.setError('email', { message: 'Email already registered' });
-        } else if (code === 'REG006') {
-          methods.setError('password', { message: 'This password is too common. Please choose a stronger password.' });
-        } else {
-          methods.setError('root', { message: errorData.detail?.message || 'Registration failed' });
-        }
+      if (response.ok) {
+        setIsSuccess(true);
+        setSuccessMessage(
+          result.message || 'Registration request received. Please check your email for next steps.'
+        );
+        // Optional: redirect after some time
+        // setTimeout(() => router.push('/login'), 5000);
+      } else {
+        // ENUMERATION PREVENTION: we no longer set specific field errors for 'exists'
+        // because the backend returns 200/Success for those now.
+        // We only handle policy/data errors here.
+        methods.setError('root', {
+          message:
+            result.detail?.message ||
+            result.message ||
+            'Registration failed. Please try again or contact support.',
+        });
       }
     } catch (error) {
       methods.setError('root', {
@@ -411,20 +417,37 @@ export default function RegisterPage() {
       title="Create an account"
       subtitle="Start your emotional intelligence journey today"
     >
-      <Form
-        schema={registrationSchema}
-        onSubmit={handleSubmit}
-        className={`space-y-4 transition-opacity duration-200 ${isLoading ? 'opacity-60 pointer-events-none' : ''}`}
-      >
-        {(methods) => (
-          <RegisterFormContent
-            methods={methods}
-            isLoading={isLoading}
-            setShowPassword={setShowPassword}
-            showPassword={showPassword}
-          />
-        )}
-      </Form>
+      {isSuccess ? (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center space-y-4 py-8"
+        >
+          <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="h-8 w-8 text-primary" />
+          </div>
+          <h3 className="text-xl font-semibold">Verify your email</h3>
+          <p className="text-muted-foreground">{successMessage}</p>
+          <Button onClick={() => router.push('/login')} className="mt-4">
+            Back to Login
+          </Button>
+        </motion.div>
+      ) : (
+        <Form
+          schema={registrationSchema}
+          onSubmit={handleSubmit}
+          className={`space-y-4 transition-opacity duration-200 ${isLoading ? 'opacity-60 pointer-events-none' : ''}`}
+        >
+          {(methods) => (
+            <RegisterFormContent
+              methods={methods}
+              isLoading={isLoading}
+              setShowPassword={setShowPassword}
+              showPassword={showPassword}
+            />
+          )}
+        </Form>
+      )}
     </AuthLayout>
   );
 }

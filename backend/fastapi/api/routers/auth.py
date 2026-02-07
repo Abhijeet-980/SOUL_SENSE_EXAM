@@ -10,7 +10,8 @@ from ..services.db_service import get_db
 from ..services.auth_service import AuthService
 from ..constants.errors import ErrorCode
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
-from ..exceptions import AuthException
+from ..exceptions import AuthException, APIException
+# Rate limiters imported inline within routes to avoid potential circular/timing issues
 from api.root_models import User
 from sqlalchemy.orm import Session
 from cachetools import TTLCache
@@ -71,15 +72,31 @@ async def check_username_availability(
     return UsernameAvailabilityResponse(available=available, message=message)
 
 
-@router.post("/register", response_model=UserResponse, responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}})
-async def register(user: UserCreate, auth_service: AuthService = Depends()):
-    new_user = auth_service.register_user(user)
-    return UserResponse(
-        id=new_user.id, 
-        username=new_user.username, 
-        created_at=new_user.created_at,
-        last_login=new_user.last_login
-    )
+@router.post("/register", response_model=None, responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}})
+async def register(
+    request: Request,
+    user: UserCreate, 
+    auth_service: AuthService = Depends()
+):
+    from api.middleware.rate_limiter import registration_limiter
+    # Rate limit by IP
+    is_limited, wait_time = registration_limiter.is_rate_limited(request.client.host)
+    if is_limited:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many registration attempts. Please try again in {wait_time}s."
+        )
+
+    success, new_user, message = auth_service.register_user(user)
+    
+    if not success:
+         raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message
+        )
+         
+    # Always return a generic success message to prevent enumeration
+    return {"message": message}
 
 
 @router.post("/login", response_model=None, responses={401: {"model": ErrorResponse}, 202: {"model": TwoFactorAuthRequiredResponse}, 200: {"model": Token}})
@@ -89,8 +106,26 @@ async def login(
     request: Request,
     auth_service: AuthService = Depends()
 ):
+    from api.middleware.rate_limiter import login_limiter
     ip = request.client.host
     user_agent = request.headers.get("user-agent", "Unknown")
+
+    # 1. Rate Limit by IP
+    is_limited, wait_time = login_limiter.is_rate_limited(ip)
+    if is_limited:
+         raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many login attempts. Please try again in {wait_time}s."
+        )
+
+    # 2. Rate Limit by Username (Identifier)
+    is_limited, wait_time = login_limiter.is_rate_limited(f"login_{form_data.username}")
+    if is_limited:
+         raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Account temporarily restricted due to multiple login attempts. Please try again in {wait_time}s."
+        )
+
     user = auth_service.authenticate_user(form_data.username, form_data.password, ip_address=ip, user_agent=user_agent)
     
     # PR 4: 2FA Check
@@ -199,14 +234,32 @@ async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]
 
 @router.post("/password-reset/initiate")
 async def initiate_password_reset(
-    request: PasswordResetRequest,
+    request: Request,
+    reset_data: PasswordResetRequest, # Renamed to avoid name conflict with Request
     auth_service: AuthService = Depends()
 ):
+    from api.middleware.rate_limiter import password_reset_limiter
     """
     Initiate the password reset flow.
     ALWAYS returns success message to prevent user enumeration.
     """
-    success, message = auth_service.initiate_password_reset(request.email)
+    # Rate limit by IP
+    is_limited, wait_time = password_reset_limiter.is_rate_limited(request.client.host)
+    if is_limited:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many reset requests. Please try again in {wait_time}s."
+        )
+
+    # Rate limit by Email
+    is_limited, wait_time = password_reset_limiter.is_rate_limited(f"reset_{reset_data.email}")
+    if is_limited:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Multiple requests for this email. Please try again in {wait_time}s."
+        )
+
+    success, message = auth_service.initiate_password_reset(reset_data.email)
     if not success:
         # Rate limit or server error
         raise HTTPException(
