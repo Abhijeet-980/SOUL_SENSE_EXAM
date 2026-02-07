@@ -56,6 +56,14 @@ class UserCreate(BaseModel):
             raise ValueError('This username is reserved')
         return v
 
+    @field_validator('password')
+    @classmethod
+    def reject_weak_password(cls, v: str) -> str:
+        from ..utils.weak_passwords import WEAK_PASSWORDS
+        if v.lower() in WEAK_PASSWORDS:
+            raise ValueError('This password is too common. Please choose a stronger password.')
+        return v
+
     @field_validator('first_name', 'last_name', mode='before')
     @classmethod
     def sanitize_personal_info(cls, v: Optional[str]) -> Optional[str]:
@@ -124,6 +132,14 @@ class PasswordResetComplete(BaseModel):
     def sanitize_email(cls, v: str) -> str:
         if isinstance(v, str):
             return clean_identifier(v)
+        return v
+
+    @field_validator('new_password')
+    @classmethod
+    def reject_weak_password(cls, v: str) -> str:
+        from ..utils.weak_passwords import WEAK_PASSWORDS
+        if v.lower() in WEAK_PASSWORDS:
+            raise ValueError('This password is too common. Please choose a stronger password.')
         return v
 
 
@@ -308,6 +324,16 @@ class UserUpdate(BaseModel):
         if isinstance(v, str):
             # We DON'T lowercase passwords, but trimming whitespace at ends is common
             return v.strip()
+        return v
+
+    @field_validator('password')
+    @classmethod
+    def reject_weak_password(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        from ..utils.weak_passwords import WEAK_PASSWORDS
+        if v.lower() in WEAK_PASSWORDS:
+            raise ValueError('This password is too common. Please choose a stronger password.')
         return v
 
 

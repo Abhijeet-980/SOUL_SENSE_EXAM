@@ -30,6 +30,8 @@ class PasswordStrengthMeter(tk.Frame):
         self.label.pack(anchor="w")
 
     def update_strength(self, password):
+        from app.validation import is_weak_password
+        
         score = 0
         if len(password) >= 8: score += 1
         if any(c.isupper() for c in password): score += 1
@@ -37,12 +39,19 @@ class PasswordStrengthMeter(tk.Frame):
         if any(c.isdigit() for c in password): score += 1
         if any(not c.isalnum() for c in password): score += 1
         
+        # Override: if password is in the weak/common list, cap strength at 1
+        is_common = password and is_weak_password(password)
+        if is_common:
+            score = min(score, 1)
+        
         # Colors: Gray, Red, Orange, Gold, YellowGreen, Green
         strength_colors = ["#E0E0E0", "#EF4444", "#F59E0B", "#FBBF24", "#84CC16", "#10B981"]
         strength_texts = ["Too Weak", "Weak", "Fair", "Good", "Strong", "Very Strong"]
         
         color = strength_colors[score]
         text = strength_texts[score]
+        if is_common:
+            text = "Weak - Common Password"
         
         # Update segments
         for i in range(5):
@@ -749,6 +758,12 @@ class AppAuth:
                 return
             if not password:
                 tmb.showerror("Error", "Password is required")
+                return
+            # Block weak/common passwords
+            from app.validation import is_weak_password
+            if is_weak_password(password):
+                tmb.showerror("Error", "This password is too common. Please choose a stronger password.")
+                password_entry.focus_set()
                 return
             if password != confirm_password:
                 tmb.showerror("Error", "Passwords do not match")

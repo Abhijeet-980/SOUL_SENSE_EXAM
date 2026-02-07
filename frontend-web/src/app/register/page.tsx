@@ -391,6 +391,8 @@ export default function RegisterPage() {
           methods.setError('username', { message: 'Username already taken' });
         } else if (code === 'REG002') {
           methods.setError('email', { message: 'Email already registered' });
+        } else if (code === 'REG006') {
+          methods.setError('password', { message: 'This password is too common. Please choose a stronger password.' });
         } else {
           methods.setError('root', { message: errorData.detail?.message || 'Registration failed' });
         }
