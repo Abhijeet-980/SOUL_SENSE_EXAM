@@ -11,6 +11,8 @@ import { resetPasswordSchema } from '@/lib/validation';
 import { authApi } from '@/lib/api/auth';
 import { z } from 'zod';
 import Link from 'next/link';
+import { UseFormReturn } from 'react-hook-form';
+import { useRateLimiter } from '@/hooks/useRateLimiter';
 
 type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
 
@@ -22,6 +24,8 @@ export default function VerifyResetPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
+  const { lockoutTime, isLocked, handleRateLimitError } = useRateLimiter();
+
   // Redirect if no email
   useEffect(() => {
     if (!emailParam) {
@@ -29,7 +33,12 @@ export default function VerifyResetPage() {
     }
   }, [emailParam, router]);
 
-  const handleSubmit = async (data: ResetPasswordFormData) => {
+  const handleSubmit = async (
+    data: ResetPasswordFormData,
+    methods: UseFormReturn<ResetPasswordFormData>
+  ) => {
+    if (isLocked) return;
+
     setIsLoading(true);
     try {
       await authApi.completePasswordReset({
@@ -41,13 +50,21 @@ export default function VerifyResetPage() {
       setTimeout(() => {
         router.push('/login');
       }, 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Reset error:', error);
-      alert(error instanceof Error ? error.message : 'Verification failed');
+
+      if (handleRateLimitError(error, (msg) => methods.setError('root', { message: msg }))) {
+        return;
+      }
+
+      const msg = error?.message || 'Verification failed';
+      methods.setError('root', { message: msg });
     } finally {
       setIsLoading(false);
     }
   };
+
+  const effectiveLoading = isLoading || isLocked;
 
   if (isSuccess) {
     return (
@@ -84,20 +101,23 @@ export default function VerifyResetPage() {
           <>
             <input type="hidden" {...methods.register('email')} />
 
+            {methods.formState.errors.root && (
+              <div className="bg-destructive/10 border border-destructive/20 text-destructive text-xs p-3 rounded-md flex items-center mb-4">
+                <ShieldCheck className="h-4 w-4 mr-2 flex-shrink-0 text-destructive" />
+                {methods.formState.errors.root.message}
+              </div>
+            )}
+
             <FormField
               control={methods.control}
               name="otp"
               label="Verification Code"
               placeholder="6-digit code"
               maxLength={6}
+              disabled={effectiveLoading}
             />
 
-            <FormField
-              control={methods.control}
-              name="password"
-              label="New Password"
-              required
-            >
+            <FormField control={methods.control} name="password" label="New Password" required>
               {(fieldProps) => (
                 <div className="relative space-y-2">
                   <Input
@@ -105,6 +125,7 @@ export default function VerifyResetPage() {
                     type="password"
                     placeholder="Enter new password"
                     autoComplete="new-password"
+                    disabled={effectiveLoading}
                   />
                   <PasswordStrengthIndicator password={fieldProps.value || ''} />
                 </div>
@@ -117,19 +138,24 @@ export default function VerifyResetPage() {
               label="Confirm Password"
               placeholder="Confirm new password"
               type="password"
+              disabled={effectiveLoading}
             />
 
             <div className="pt-2">
               <Button
                 type="submit"
-                disabled={isLoading}
+                disabled={effectiveLoading}
                 className="w-full h-11 bg-gradient-to-r from-primary to-secondary"
               >
                 {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Verifying...
-                  </>
+                  lockoutTime > 0 ? (
+                    `Retry in ${lockoutTime}s`
+                  ) : (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Verifying...
+                    </>
+                  )
                 ) : (
                   <>
                     <Lock className="mr-2 h-4 w-4" />

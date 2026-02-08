@@ -23,3 +23,4 @@ class ErrorCode(str, Enum):
     INTERNAL_SERVER_ERROR = "GLB001"
     VALIDATION_ERROR = "GLB002"
     NOT_FOUND = "GLB003"
+    GLB_RATE_LIMIT = "GLB004"
