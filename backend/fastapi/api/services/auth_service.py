@@ -90,14 +90,15 @@ class AuthService:
 
         # 2. Check for Lockout (Pre-Auth)
         # Check if account is locked due to too many failed attempts
-        is_locked, lockdown_msg = self._is_account_locked(identifier_lower)
+        is_locked, lockdown_msg, wait_seconds = self._is_account_locked(identifier_lower)
         if is_locked:
             # Timing mitigation: even if locked, we want to simulate some work
             # to match the time taken by bcrypt roughly (though bcrypt is way slower)
             # Actually, the best way is to return immediately but with a consistent message.
             raise AuthException(
                 code=ErrorCode.AUTH_ACCOUNT_LOCKED,
-                message=lockdown_msg
+                message=lockdown_msg,
+                details={"wait_seconds": wait_seconds} if wait_seconds else None
             )
 
         # 3. Try fetching by username first
@@ -316,7 +317,7 @@ class AuthService:
             self.db.rollback()
             logger.error(f"Failed to update last_login: {e}")
 
-    def _is_account_locked(self, username: str) -> Tuple[bool, Optional[str]]:
+    def _is_account_locked(self, username: str) -> Tuple[bool, Optional[str], int]:
         """
         Check if an account is locked based on recent failed attempts.
         A hard lockout occurs after 5 failures in 15 minutes.
@@ -345,14 +346,14 @@ class AuthService:
             
             if remaining > 0:
                 logger.warning(f"Account locked: {username} (IP rate limiting should have caught this first)")
-                return True, f"Account locked due to too many failed attempts. Please try again in {remaining // 60} minutes."
+                return True, f"Account locked due to too many failed attempts. Please try again in {remaining} seconds.", remaining
         
         if count >= 3:
             # Artificial delay to slow down brute force (Jitter)
             import random
             time.sleep(random.uniform(1.0, 3.0))
             
-        return False, None
+        return False, None, 0
 
     def _record_login_attempt(self, username: str, success: bool, ip_address: str, reason: Optional[str] = None):
         """Record the login attempt audit log."""

@@ -21,6 +21,7 @@ interface RegisterFormContentProps {
   isLoading: boolean;
   setShowPassword: (show: boolean) => void;
   showPassword: boolean;
+  lockoutTime?: number;
 }
 
 function RegisterFormContent({
@@ -28,6 +29,7 @@ function RegisterFormContent({
   isLoading,
   setShowPassword,
   showPassword,
+  lockoutTime = 0,
 }: RegisterFormContentProps) {
   const [availabilityStatus, setAvailabilityStatus] = useState<
     'idle' | 'loading' | 'available' | 'taken' | 'invalid'
@@ -327,10 +329,14 @@ function RegisterFormContent({
           disabled={isLoading || availabilityStatus === 'loading' || availabilityStatus === 'taken'}
         >
           {isLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Registering...
-            </>
+            lockoutTime > 0 ? (
+              `Retry in ${lockoutTime}s`
+            ) : (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Registering...
+              </>
+            )
           ) : (
             'Register'
           )}
@@ -359,6 +365,10 @@ function RegisterFormContent({
   );
 }
 
+import { useRateLimiter } from '@/hooks/useRateLimiter';
+
+// ... (imports remain same)
+
 export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -366,7 +376,11 @@ export default function RegisterPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const router = useRouter();
 
+  const { lockoutTime, isLocked, handleRateLimitError } = useRateLimiter();
+
   const handleSubmit = async (data: RegisterFormData, methods: UseFormReturn<RegisterFormData>) => {
+    if (isLocked) return;
+
     setIsLoading(true);
     try {
       const response = await fetch('http://localhost:8000/api/v1/auth/register', {
@@ -390,9 +404,12 @@ export default function RegisterPage() {
         setSuccessMessage(
           result.message || 'Registration request received. Please check your email for next steps.'
         );
-        // Optional: redirect after some time
-        // setTimeout(() => router.push('/login'), 5000);
       } else {
+        // Check for Rate Limit Error first
+        if (handleRateLimitError(result, (msg) => methods.setError('root', { message: msg }))) {
+          return;
+        }
+
         // ENUMERATION PREVENTION: we no longer set specific field errors for 'exists'
         // because the backend returns 200/Success for those now.
         // We only handle policy/data errors here.
@@ -412,6 +429,8 @@ export default function RegisterPage() {
     }
   };
 
+  const effectiveLoading = isLoading || isLocked;
+
   return (
     <AuthLayout
       title="Create an account"
@@ -419,6 +438,7 @@ export default function RegisterPage() {
     >
       {isSuccess ? (
         <motion.div
+          // ... (success view remains same)
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           className="text-center space-y-4 py-8"
@@ -436,15 +456,18 @@ export default function RegisterPage() {
         <Form
           schema={registrationSchema}
           onSubmit={handleSubmit}
-          className={`space-y-4 transition-opacity duration-200 ${isLoading ? 'opacity-60 pointer-events-none' : ''}`}
+          className={`space-y-4 transition-opacity duration-200 ${effectiveLoading ? 'opacity-60 pointer-events-none' : ''}`}
         >
           {(methods) => (
-            <RegisterFormContent
-              methods={methods}
-              isLoading={isLoading}
-              setShowPassword={setShowPassword}
-              showPassword={showPassword}
-            />
+            <>
+              <RegisterFormContent
+                methods={methods}
+                isLoading={effectiveLoading}
+                setShowPassword={setShowPassword}
+                showPassword={showPassword}
+                lockoutTime={lockoutTime}
+              />
+            </>
           )}
         </Form>
       )}

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { PasswordResetComplete } from '../validation/schemas'; // We will add this type to schemas
+import { PasswordResetComplete } from '../validation/schemas';
+import { ApiError } from './errors';
 
 const API_Base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -12,8 +13,13 @@ export const authApi = {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to send reset code');
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = { message: 'Network error or invalid JSON response' };
+      }
+      throw new ApiError(response.status, errorData);
     }
 
     return response.json();
@@ -31,8 +37,13 @@ export const authApi = {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to reset password');
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = { message: 'Network error or invalid JSON response' };
+      }
+      throw new ApiError(response.status, errorData);
     }
 
     return response.json();

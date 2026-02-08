@@ -27,11 +27,32 @@ export default function LoginPage() {
   const [otpCode, setOtpCode] = useState('');
   const [twoFaError, setTwoFaError] = useState('');
 
+  // Lockout State
+  const [lockoutTime, setLockoutTime] = useState<number>(0);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (lockoutTime > 0) {
+      timer = setInterval(() => {
+        setLockoutTime((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [lockoutTime]);
+
   const { login } = useAuth(); // If we use context, we assume context logic might need update too,
   // but here we are doing manual fetch first.
   // Ideally useAuth should handle this, but for speed modifying Page first.
 
   const handleLoginSubmit = async (data: LoginFormData, methods: UseFormReturn<LoginFormData>) => {
+    if (lockoutTime > 0) return;
+
     setIsLoggingIn(true);
     try {
       const formData = new URLSearchParams();
@@ -62,6 +83,15 @@ export default function LoginPage() {
         // Map login-specific error codes
         if (code === 'AUTH001') {
           methods.setError('identifier', { message: 'Invalid username/email or password' });
+          return;
+        }
+
+        if (code === 'AUTH002') {
+          const waitSeconds = errorData.detail?.details?.wait_seconds || 60;
+          setLockoutTime(waitSeconds);
+          methods.setError('root', {
+            message: `Account locked. Please wait ${waitSeconds} seconds.`,
+          });
           return;
         }
 
@@ -114,7 +144,7 @@ export default function LoginPage() {
     }
   };
 
-  const isLoading = isLoggingIn; // Alias for the UI
+  const isLoading = isLoggingIn || lockoutTime > 0; // Alias for the UI
 
   if (show2FA) {
     return (
@@ -168,9 +198,11 @@ export default function LoginPage() {
         {(methods) => (
           <>
             {methods.formState.errors.root && (
-              <div className="bg-destructive/10 border border-destructive/20 text-destructive text-xs p-3 rounded-md flex items-center mb-5">
+              <div className="bg-destructive/10 border border-destructive/20 text-destructive text-xs p-3 rounded-md flex items-center mb-5 text-red-600 bg-red-50">
                 <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
-                {methods.formState.errors.root.message}
+                {lockoutTime > 0
+                  ? `Too many failed attempts. Please try again in ${lockoutTime}s`
+                  : methods.formState.errors.root.message}
               </div>
             )}
             <FormKeyboardListener reset={methods.reset} />
@@ -273,8 +305,14 @@ export default function LoginPage() {
               >
                 {isLoading ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
+                    {lockoutTime > 0 ? (
+                      `Retry in ${lockoutTime}s`
+                    ) : (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Signing in...
+                      </>
+                    )}
                   </>
                 ) : (
                   'Sign in'

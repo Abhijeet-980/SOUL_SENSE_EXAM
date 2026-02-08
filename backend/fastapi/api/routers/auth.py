@@ -10,7 +10,7 @@ from ..services.db_service import get_db
 from ..services.auth_service import AuthService
 from ..constants.errors import ErrorCode
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
-from ..exceptions import AuthException, APIException
+from ..exceptions import AuthException, APIException, RateLimitException
 # Rate limiters imported inline within routes to avoid potential circular/timing issues
 from api.root_models import User
 from sqlalchemy.orm import Session
@@ -82,9 +82,9 @@ async def register(
     # Rate limit by IP
     is_limited, wait_time = registration_limiter.is_rate_limited(request.client.host)
     if is_limited:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Too many registration attempts. Please try again in {wait_time}s."
+        raise RateLimitException(
+            message=f"Too many registration attempts. Please try again in {wait_time}s.",
+            wait_seconds=wait_time
         )
 
     success, new_user, message = auth_service.register_user(user)
@@ -246,17 +246,17 @@ async def initiate_password_reset(
     # Rate limit by IP
     is_limited, wait_time = password_reset_limiter.is_rate_limited(request.client.host)
     if is_limited:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Too many reset requests. Please try again in {wait_time}s."
+        raise RateLimitException(
+            message=f"Too many reset requests. Please try again in {wait_time}s.",
+            wait_seconds=wait_time
         )
 
     # Rate limit by Email
     is_limited, wait_time = password_reset_limiter.is_rate_limited(f"reset_{reset_data.email}")
     if is_limited:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Multiple requests for this email. Please try again in {wait_time}s."
+        raise RateLimitException(
+            message=f"Multiple requests for this email. Please try again in {wait_time}s.",
+            wait_seconds=wait_time
         )
 
     success, message = auth_service.initiate_password_reset(reset_data.email)
@@ -272,11 +272,21 @@ async def initiate_password_reset(
 @router.post("/password-reset/complete")
 async def complete_password_reset(
     request: PasswordResetComplete,
+    req_obj: Request, # Need Request object for IP
     auth_service: AuthService = Depends()
 ):
+    from api.middleware.rate_limiter import password_reset_limiter
     """
     Verify OTP and set new password.
     """
+    # Rate limit by IP for OTP attempts
+    is_limited, wait_time = password_reset_limiter.is_rate_limited(req_obj.client.host)
+    if is_limited:
+         raise RateLimitException(
+            message=f"Too many attempts. Please try again in {wait_time}s.",
+            wait_seconds=wait_time
+        )
+
     success, message = auth_service.complete_password_reset(
         request.email, 
         request.otp_code, 
