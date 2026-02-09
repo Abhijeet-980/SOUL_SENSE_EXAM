@@ -51,6 +51,8 @@ export default function LoginPage() {
   // Ideally useAuth should handle this, but for speed modifying Page first.
 
   const handleLoginSubmit = async (data: LoginFormData, methods: UseFormReturn<LoginFormData>) => {
+    localStorage.setItem('last_used_identifier', data.identifier);
+
     if (lockoutTime > 0) return;
 
     setIsLoggingIn(true);
@@ -206,6 +208,8 @@ export default function LoginPage() {
               </div>
             )}
             <FormKeyboardListener reset={methods.reset} />
+            <RestoreSavedIdentifier setValue={methods.setValue} />
+
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -367,5 +371,15 @@ function FormKeyboardListener({ reset }: { reset: (values?: any) => void }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [reset]);
 
+  return null;
+}
+
+function RestoreSavedIdentifier({ setValue }: { setValue: any }) {
+  useEffect(() => {
+    const saved = localStorage.getItem('last_used_identifier');
+    if (saved) {
+      setValue('identifier', saved);
+    }
+  }, [setValue]);
   return null;
 }
