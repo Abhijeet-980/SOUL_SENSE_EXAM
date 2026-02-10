@@ -8,6 +8,7 @@ from ..config import get_settings
 from ..schemas import UserCreate, Token, UserResponse, ErrorResponse, PasswordResetRequest, PasswordResetComplete, TwoFactorLoginRequest, TwoFactorAuthRequiredResponse, TwoFactorConfirmRequest
 from ..services.db_service import get_db
 from ..services.auth_service import AuthService
+from ..services.mock_auth_service import MockAuthService
 from ..constants.errors import ErrorCode
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
 from ..exceptions import AuthException
@@ -18,6 +19,16 @@ router = APIRouter()
 settings = get_settings()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+
+def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
+    """
+    Dependency to get the appropriate auth service based on configuration.
+    Returns MockAuthService if mock_auth_mode is enabled, otherwise returns AuthService.
+    """
+    if settings.mock_auth_mode:
+        return MockAuthService(db)
+    return AuthService(db)
 
 async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
     """
@@ -45,7 +56,7 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Se
 
 
 @router.post("/register", response_model=UserResponse, responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}})
-async def register(user: UserCreate, auth_service: AuthService = Depends()):
+async def register(user: UserCreate, auth_service: AuthService = Depends(get_auth_service)):
     new_user = auth_service.register_user(user)
     return UserResponse(
         id=new_user.id, 
@@ -60,7 +71,7 @@ async def login(
     response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()], 
     request: Request,
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     ip = request.client.host
     user_agent = request.headers.get("user-agent", "Unknown")
@@ -98,7 +109,7 @@ async def login(
 async def verify_2fa(
     login_request: TwoFactorLoginRequest,
     response: Response,
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     """
     Verify 2FA code and issue tokens.
@@ -128,7 +139,7 @@ async def verify_2fa(
 async def refresh(
     request: Request,
     response: Response,
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
@@ -155,7 +166,7 @@ async def refresh(
 async def logout(
     request: Request,
     response: Response,
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     refresh_token = request.cookies.get("refresh_token")
     if refresh_token:
@@ -173,7 +184,7 @@ async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]
 @router.post("/password-reset/initiate")
 async def initiate_password_reset(
     request: PasswordResetRequest,
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     """
     Initiate the password reset flow.
@@ -192,7 +203,7 @@ async def initiate_password_reset(
 @router.post("/password-reset/complete")
 async def complete_password_reset(
     request: PasswordResetComplete,
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     """
     Verify OTP and set new password.
@@ -213,7 +224,7 @@ async def complete_password_reset(
 @router.post("/2fa/setup/initiate")
 async def initiate_2fa_setup(
     current_user: Annotated[User, Depends(get_current_user)],
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     """Send OTP to verify email before enabling 2FA."""
     if auth_service.send_2fa_setup_otp(current_user):
@@ -225,7 +236,7 @@ async def initiate_2fa_setup(
 async def enable_2fa(
     request: TwoFactorConfirmRequest,
     current_user: Annotated[User, Depends(get_current_user)],
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     """Enable 2FA after verifying OTP."""
     if auth_service.enable_2fa(current_user.id, request.code):
@@ -236,7 +247,7 @@ async def enable_2fa(
 @router.post("/2fa/disable")
 async def disable_2fa(
     current_user: Annotated[User, Depends(get_current_user)],
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     """Disable 2FA."""
     if auth_service.disable_2fa(current_user.id):
