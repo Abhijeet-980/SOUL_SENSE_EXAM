@@ -46,6 +46,11 @@ export default function LoginPage() {
 
   const generateCaptcha = useCallback(async () => {
     try {
+      setUserCaptchaInput('');
+      setCaptchaVerified(false);
+      setCaptchaError('');
+      setCaptchaAttempts(0);
+
       const { captcha_code, session_id } = await authApi.getCaptcha();
       setCaptchaCode(captcha_code);
       setCaptchaSessionId(session_id);
