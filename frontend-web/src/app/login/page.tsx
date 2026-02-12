@@ -1,27 +1,32 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { Eye, EyeOff, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Eye, EyeOff, Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Form, FormField } from '@/components/forms';
 import { Button, Input } from '@/components/ui';
-import { AuthLayout, SocialLogin, ForgotPasswordModal } from '@/components/auth';
+import { AuthLayout, SocialLogin } from '@/components/auth';
 import { loginSchema } from '@/lib/validation';
 import { z } from 'zod';
 import { UseFormReturn } from 'react-hook-form';
-
 import { useAuth } from '@/hooks/useAuth';
-import { ApiError } from '@/lib/api/errors';
-import { authApi } from '@/lib/api/auth';
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+
 export default function LoginPage() {
   const router = useRouter();
+  const { login } = useAuth();
+
+  // UI State
   const [showPassword, setShowPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [sessionWarning, setSessionWarning] = useState<string | null>(null);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [pendingRedirectToken, setPendingRedirectToken] = useState<string | null>(null);
 
   // 2FA State
   const [show2FA, setShow2FA] = useState(false);
@@ -32,304 +37,242 @@ export default function LoginPage() {
   // Lockout State
   const [lockoutTime, setLockoutTime] = useState<number>(0);
 
-  // CAPTCHA State (from main)
-  const [captchaCode, setCaptchaCode] = useState('');
-  const [userCaptchaInput, setUserCaptchaInput] = useState('');
-  const [captchaError, setCaptchaError] = useState('');
-  const [captchaVerified, setCaptchaVerified] = useState(false);
-  const [captchaAttempts, setCaptchaAttempts] = useState(0);
-  const [captchaSessionId, setCaptchaSessionId] = useState('');
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  // Forgot Password Modal State (from main)
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-
-  const generateCaptcha = useCallback(async () => {
-    try {
-      setUserCaptchaInput('');
-      setCaptchaVerified(false);
-      setCaptchaError('');
-      setCaptchaAttempts(0);
-
-      const { captcha_code, session_id } = await authApi.getCaptcha();
-      setCaptchaCode(captcha_code);
-      setCaptchaSessionId(session_id);
-      // Draw captcha after state update
-      setTimeout(() => drawCaptcha(captcha_code), 0);
-    } catch (error) {
-      console.error('Failed to fetch CAPTCHA:', error);
-      // Fallback to client-side if backend fails
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      let result = '';
-      for (let i = 0; i < 5; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      setCaptchaCode(result);
-      setCaptchaSessionId('browser-session');
-      setTimeout(() => drawCaptcha(result), 0);
-    }
-  }, []);
-
+  // Lockout Timer Effect
   useEffect(() => {
-    generateCaptcha();
-  }, [generateCaptcha]);
+    if (lockoutTime <= 0) return;
 
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (lockoutTime > 0) {
-      timer = setInterval(() => {
-        setLockoutTime((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
+    const timer = setInterval(() => {
+      setLockoutTime((prev) => Math.max(0, prev - 1));
+    }, 1000);
+
     return () => clearInterval(timer);
   }, [lockoutTime]);
 
-  const drawCaptcha = (text: string) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Background
-    ctx.fillStyle = '#f8f9fa';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Add noise dots
-    for (let i = 0; i < 50; i++) {
-      ctx.fillStyle = `rgba(${Math.random() * 100 + 155}, ${Math.random() * 100 + 155}, ${Math.random() * 100 + 155}, 0.3)`;
-      ctx.beginPath();
-      ctx.arc(
-        Math.random() * canvas.width,
-        Math.random() * canvas.height,
-        Math.random() * 2,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-    }
-
-    // Add noise lines
-    for (let i = 0; i < 3; i++) {
-      ctx.strokeStyle = `rgba(${Math.random() * 100 + 155}, ${Math.random() * 100 + 155}, ${Math.random() * 100 + 155}, 0.2)`;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(Math.random() * canvas.width, Math.random() * canvas.height);
-      ctx.lineTo(Math.random() * canvas.width, Math.random() * canvas.height);
-      ctx.stroke();
-    }
-
-    // Draw text
-    const fontSizes = [24, 26, 28, 30];
-    const fonts = ['Arial', 'Verdana', 'Georgia', 'Times New Roman'];
-
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      const x = 20 + i * 25 + Math.random() * 10 - 5;
-      const y = 35 + Math.random() * 10 - 5;
-
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate((Math.random() - 0.5) * 0.3); // Slight rotation
-
-      ctx.font = `bold ${fontSizes[Math.floor(Math.random() * fontSizes.length)]}px ${fonts[Math.floor(Math.random() * fonts.length)]}`;
-      ctx.fillStyle = `hsl(${Math.random() * 360}, 80%, 30%)`;
-      ctx.fillText(char, 0, 0);
-
-      ctx.restore();
-    }
-  };
-
-  const validateCaptcha = () => {
-    if (captchaAttempts >= 3) {
-      setCaptchaError('Too many failed attempts. CAPTCHA regenerated.');
-      generateCaptcha();
-      setCaptchaAttempts(0);
-      return false;
-    }
-
-    if (userCaptchaInput.toLowerCase() === captchaCode.toLowerCase()) {
-      setCaptchaVerified(true);
-      setCaptchaError('');
-      return true;
-    } else {
-      setCaptchaAttempts((prev) => prev + 1);
-      setCaptchaError('Invalid CAPTCHA. Please try again.');
-      setCaptchaVerified(false);
-      return false;
-    }
-  };
-
-  const handleCaptchaInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setUserCaptchaInput(e.target.value);
-    setCaptchaError('');
-  };
-
-  const handleCaptchaSubmit = () => {
-    validateCaptcha();
-  };
-
-  const { login, login2FA, isAuthenticated, isLoading: isAuthLoading } = useAuth();
-
-  useEffect(() => {
-    console.log('LoginPage: [Status]', { isAuthenticated, isAuthLoading });
-    if (!isAuthLoading && isAuthenticated) {
-      console.log('LoginPage: Redirecting to /community');
-      router.push('/community');
-    }
-  }, [isAuthenticated, isAuthLoading, router]);
-
-  const handleLoginSubmit = async (data: LoginFormData, methods: UseFormReturn<LoginFormData>) => {
-    // Preserve local storage pattern from main
-    localStorage.setItem('last_used_identifier', data.identifier);
-
+  const handleLoginSubmit = async (
+    data: LoginFormData,
+    methods: UseFormReturn<LoginFormData>
+  ) => {
     if (lockoutTime > 0) return;
-    if (!navigator.onLine) {
-      methods.setError('root', {
-        message: 'You are currently offline. Please check your internet connection.',
-      });
-      return;
-    }
-
-    // Validate CAPTCHA first (auto-verify if input is present)
-    if (!captchaVerified) {
-      if (userCaptchaInput) {
-        if (!validateCaptcha()) return;
-      } else {
-        setCaptchaError('Please verify the CAPTCHA first.');
-        return;
-      }
-    }
 
     setIsLoggingIn(true);
-    try {
-      // Use updated hook with JSON-compatible parameters
-      const result = await login(
-        {
-          username: data.identifier,
-          password: data.password,
-          captcha_input: userCaptchaInput,
-          session_id: captchaSessionId,
-        },
-        !!data.rememberMe
-      );
+    setSessionWarning(null);
 
-      if (result?.pre_auth_token) {
+    try {
+      const formData = new URLSearchParams({
+        username: data.identifier,
+        password: data.password,
+      });
+
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString(),
+      });
+
+      const result = await response.json();
+
+      // Handle 2FA requirement
+      if (response.status === 202) {
+        // Check for warnings in 2FA response
+        if (result.warnings?.length > 0) {
+          setSessionWarning(result.warnings[0].message);
+        }
         setPreAuthToken(result.pre_auth_token);
         setShow2FA(true);
+        return;
       }
-    } catch (error: any) {
+
+      // Handle errors
+      if (!response.ok) {
+        handleLoginError(result, methods);
+        return;
+      }
+
+      // Success - check for session warnings
+      if (result.warnings?.length > 0) {
+        // Show modal and block redirect
+        setSessionWarning(result.warnings[0].message);
+        setPendingRedirectToken(result.access_token);
+        setShowWarningModal(true);
+      } else {
+        // No warnings, proceed directly
+        localStorage.setItem('token', result.access_token);
+        router.push('/dashboard');
+      }
+    } catch (error) {
       console.error('Login error:', error);
-
-      let errorMessage = 'Login failed. Please try again.';
-
-      if (error instanceof ApiError) {
-        if (error.isNetworkError) {
-          errorMessage =
-            'Connection failed. Please check if your server is running and you have internet access.';
-        } else if (error.status === 401) {
-          const detail = error.detail;
-          if (detail?.code === 'AUTH001') {
-            methods.setError('identifier', { message: 'Invalid username/email or password' });
-            return;
-          }
-          // Handle CAPTCHA error with same style as reg
-          errorMessage = detail?.message || 'Invalid credentials';
-        } else if (error.status === 429) {
-          const waitSeconds = error.detail?.details?.wait_seconds || 60;
-          setLockoutTime(waitSeconds);
-          errorMessage = `Too many attempts. Account locked for ${waitSeconds} seconds.`;
-        } else {
-          // Robust Pydantic error parsing (like in registration)
-          const detail = error.detail;
-          if (detail) {
-            if (Array.isArray(detail)) {
-              errorMessage = detail[0]?.msg || error.message;
-            } else if (typeof detail === 'string') {
-              errorMessage = detail;
-            } else {
-              errorMessage = detail.message || error.message;
-            }
-          } else {
-            errorMessage = error.message;
-          }
-        }
-      }
-
-      methods.setError('root', { message: errorMessage });
-
-      // Regenerate CAPTCHA on any failure (it's consumed by the backend)
-      setCaptchaVerified(false);
-      setUserCaptchaInput('');
-      generateCaptcha();
+      methods.setError('root', {
+        message: error instanceof Error ? error.message : 'Login failed. Please try again.',
+      });
     } finally {
       setIsLoggingIn(false);
+    }
+  };
+
+  const handleLoginError = (errorData: any, methods: UseFormReturn<LoginFormData>) => {
+    const code = errorData.detail?.code;
+
+    switch (code) {
+      case 'AUTH001':
+        methods.setError('identifier', { 
+          message: 'Invalid username/email or password' 
+        });
+        break;
+
+      case 'AUTH002':
+        const waitSeconds = errorData.detail?.details?.wait_seconds || 60;
+        setLockoutTime(waitSeconds);
+        methods.setError('root', {
+          message: `Too many failed attempts. Account locked for ${waitSeconds} seconds.`,
+        });
+        break;
+
+      default:
+        methods.setError('root', {
+          message: errorData.detail?.message || errorData.detail || 'Login failed',
+        });
     }
   };
 
   const handleVerifyOTP = async () => {
-    if (!navigator.onLine) {
-      setTwoFaError('You are currently offline.');
-      return;
-    }
+    if (otpCode.length !== 6) return;
 
     setIsLoggingIn(true);
     setTwoFaError('');
+
     try {
-      await login2FA(
-        {
+      const response = await fetch(`${API_BASE_URL}/auth/login/2fa`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           pre_auth_token: preAuthToken,
           code: otpCode,
-        },
-        true
-      );
-    } catch (error: any) {
-      console.error('2FA verification error:', error);
-      let errorMessage = 'Verification failed. Please try again.';
-      if (error instanceof ApiError) {
-        if (error.isNetworkError) {
-          errorMessage = 'Connection lost. Please check your internet.';
-        } else {
-          // Use the structured message from the backend if available
-          errorMessage = error.detail?.message || error.message;
-        }
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.detail?.message || 'Verification failed');
       }
-      setTwoFaError(errorMessage);
+
+      // Check for warnings
+      if (result.warnings?.length > 0) {
+        // Show modal and block redirect
+        setSessionWarning(result.warnings[0].message);
+        setPendingRedirectToken(result.access_token);
+        setShowWarningModal(true);
+      } else {
+        // No warnings, proceed directly
+        localStorage.setItem('token', result.access_token);
+        router.push('/dashboard');
+      }
+    } catch (error) {
+      setTwoFaError(error instanceof Error ? error.message : 'Invalid verification code');
     } finally {
       setIsLoggingIn(false);
     }
   };
 
-  const isLoading = isLoggingIn || lockoutTime > 0; // Alias for the UI
+  const handleAcknowledgeWarning = () => {
+    if (pendingRedirectToken) {
+      localStorage.setItem('token', pendingRedirectToken);
+      setShowWarningModal(false);
+      router.push('/dashboard');
+    }
+  };
 
+  const isDisabled = isLoggingIn || lockoutTime > 0;
+
+  // Session Warning Modal
+  const SessionWarningModal = () => (
+    <AnimatePresence>
+      {showWarningModal && (
+        <>
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            onClick={(e) => e.stopPropagation()}
+          />
+          
+          {/* Modal */}
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6 space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Icon */}
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-yellow-100 mx-auto">
+                <AlertTriangle className="h-6 w-6 text-yellow-600" />
+              </div>
+
+              {/* Title */}
+              <h3 className="text-xl font-semibold text-center text-gray-900">
+                Multiple Active Sessions Detected
+              </h3>
+
+              {/* Message */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                <p className="text-sm text-yellow-800 text-center">
+                  {sessionWarning}
+                </p>
+              </div>
+
+              {/* Description */}
+              <p className="text-sm text-gray-600 text-center">
+                Please ensure you're logging in from a secure location. If you don't recognize these sessions, change your password immediately.
+              </p>
+
+              {/* Action Button */}
+              <Button
+                onClick={handleAcknowledgeWarning}
+                className="w-full bg-gradient-to-r from-primary to-secondary hover:opacity-90"
+              >
+                I Understand, Continue
+              </Button>
+            </motion.div>
+          </div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+
+  // 2FA View
   if (show2FA) {
     return (
-      <AuthLayout title="Two-Factor Authentication" subtitle="Enter the code sent to your email">
-        <div className="space-y-6">
+      <>
+        <SessionWarningModal />
+        <AuthLayout 
+          title="Two-Factor Authentication" 
+          subtitle="Enter the 6-digit code sent to your email"
+        >
+          <div className="space-y-6">
           <div className="space-y-2">
-            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+            <label className="text-sm font-medium leading-none">
               Verification Code
             </label>
             <Input
               value={otpCode}
-              onChange={(e) => setOtpCode(e.target.value)}
-              placeholder="123456"
-              className={`text-center text-lg tracking-widest ${twoFaError ? 'border-red-500' : ''}`}
+              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+              placeholder="000000"
+              className="text-center text-lg tracking-widest"
               maxLength={6}
-              disabled={isLoading}
+              disabled={isDisabled}
+              autoFocus
             />
             {twoFaError && (
-              <p className="text-sm font-medium text-destructive text-red-500 flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" />
+              <p className="text-sm font-medium text-red-600 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
                 {twoFaError}
               </p>
             )}
@@ -338,263 +281,207 @@ export default function LoginPage() {
           <Button
             onClick={handleVerifyOTP}
             className="w-full"
-            disabled={isLoading || otpCode.length !== 6}
+            disabled={isDisabled || otpCode.length !== 6}
           >
-            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Verify Code'}
+            {isLoggingIn && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Verify Code
           </Button>
 
           <Button
             variant="ghost"
-            onClick={() => setShow2FA(false)}
+            onClick={() => {
+              setShow2FA(false);
+              setOtpCode('');
+              setTwoFaError('');
+            }}
             className="w-full text-muted-foreground"
-            disabled={isLoading}
+            disabled={isDisabled}
           >
             Back to Login
           </Button>
         </div>
       </AuthLayout>
+      </>
     );
   }
 
+  // Main Login View
   return (
     <>
-      <AuthLayout title="Welcome back" subtitle="Enter your credentials to access your account">
+      <SessionWarningModal />
+      <AuthLayout 
+        title="Welcome back" 
+        subtitle="Enter your credentials to access your account"
+      >
         <Form
-          schema={loginSchema}
-          onSubmit={handleLoginSubmit}
-          className={`space-y-5 transition-opacity duration-200 ${isLoading ? 'opacity-60' : ''}`}
-        >
-          {(methods) => (
-            <>
-              <FormKeyboardListener reset={methods.reset} />
-              <RestoreSavedIdentifier setValue={methods.setValue} />
+        schema={loginSchema}
+        onSubmit={handleLoginSubmit}
+        className="space-y-5"
+      >
+        {(methods) => (
+          <>
+            {/* Error Messages */}
+            {methods.formState.errors.root && (
+              <div className="bg-red-50 border border-red-200 text-red-600 text-sm p-3 rounded-md flex items-center">
+                <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
+                {lockoutTime > 0
+                  ? `Too many failed attempts. Please try again in ${lockoutTime}s`
+                  : methods.formState.errors.root.message}
+              </div>
+            )}
 
-              {methods.formState.errors.root && (
-                <div className="bg-destructive/10 border border-destructive/20 text-destructive text-xs p-3 rounded-md flex items-center mb-5 text-red-600 bg-red-50">
-                  <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
-                  {lockoutTime > 0
-                    ? `Too many failed attempts. Please try again in ${lockoutTime}s`
-                    : methods.formState.errors.root.message}
-                </div>
-              )}
+            {/* Keyboard Listener */}
+            <FormKeyboardListener reset={methods.reset} />
 
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 }}
+            {/* Email/Username Field */}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
+            >
+              <FormField
+                control={methods.control}
+                name="identifier"
+                label="Email or Username"
+                placeholder="you@example.com"
+                type="text"
+                required
+                disabled={isDisabled}
+              />
+            </motion.div>
+
+            {/* Password Field */}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.15 }}
+            >
+              <FormField 
+                control={methods.control} 
+                name="password" 
+                label="Password" 
+                required
               >
-                <FormField
-                  control={methods.control}
-                  name="identifier"
-                  label="Email or Username"
-                  placeholder="you@example.com or username"
-                  type="text"
-                  required
-                  disabled={isLoading}
-                />
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.25 }}
-              >
-                <FormField control={methods.control} name="password" label="Password" required>
-                  {(fieldProps) => (
-                    <div className="relative">
-                      <Input
-                        {...fieldProps}
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="Enter your password"
-                        className="pr-10"
-                        disabled={isLoading}
-                        // SECURITY HARDENING START
-                        autoComplete="off"
-                        onPaste={(e) => {
-                          e.preventDefault();
-                          return false;
-                        }}
-                        onCopy={(e) => {
-                          e.preventDefault();
-                          return false;
-                        }}
-                        onCut={(e) => {
-                          e.preventDefault();
-                          return false;
-                        }}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          return false;
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                        tabIndex={-1}
-                      >
-                        {showPassword ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
-                      </button>
-                    </div>
-                  )}
-                </FormField>
-              </motion.div>
-
-              {/* CAPTCHA Section (from main) */}
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.275 }}
-                className="space-y-3"
-              >
-                <label className="text-sm font-medium leading-none">CAPTCHA Verification</label>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <canvas
-                      ref={canvasRef}
-                      width={150}
-                      height={50}
-                      className="border border-input rounded-md bg-muted"
-                      style={{ imageRendering: 'pixelated' }}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={generateCaptcha}
-                      className="px-3"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  <div className="flex gap-2">
+                {(fieldProps) => (
+                  <div className="relative">
                     <Input
-                      value={userCaptchaInput}
-                      onChange={handleCaptchaInputChange}
-                      placeholder="Enter CAPTCHA"
-                      className="flex-1"
-                      maxLength={5}
+                      {...fieldProps}
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Enter your password"
+                      className="pr-10"
+                      disabled={isDisabled}
+                      autoComplete="current-password"
+                      onPaste={(e) => e.preventDefault()}
+                      onCopy={(e) => e.preventDefault()}
+                      onCut={(e) => e.preventDefault()}
+                      onContextMenu={(e) => e.preventDefault()}
                     />
-                    <Button
+                    <button
                       type="button"
-                      onClick={handleCaptchaSubmit}
-                      disabled={!userCaptchaInput || captchaVerified}
-                      variant={captchaVerified ? 'default' : 'outline'}
-                      size="sm"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      tabIndex={-1}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
-                      {captchaVerified ? '✓' : 'Verify'}
-                    </Button>
-                  </div>
-
-                  {captchaError && <p className="text-sm text-destructive">{captchaError}</p>}
-                  {captchaVerified && (
-                    <p className="text-sm text-green-600 flex items-center gap-1">
-                      ✓ CAPTCHA verified successfully
-                    </p>
-                  )}
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="flex items-center justify-between"
-              >
-                <label className="flex items-center gap-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    {...methods.register('rememberMe')}
-                    disabled={isLoading}
-                    className="h-4 w-4 rounded border-input text-brand-primary focus:ring-brand-primary transition-colors cursor-pointer disabled:cursor-not-allowed"
-                  />
-                  <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
-                    Remember me
-                  </span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowForgotPassword(true)}
-                  className="text-sm text-primary hover:text-primary/80 transition-colors"
-                >
-                  Forgot password?
-                </button>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35 }}
-              >
-                <Button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full h-11 bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity"
-                >
-                  {isLoading ? (
-                    <>
-                      {lockoutTime > 0 ? (
-                        `Retry in ${lockoutTime}s`
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
                       ) : (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Signing in...
-                        </>
+                        <Eye className="h-4 w-4" />
                       )}
-                    </>
-                  ) : (
-                    'Sign in'
-                  )}
-                </Button>
-              </motion.div>
+                    </button>
+                  </div>
+                )}
+              </FormField>
+            </motion.div>
 
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
+            {/* Remember Me & Forgot Password */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="flex items-center justify-between"
+            >
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  {...methods.register('rememberMe')}
+                  disabled={isDisabled}
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-primary transition-colors cursor-pointer disabled:cursor-not-allowed"
+                />
+                <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+                  Remember me
+                </span>
+              </label>
+              <Link
+                href="/forgot-password"
+                className="text-sm text-primary hover:text-primary/80 transition-colors"
               >
-                <SocialLogin isLoading={isLoading} />
-              </motion.div>
+                Forgot password?
+              </Link>
+            </motion.div>
 
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.45 }}
-                className="text-center text-sm text-muted-foreground"
+            {/* Submit Button */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+            >
+              <Button
+                type="submit"
+                disabled={isDisabled}
+                className="w-full h-11 bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity"
               >
-                Don&apos;t have an account?{' '}
-                <Link
-                  href="/register"
-                  className="text-primary hover:text-primary/80 font-medium transition-colors"
-                >
-                  Sign up
-                </Link>
-              </motion.p>
-            </>
-          )}
-        </Form>
-      </AuthLayout>
+                {lockoutTime > 0 ? (
+                  `Retry in ${lockoutTime}s`
+                ) : isLoggingIn ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  'Sign in'
+                )}
+              </Button>
+            </motion.div>
 
-      {/* Forgot Password Modal (from main) */}
-      <ForgotPasswordModal
-        isOpen={showForgotPassword}
-        onClose={() => setShowForgotPassword(false)}
-      />
+            {/* Social Login */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+            >
+              <SocialLogin isLoading={isDisabled} />
+            </motion.div>
+
+            {/* Sign Up Link */}
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.35 }}
+              className="text-center text-sm text-muted-foreground"
+            >
+              Don&apos;t have an account?{' '}
+              <Link
+                href="/register"
+                className="text-primary hover:text-primary/80 font-medium transition-colors"
+              >
+                Sign up
+              </Link>
+            </motion.p>
+          </>
+        )}
+      </Form>
+    </AuthLayout>
     </>
   );
 }
+
 
 function FormKeyboardListener({ reset }: { reset: (values?: any) => void }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        // Clear all fields to empty strings
         reset({
           identifier: '',
           password: '',
@@ -607,15 +494,5 @@ function FormKeyboardListener({ reset }: { reset: (values?: any) => void }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [reset]);
 
-  return null;
-}
-
-function RestoreSavedIdentifier({ setValue }: { setValue: any }) {
-  useEffect(() => {
-    const saved = localStorage.getItem('last_used_identifier');
-    if (saved) {
-      setValue('identifier', saved);
-    }
-  }, [setValue]);
   return null;
 }

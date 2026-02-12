@@ -28,6 +28,8 @@ class AuthService:
     def __init__(self, db: Session = Depends(get_db)):
         self.db = db
 
+    
+
     def check_username_available(self, username: str) -> tuple[bool, str]:
         """
         Check if a username is available for registration.
@@ -458,6 +460,16 @@ class AuthService:
         self.db.commit()
         
         return token
+    
+
+    def has_multiple_active_sessions(self, user_id: int) -> bool:
+        active_sessions = self.db.query(RefreshToken).filter(
+            RefreshToken.user_id == user_id,
+            RefreshToken.is_revoked == False,
+            RefreshToken.expires_at > datetime.now(timezone.utc)
+        ).count()
+
+        return active_sessions > 1
 
     def refresh_access_token(self, refresh_token: str) -> Tuple[str, str]:
         """
@@ -505,6 +517,10 @@ class AuthService:
             db_token.is_revoked = True
             self.db.commit()
             logger.info(f"Revoked refresh token for user_id={db_token.user_id}")
+    
+
+
+
 
     def initiate_password_reset(self, email: str) -> tuple[bool, str]:
         """
@@ -596,3 +612,5 @@ class AuthService:
             self.db.rollback()
             logger.error(f"Error in complete_password_reset: {e}")
             return False, f"Internal error: {str(e)}"
+
+
