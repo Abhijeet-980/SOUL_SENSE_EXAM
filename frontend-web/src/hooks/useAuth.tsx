@@ -41,13 +41,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Check for existing session on mount
     const session = getSession();
     if (session) {
+      console.log('Session restored:', session.user.email);
       setUser(session.user);
     }
 
     // Check if backend is in mock mode (from main)
     checkMockMode();
 
-    setIsLoading(false);
+    // Small delay to ensure state propagates before layout checks
+    const timer = setTimeout(() => setIsLoading(false), 50);
+    return () => clearTimeout(timer);
   }, []);
 
   const checkMockMode = async () => {
@@ -83,19 +86,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return result; // 2FA Required
       }
 
+      console.log('useAuth: Login successful, result:', !!result.access_token);
+
       const session: UserSession = {
         user: {
           id: 'current',
-          email: loginData.username.includes('@') ? loginData.username : '',
-          name: 'User',
+          email: (result.email ||
+            (loginData.username.includes('@') ? loginData.username : '')) as string,
+          name: result.username || loginData.username.split('@')[0],
         },
         token: result.access_token,
         expiresAt: getExpiryTimestamp(),
       };
 
+      console.log('useAuth: Saving session for:', session.user.email || session.user.name);
       saveSession(session, rememberMe);
       setUser(session.user);
-      router.push('/dashboard');
+
+      console.log('useAuth: Navigation to /community triggered');
+      router.push('/community');
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -112,8 +121,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const session: UserSession = {
         user: {
           id: 'current',
-          email: '',
-          name: 'User',
+          email: (result.email || '') as string,
+          name: result.username || 'User',
         },
         token: result.access_token,
         expiresAt: getExpiryTimestamp(),
@@ -121,7 +130,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       saveSession(session, rememberMe);
       setUser(session.user);
-      router.push('/dashboard');
+      router.push('/community');
     } catch (error) {
       console.error('2FA verification failed:', error);
       throw error;
@@ -133,7 +142,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     // Integrate logout fetch from main
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(
+        /\/api\/v1\/?$/,
+        ''
+      );
       await fetch(`${apiUrl}/api/v1/auth/logout`, {
         method: 'POST',
         credentials: 'include',

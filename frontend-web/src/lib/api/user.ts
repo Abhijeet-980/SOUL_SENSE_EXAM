@@ -9,7 +9,7 @@ export const userApi = {
     }
 
     try {
-      return await apiClient(`/users/me/audit-logs?page=${page}&per_page=${limit}`, {
+      return await apiClient<any[]>(`/users/me/audit-logs?page=${page}&per_page=${limit}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

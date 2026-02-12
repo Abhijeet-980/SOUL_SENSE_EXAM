@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 import logging
 from typing import Optional, Dict, Tuple
 from jose import jwt
+from ..constants.errors import ErrorCode
+from ..exceptions import AuthException
 
 from ..config import get_settings
 from ..services.db_service import get_db
@@ -115,16 +117,23 @@ class MockAuthService:
         if identifier_lower in MOCK_USERS:
             user_data = MOCK_USERS[identifier_lower]
             logger.info(f"✅ Mock authentication successful for: {identifier}")
-            return User(**user_data)
+            user = User(**user_data)
+            user.email = identifier_lower
+            return user
         
         # Check by username
         for email, user_data in MOCK_USERS.items():
             if user_data["username"].lower() == identifier_lower:
                 logger.info(f"✅ Mock authentication successful for: {identifier}")
-                return User(**user_data)
+                user = User(**user_data)
+                user.email = email
+                return user
         
         logger.warning(f"❌ Mock authentication failed for: {identifier}")
-        return None
+        raise AuthException(
+            code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+            message="Incorrect username or password"
+        )
 
     def create_access_token(
         self, 
@@ -191,7 +200,7 @@ class MockAuthService:
         logger.debug(f"🎭 Created mock pre-auth token for user_id: {user_id}")
         return encoded_jwt
 
-    def initiate_2fa_login(self, user: User) -> Tuple[str, str]:
+    def initiate_2fa_login(self, user: User) -> str:
         """
         Mock 2FA login initiation.
         
@@ -209,7 +218,7 @@ class MockAuthService:
         otp_code = MOCK_OTP_CODES.get(email, "123456")
         
         logger.info(f"🎭 Mock 2FA initiated for {email}. OTP: {otp_code}")
-        return pre_auth_token, otp_code
+        return pre_auth_token
 
     def verify_2fa_login(self, pre_auth_token: str, code: str) -> Optional[User]:
         """
@@ -258,7 +267,7 @@ class MockAuthService:
             logger.error(f"🎭 Mock 2FA verification error: {e}")
             return None
 
-    def register_user(self, user_data: UserCreate) -> User:
+    def register_user(self, user_data: UserCreate) -> tuple[bool, Optional[User], str]:
         """
         Mock user registration.
         
@@ -293,7 +302,9 @@ class MockAuthService:
         }
         
         logger.info(f"🎭 Mock user registered: {user_data.email}")
-        return User(**user_dict)
+        user = User(**user_dict)
+        user.email = user_data.email
+        return True, user, "User registered successfully (Mock)"
 
     def create_refresh_token(self, user_id: int) -> str:
         """

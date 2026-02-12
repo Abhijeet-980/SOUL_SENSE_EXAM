@@ -53,9 +53,15 @@ class BaseAppSettings(BaseSettings):
 
     # CORS Configuration
     allowed_origins: str = Field(
-        default='["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:3005"]',
+        default='["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:3005", "http://127.0.0.1:3005", "tauri://localhost"]',
         description="Allowed origins for CORS"
     )
+
+    # Cookie Security Settings
+    cookie_secure: bool = Field(default=False, description="Use Secure flag for cookies (Requires HTTPS)")
+    cookie_samesite: str = Field(default="lax", description="SameSite attribute for cookies (lax, strict, none)")
+    cookie_domain: Optional[str] = Field(default=None, description="Domain attribute for cookies")
+    access_token_expire_minutes: int = Field(default=30, description="Access token expiration in minutes")
 
     @property
     def cors_origins(self) -> list[str]:
@@ -109,6 +115,7 @@ class DevelopmentSettings(BaseAppSettings):
     """Settings for development environment."""
 
     debug: bool = True
+    mock_auth_mode: bool = True
     jwt_secret_key: str = Field(default="dev_jwt_secret_key_for_development_only_not_secure", description="Development JWT key")
 
 
@@ -138,6 +145,10 @@ class ProductionSettings(BaseAppSettings):
 
     app_env: str = "production"
     debug: bool = False
+
+    # Enforce secure cookies in production
+    cookie_secure: bool = True
+    cookie_samesite: str = "lax"  # Or 'strict' if API and FE are on same domain
 
     # Required production database settings
     database_host: str = Field(..., description="Database host")

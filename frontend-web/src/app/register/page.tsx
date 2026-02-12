@@ -3,21 +3,39 @@
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, Loader2, CheckCircle2, XCircle, AlertCircle, ArrowLeft, ArrowRight, User, Mail, Shield } from 'lucide-react';
+import {
+  Eye,
+  EyeOff,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  User,
+  Mail,
+  Shield,
+} from 'lucide-react';
 import { Form, FormField } from '@/components/forms';
 import { Button, Input } from '@/components/ui';
-import { AuthLayout, SocialLogin, PasswordStrengthIndicator, StepIndicator } from '@/components/auth';
+import {
+  AuthLayout,
+  SocialLogin,
+  PasswordStrengthIndicator,
+  StepIndicator,
+} from '@/components/auth';
 import { registrationSchema } from '@/lib/validation';
 import { z } from 'zod';
 import { UseFormReturn, useController } from 'react-hook-form';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import { authApi } from '@/lib/api/auth';
+import { ApiError } from '@/lib/api/errors';
 import { useRateLimiter } from '@/hooks/useRateLimiter';
+import { analyticsApi } from '@/lib/api/analytics';
 
 type RegisterFormData = z.infer<typeof registrationSchema>;
-
-type Step = 'personal' | 'account' | 'terms';
 
 const steps = [
   { id: 'personal', label: 'Personal', description: 'Your info' },
@@ -28,21 +46,23 @@ const steps = [
 interface StepContentProps {
   methods: UseFormReturn<RegisterFormData>;
   isLoading: boolean;
-  showPassword: boolean;
-  setShowPassword: (show: boolean) => void;
-  availabilityStatus: 'idle' | 'loading' | 'available' | 'taken' | 'invalid';
-  setAvailabilityStatus: (status: 'idle' | 'loading' | 'available' | 'taken' | 'invalid') => void;
-  availabilityCache: Map<string, { available: boolean; message: string }>;
-  onNext: () => void;
-  onBack: () => void;
+  onNext?: () => void;
+  onBack?: () => void;
   canProceed: boolean;
+  handleFocus: (fieldName: string) => void;
 }
 
-function PersonalStep({ methods, isLoading, onNext, canProceed }: StepContentProps) {
+interface StepProps extends StepContentProps {
+  showPassword?: boolean;
+  setShowPassword?: (show: boolean) => void;
+  availabilityCache?: Map<string, { available: boolean; message: string }>;
+}
+
+function PersonalStep({ methods, isLoading, onNext, handleFocus }: StepProps) {
   const handleContinue = async () => {
     const isValid = await methods.trigger(['firstName', 'age', 'gender']);
     if (isValid) {
-      onNext();
+      onNext?.();
     }
   };
 
@@ -66,6 +86,7 @@ function PersonalStep({ methods, isLoading, onNext, canProceed }: StepContentPro
             placeholder="John"
             required
             disabled={isLoading}
+            onFocus={() => handleFocus('firstName')}
           />
         </motion.div>
 
@@ -80,6 +101,7 @@ function PersonalStep({ methods, isLoading, onNext, canProceed }: StepContentPro
             label="Last name"
             placeholder="Doe"
             disabled={isLoading}
+            onFocus={() => handleFocus('lastName')}
           />
         </motion.div>
       </div>
@@ -98,6 +120,7 @@ function PersonalStep({ methods, isLoading, onNext, canProceed }: StepContentPro
             type="number"
             required
             disabled={isLoading}
+            onFocus={() => handleFocus('age')}
           />
         </motion.div>
 
@@ -106,12 +129,22 @@ function PersonalStep({ methods, isLoading, onNext, canProceed }: StepContentPro
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.25 }}
         >
-          <FormField control={methods.control} name="gender" label="Gender" required>
+          <FormField
+            control={methods.control}
+            name="gender"
+            label="Gender"
+            required
+            onFocus={() => handleFocus('gender')}
+          >
             {(fieldProps) => (
               <select
                 {...fieldProps}
                 disabled={isLoading}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+                onChange={(e) => {
+                  fieldProps.onChange(e);
+                  handleFocus('gender');
+                }}
               >
                 <option value="">Select gender</option>
                 <option value="Male">Male</option>
@@ -130,12 +163,7 @@ function PersonalStep({ methods, isLoading, onNext, canProceed }: StepContentPro
         transition={{ delay: 0.3 }}
         className="pt-4"
       >
-        <Button
-          type="button"
-          onClick={handleContinue}
-          disabled={isLoading}
-          className="w-full"
-        >
+        <Button type="button" onClick={handleContinue} disabled={isLoading} className="w-full">
           Continue
           <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
@@ -152,16 +180,19 @@ function AccountStep({
   availabilityCache,
   onNext,
   onBack,
-  canProceed,
-}: StepContentProps) {
-  const [localStatus, setLocalStatus] = useState<'idle' | 'loading' | 'available' | 'taken' | 'invalid'>('idle');
+  handleFocus,
+}: StepProps) {
+  const [localStatus, setLocalStatus] = useState<
+    'idle' | 'loading' | 'available' | 'taken' | 'invalid'
+  >('idle');
 
   const handleContinue = async () => {
     const isValid = await methods.trigger(['username', 'email', 'password', 'confirmPassword']);
     if (isValid && localStatus !== 'taken' && localStatus !== 'loading') {
-      onNext();
+      onNext?.();
     }
   };
+
   const usernameValue = methods.watch('username');
   const debouncedUsername = useDebounce(usernameValue, 500);
 
@@ -177,7 +208,7 @@ function AccountStep({
       return;
     }
 
-    if (availabilityCache.has(debouncedUsername)) {
+    if (availabilityCache?.has(debouncedUsername)) {
       setLocalStatus(availabilityCache.get(debouncedUsername)!.available ? 'available' : 'taken');
       return;
     }
@@ -185,15 +216,8 @@ function AccountStep({
     const checkAvailability = async () => {
       setLocalStatus('loading');
       try {
-        const response = await fetch(
-          `/api/auth/check-username?username=${encodeURIComponent(debouncedUsername)}`
-        );
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(`HTTP ${response.status}: ${text}`);
-        }
-        const data = await response.json();
-        availabilityCache.set(debouncedUsername, data);
+        const data = await authApi.checkUsernameAvailability(debouncedUsername);
+        availabilityCache?.set(debouncedUsername, data);
         setLocalStatus(data.available ? 'available' : 'taken');
       } catch (error) {
         console.error('Error checking username availability:', error);
@@ -223,6 +247,7 @@ function AccountStep({
           placeholder="johndoe"
           required
           disabled={isLoading}
+          onFocus={() => handleFocus('username')}
         >
           {(fieldProps) => (
             <div className="relative">
@@ -238,9 +263,7 @@ function AccountStep({
                 {localStatus === 'loading' && (
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 )}
-                {localStatus === 'available' && (
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                )}
+                {localStatus === 'available' && <CheckCircle2 className="h-4 w-4 text-green-500" />}
                 {localStatus === 'taken' && <XCircle className="h-4 w-4 text-red-500" />}
               </div>
               {localStatus === 'taken' && (
@@ -271,6 +294,7 @@ function AccountStep({
           type="email"
           required
           disabled={isLoading}
+          onFocus={() => handleFocus('email')}
         />
       </motion.div>
 
@@ -279,7 +303,13 @@ function AccountStep({
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <FormField control={methods.control} name="password" label="Password" required>
+        <FormField
+          control={methods.control}
+          name="password"
+          label="Password"
+          required
+          onFocus={() => handleFocus('password')}
+        >
           {(fieldProps) => (
             <div className="relative space-y-2">
               <Input
@@ -304,6 +334,7 @@ function AccountStep({
           name="confirmPassword"
           label="Confirm Password"
           required
+          onFocus={() => handleFocus('confirmPassword')}
         >
           {(fieldProps) => (
             <div className="relative">
@@ -323,7 +354,7 @@ function AccountStep({
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => setShowPassword(!showPassword)}
+          onClick={() => setShowPassword?.(!showPassword)}
           disabled={isLoading}
           className="text-xs h-8"
         >
@@ -338,7 +369,13 @@ function AccountStep({
         transition={{ delay: 0.3 }}
         className="flex gap-3 pt-4"
       >
-        <Button type="button" variant="outline" onClick={onBack} disabled={isLoading} className="flex-1">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onBack}
+          disabled={isLoading}
+          className="flex-1"
+        >
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
@@ -356,7 +393,13 @@ function AccountStep({
   );
 }
 
-function TermsStep({ methods, isLoading, onBack, lockoutTime = 0 }: StepContentProps & { lockoutTime?: number }) {
+function TermsStep({
+  methods,
+  isLoading,
+  onBack,
+  lockoutTime = 0,
+  handleFocus,
+}: StepProps & { lockoutTime?: number }) {
   const { field } = useController({
     control: methods.control,
     name: 'acceptTerms',
@@ -378,7 +421,9 @@ function TermsStep({ methods, isLoading, onBack, lockoutTime = 0 }: StepContentP
         <div className="grid grid-cols-2 gap-2">
           <div>
             <span className="text-muted-foreground">Name:</span>
-            <p className="font-medium">{methods.getValues('firstName')} {methods.getValues('lastName')}</p>
+            <p className="font-medium">
+              {methods.getValues('firstName')} {methods.getValues('lastName')}
+            </p>
           </div>
           <div>
             <span className="text-muted-foreground">Username:</span>
@@ -390,7 +435,9 @@ function TermsStep({ methods, isLoading, onBack, lockoutTime = 0 }: StepContentP
           </div>
           <div>
             <span className="text-muted-foreground">Age/Gender:</span>
-            <p className="font-medium">{methods.getValues('age')} / {methods.getValues('gender')}</p>
+            <p className="font-medium">
+              {methods.getValues('age')} / {methods.getValues('gender')}
+            </p>
           </div>
         </div>
       </motion.div>
@@ -408,6 +455,7 @@ function TermsStep({ methods, isLoading, onBack, lockoutTime = 0 }: StepContentP
             onChange={(e) => field.onChange(e.target.checked)}
             disabled={isLoading}
             className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer disabled:cursor-not-allowed"
+            onFocus={() => handleFocus('acceptTerms')}
           />
           <label
             htmlFor="acceptTerms"
@@ -431,24 +479,24 @@ function TermsStep({ methods, isLoading, onBack, lockoutTime = 0 }: StepContentP
         transition={{ delay: 0.3 }}
         className="flex gap-3 pt-2"
       >
-        <Button type="button" variant="outline" onClick={onBack} disabled={isLoading} className="flex-1">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onBack}
+          disabled={isLoading}
+          className="flex-1"
+        >
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
-        <Button
-          type="submit"
-          disabled={isLoading || !field.value}
-          className="flex-1"
-        >
-          {isLoading ? (
-            lockoutTime > 0 ? (
-              `Retry in ${lockoutTime}s`
-            ) : (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating Account...
-              </>
-            )
+        <Button type="submit" disabled={isLoading || !field.value} className="flex-1">
+          {isLoading && lockoutTime > 0 ? (
+            `Retry in ${lockoutTime}s`
+          ) : isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Creating Account...
+            </>
           ) : (
             <>
               <Shield className="mr-2 h-4 w-4" />
@@ -480,31 +528,65 @@ export default function RegisterPage() {
     []
   );
 
-  const [availabilityStatus, setAvailabilityStatus] = useState<'idle' | 'loading' | 'available' | 'taken' | 'invalid'>('idle');
-
-  const validateStep = useCallback((step: number, methods: UseFormReturn<RegisterFormData>): boolean => {
-    const values = methods.getValues();
-    const errors = methods.formState.errors;
-
-    switch (step) {
-      case 0: // Personal
-        return !!values.firstName && !!values.age && !!values.gender && !errors.firstName && !errors.age && !errors.gender;
-      case 1: // Account
-        return !!values.username && !!values.email && !!values.password && !!values.confirmPassword &&
-               !errors.username && !errors.email && !errors.password && !errors.confirmPassword &&
-               availabilityStatus !== 'taken' && availabilityStatus !== 'loading';
-      case 2: // Terms
-        return !!values.acceptTerms;
-      default:
-        return false;
+  // Analytics: Track field interactions
+  const trackedFields = useRef<Set<string>>(new Set());
+  const handleFocus = useCallback((fieldName: string) => {
+    if (!trackedFields.current.has(fieldName)) {
+      trackedFields.current.add(fieldName);
+      analyticsApi.trackEvent({
+        event_type: 'signup_workflow',
+        event_name: 'field_focus',
+        event_data: { field: fieldName },
+      });
     }
-  }, [availabilityStatus]);
+  }, []);
+
+  // Analytics: Track page view
+  useEffect(() => {
+    analyticsApi.trackEvent({
+      event_type: 'signup_workflow',
+      event_name: 'signup_view',
+    });
+  }, []);
+
+  const validateStep = useCallback(
+    (step: number, methods: UseFormReturn<RegisterFormData>): boolean => {
+      const values = methods.getValues();
+      const errors = methods.formState.errors;
+
+      switch (step) {
+        case 0: // Personal
+          return (
+            !!values.firstName &&
+            !!values.age &&
+            !!values.gender &&
+            !errors.firstName &&
+            !errors.age &&
+            !errors.gender
+          );
+        case 1: // Account
+          return (
+            !!values.username &&
+            !!values.email &&
+            !!values.password &&
+            !!values.confirmPassword &&
+            !errors.username &&
+            !errors.email &&
+            !errors.password &&
+            !errors.confirmPassword
+          );
+        case 2: // Terms
+          return !!values.acceptTerms;
+        default:
+          return false;
+      }
+    },
+    []
+  );
 
   const handleNext = useCallback((methods: UseFormReturn<RegisterFormData>) => {
-    if (validateStep(currentStep, methods)) {
-      setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1));
-    }
-  }, [currentStep, validateStep]);
+    setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1));
+  }, []);
 
   const handleBack = useCallback(() => {
     setCurrentStep((prev) => Math.max(prev - 1, 0));
@@ -513,46 +595,75 @@ export default function RegisterPage() {
   const handleSubmit = async (data: RegisterFormData, methods: UseFormReturn<RegisterFormData>) => {
     if (isLocked) return;
 
+    // Analytics: Track submit attempt
+    analyticsApi.trackEvent({
+      event_type: 'signup_workflow',
+      event_name: 'signup_submit',
+    });
+
     setIsLoading(true);
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: data.username,
-          password: data.password,
-          email: data.email,
-          first_name: data.firstName,
-          last_name: data.lastName,
-          age: data.age,
-          gender: data.gender,
-        }),
+      const result = await authApi.register({
+        username: data.username,
+        password: data.password,
+        email: data.email || '',
+        first_name: data.firstName,
+        last_name: data.lastName || '',
+        age: data.age,
+        gender: data.gender,
       });
 
-      const result = await response.json();
+      setIsSuccess(true);
+      setSuccessMessage(
+        result.message || 'Registration request received. Please check your email for next steps.'
+      );
 
-      if (response.ok) {
-        setIsSuccess(true);
-        setSuccessMessage(
-          result.message || 'Registration request received. Please check your email for next steps.'
-        );
-      } else {
-        if (handleRateLimitError(result, (msg) => methods.setError('root', { message: msg }))) {
+      // Analytics: Track success
+      analyticsApi.trackEvent({
+        event_type: 'signup_workflow',
+        event_name: 'signup_success',
+      });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        const result = error.data || {};
+
+        if (
+          handleRateLimitError(result, (msg: string) => methods.setError('root', { message: msg }))
+        ) {
           return;
         }
+
+        let errorMessage = result.message;
+        if (!errorMessage && result.detail) {
+          if (Array.isArray(result.detail)) {
+            errorMessage = result.detail[0]?.msg;
+          } else if (typeof result.detail === 'string') {
+            errorMessage = result.detail;
+          } else if (result.detail.message) {
+            errorMessage = result.detail.message;
+          }
+        }
+
         methods.setError('root', {
-          message:
-            result.detail?.message ||
-            result.message ||
-            'Registration failed. Please try again or contact support.',
+          message: errorMessage || 'Registration failed. Please try again or contact support.',
         });
-        setCurrentStep(2); // Stay on terms step to show error
+
+        analyticsApi.trackEvent({
+          event_type: 'signup_workflow',
+          event_name: 'signup_error',
+          event_data: { error: errorMessage || 'Registration failed' },
+        });
+      } else {
+        methods.setError('root', {
+          message: 'Network error. Please check your connection and try again.',
+        });
+
+        analyticsApi.trackEvent({
+          event_type: 'signup_workflow',
+          event_name: 'signup_network_error',
+        });
+        setCurrentStep(2);
       }
-    } catch (error) {
-      methods.setError('root', {
-        message: 'Network error. Please check your connection and try again.',
-      });
-      setCurrentStep(2);
     } finally {
       setIsLoading(false);
     }
@@ -599,14 +710,8 @@ export default function RegisterPage() {
         >
           {(methods) => (
             <>
-              {/* Step Progress Indicator */}
-              <StepIndicator
-                steps={steps}
-                currentStep={currentStep}
-                className="mb-6"
-              />
+              <StepIndicator steps={steps} currentStep={currentStep} className="mb-6" />
 
-              {/* Error Display */}
               {methods.formState.errors.root && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
@@ -618,7 +723,6 @@ export default function RegisterPage() {
                 </motion.div>
               )}
 
-              {/* Step Content */}
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentStep}
@@ -631,13 +735,8 @@ export default function RegisterPage() {
                     <PersonalStep
                       methods={methods}
                       isLoading={effectiveLoading}
-                      showPassword={showPassword}
-                      setShowPassword={setShowPassword}
-                      availabilityStatus={availabilityStatus}
-                      setAvailabilityStatus={setAvailabilityStatus}
-                      availabilityCache={availabilityCache}
                       onNext={() => handleNext(methods)}
-                      onBack={handleBack}
+                      handleFocus={handleFocus}
                       canProceed={validateStep(0, methods)}
                     />
                   )}
@@ -647,11 +746,10 @@ export default function RegisterPage() {
                       isLoading={effectiveLoading}
                       showPassword={showPassword}
                       setShowPassword={setShowPassword}
-                      availabilityStatus={availabilityStatus}
-                      setAvailabilityStatus={setAvailabilityStatus}
                       availabilityCache={availabilityCache}
                       onNext={() => handleNext(methods)}
                       onBack={handleBack}
+                      handleFocus={handleFocus}
                       canProceed={validateStep(1, methods)}
                     />
                   )}
@@ -659,13 +757,8 @@ export default function RegisterPage() {
                     <TermsStep
                       methods={methods}
                       isLoading={effectiveLoading}
-                      showPassword={showPassword}
-                      setShowPassword={setShowPassword}
-                      availabilityStatus={availabilityStatus}
-                      setAvailabilityStatus={setAvailabilityStatus}
-                      availabilityCache={availabilityCache}
-                      onNext={() => {}}
                       onBack={handleBack}
+                      handleFocus={handleFocus}
                       canProceed={validateStep(2, methods)}
                       lockoutTime={lockoutTime}
                     />
@@ -673,7 +766,6 @@ export default function RegisterPage() {
                 </motion.div>
               </AnimatePresence>
 
-              {/* Sign in link */}
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

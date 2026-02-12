@@ -5,7 +5,8 @@ from typing import List, Dict, Tuple, Optional
 from datetime import datetime, timedelta
 
 # Import models from root_models module (handles namespace collision)
-from api.root_models import Score, User
+# Import models from root_models module (handles namespace collision)
+from api.root_models import Score, User, AnalyticsEvent
 
 
 class AnalyticsService:
@@ -15,6 +16,35 @@ class AnalyticsService:
     individual user information or raw sensitive data.
     """
     
+    @staticmethod
+    def log_event(db: Session, event_data: dict, ip_address: Optional[str] = None) -> AnalyticsEvent:
+        """
+        Log a user behavior event.
+        
+        Args:
+            db: Database session
+            event_data: validated AnalyticsEventCreate dict
+            ip_address: Optional IP address of the user
+        """
+        import json
+        
+        # Serialize event_data JSON
+        data_payload = json.dumps(event_data.get('event_data', {}))
+        
+        event = AnalyticsEvent(
+            anonymous_id=event_data['anonymous_id'],
+            event_type=event_data['event_type'],
+            event_name=event_data['event_name'],
+            event_data=data_payload,
+            ip_address=ip_address,
+            timestamp=datetime.utcnow()
+        )
+        
+        db.add(event)
+        db.commit()
+        db.refresh(event)
+        return event
+
     @staticmethod
     def get_age_group_statistics(db: Session) -> List[Dict]:
         """

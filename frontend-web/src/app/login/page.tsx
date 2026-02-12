@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -14,6 +14,7 @@ import { UseFormReturn } from 'react-hook-form';
 
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError } from '@/lib/api/errors';
+import { authApi } from '@/lib/api/auth';
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
@@ -37,36 +38,41 @@ export default function LoginPage() {
   const [captchaError, setCaptchaError] = useState('');
   const [captchaVerified, setCaptchaVerified] = useState(false);
   const [captchaAttempts, setCaptchaAttempts] = useState(0);
+  const [captchaSessionId, setCaptchaSessionId] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Forgot Password Modal State (from main)
   const [showForgotPassword, setShowForgotPassword] = useState(false);
 
-  // CAPTCHA State
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [captchaCode, setCaptchaCode] = useState('');
-  const [userCaptchaInput, setUserCaptchaInput] = useState('');
-  const [captchaVerified, setCaptchaVerified] = useState(false);
-  const [captchaError, setCaptchaError] = useState('');
-  const [captchaAttempts, setCaptchaAttempts] = useState(0);
+  const generateCaptcha = useCallback(async () => {
+    try {
+      setUserCaptchaInput('');
+      setCaptchaVerified(false);
+      setCaptchaError('');
+      setCaptchaAttempts(0);
 
-  const generateCaptcha = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    let code = '';
-    for (let i = 0; i < 5; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
+      const { captcha_code, session_id } = await authApi.getCaptcha();
+      setCaptchaCode(captcha_code);
+      setCaptchaSessionId(session_id);
+      // Draw captcha after state update
+      setTimeout(() => drawCaptcha(captcha_code), 0);
+    } catch (error) {
+      console.error('Failed to fetch CAPTCHA:', error);
+      // Fallback to client-side if backend fails
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let result = '';
+      for (let i = 0; i < 5; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      setCaptchaCode(result);
+      setCaptchaSessionId('browser-session');
+      setTimeout(() => drawCaptcha(result), 0);
     }
-    setCaptchaCode(code);
-    setUserCaptchaInput('');
-    setCaptchaVerified(false);
-    setCaptchaError('');
-    setCaptchaAttempts(0);
-    drawCaptcha(code);
-  };
+  }, []);
 
   useEffect(() => {
     generateCaptcha();
-  }, []);
+  }, [generateCaptcha]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -83,17 +89,6 @@ export default function LoginPage() {
     }
     return () => clearInterval(timer);
   }, [lockoutTime]);
-
-  const generateCaptcha = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let result = '';
-    for (let i = 0; i < 5; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setCaptchaCode(result);
-    // Draw captcha after state update
-    setTimeout(() => drawCaptcha(result), 0);
-  };
 
   const drawCaptcha = (text: string) => {
     const canvas = canvasRef.current;
@@ -146,8 +141,8 @@ export default function LoginPage() {
       ctx.translate(x, y);
       ctx.rotate((Math.random() - 0.5) * 0.3); // Slight rotation
 
-      ctx.font = `${fontSizes[Math.floor(Math.random() * fontSizes.length)]}px ${fonts[Math.floor(Math.random() * fonts.length)]}`;
-      ctx.fillStyle = `hsl(${Math.random() * 360}, 70%, 40%)`;
+      ctx.font = `bold ${fontSizes[Math.floor(Math.random() * fontSizes.length)]}px ${fonts[Math.floor(Math.random() * fonts.length)]}`;
+      ctx.fillStyle = `hsl(${Math.random() * 360}, 80%, 30%)`;
       ctx.fillText(char, 0, 0);
 
       ctx.restore();
@@ -183,7 +178,15 @@ export default function LoginPage() {
     validateCaptcha();
   };
 
-  const { login, login2FA } = useAuth();
+  const { login, login2FA, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+
+  useEffect(() => {
+    console.log('LoginPage: [Status]', { isAuthenticated, isAuthLoading });
+    if (!isAuthLoading && isAuthenticated) {
+      console.log('LoginPage: Redirecting to /community');
+      router.push('/community');
+    }
+  }, [isAuthenticated, isAuthLoading, router]);
 
   const handleLoginSubmit = async (data: LoginFormData, methods: UseFormReturn<LoginFormData>) => {
     // Preserve local storage pattern from main
@@ -197,10 +200,14 @@ export default function LoginPage() {
       return;
     }
 
-    // Validate CAPTCHA first (from main)
+    // Validate CAPTCHA first (auto-verify if input is present)
     if (!captchaVerified) {
-      setCaptchaError('Please verify the CAPTCHA first.');
-      return;
+      if (userCaptchaInput) {
+        if (!validateCaptcha()) return;
+      } else {
+        setCaptchaError('Please verify the CAPTCHA first.');
+        return;
+      }
     }
 
     setIsLoggingIn(true);
@@ -211,7 +218,7 @@ export default function LoginPage() {
           username: data.identifier,
           password: data.password,
           captcha_input: userCaptchaInput,
-          session_id: 'browser-session', // Optional, can be refined
+          session_id: captchaSessionId,
         },
         !!data.rememberMe
       );
@@ -235,17 +242,35 @@ export default function LoginPage() {
             methods.setError('identifier', { message: 'Invalid username/email or password' });
             return;
           }
+          // Handle CAPTCHA error with same style as reg
           errorMessage = detail?.message || 'Invalid credentials';
         } else if (error.status === 429) {
           const waitSeconds = error.detail?.details?.wait_seconds || 60;
           setLockoutTime(waitSeconds);
           errorMessage = `Too many attempts. Account locked for ${waitSeconds} seconds.`;
         } else {
-          errorMessage = error.message;
+          // Robust Pydantic error parsing (like in registration)
+          const detail = error.detail;
+          if (detail) {
+            if (Array.isArray(detail)) {
+              errorMessage = detail[0]?.msg || error.message;
+            } else if (typeof detail === 'string') {
+              errorMessage = detail;
+            } else {
+              errorMessage = detail.message || error.message;
+            }
+          } else {
+            errorMessage = error.message;
+          }
         }
       }
 
       methods.setError('root', { message: errorMessage });
+
+      // Regenerate CAPTCHA on any failure (it's consumed by the backend)
+      setCaptchaVerified(false);
+      setUserCaptchaInput('');
+      generateCaptcha();
     } finally {
       setIsLoggingIn(false);
     }
@@ -268,12 +293,14 @@ export default function LoginPage() {
         true
       );
     } catch (error: any) {
+      console.error('2FA verification error:', error);
       let errorMessage = 'Verification failed. Please try again.';
       if (error instanceof ApiError) {
         if (error.isNetworkError) {
           errorMessage = 'Connection lost. Please check your internet.';
         } else {
-          errorMessage = error.message;
+          // Use the structured message from the backend if available
+          errorMessage = error.detail?.message || error.message;
         }
       }
       setTwoFaError(errorMessage);
@@ -296,12 +323,15 @@ export default function LoginPage() {
               value={otpCode}
               onChange={(e) => setOtpCode(e.target.value)}
               placeholder="123456"
-              className="text-center text-lg tracking-widest"
+              className={`text-center text-lg tracking-widest ${twoFaError ? 'border-red-500' : ''}`}
               maxLength={6}
               disabled={isLoading}
             />
             {twoFaError && (
-              <p className="text-sm font-medium text-destructive text-red-500">{twoFaError}</p>
+              <p className="text-sm font-medium text-destructive text-red-500 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {twoFaError}
+              </p>
             )}
           </div>
 
@@ -332,10 +362,13 @@ export default function LoginPage() {
         <Form
           schema={loginSchema}
           onSubmit={handleLoginSubmit}
-          className={`space-y-5 transition-opacity duration-200 ${isLoading ? 'opacity-60 pointer-events-none' : ''}`}
+          className={`space-y-5 transition-opacity duration-200 ${isLoading ? 'opacity-60' : ''}`}
         >
           {(methods) => (
             <>
+              <FormKeyboardListener reset={methods.reset} />
+              <RestoreSavedIdentifier setValue={methods.setValue} />
+
               {methods.formState.errors.root && (
                 <div className="bg-destructive/10 border border-destructive/20 text-destructive text-xs p-3 rounded-md flex items-center mb-5 text-red-600 bg-red-50">
                   <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
@@ -344,8 +377,6 @@ export default function LoginPage() {
                     : methods.formState.errors.root.message}
                 </div>
               )}
-              <FormKeyboardListener reset={methods.reset} />
-              <RestoreSavedIdentifier setValue={methods.setValue} />
 
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
@@ -567,7 +598,6 @@ function FormKeyboardListener({ reset }: { reset: (values?: any) => void }) {
         reset({
           identifier: '',
           password: '',
-          captchaInput: '',
           rememberMe: false,
         });
       }

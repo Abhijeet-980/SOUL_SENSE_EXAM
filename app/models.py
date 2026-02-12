@@ -86,6 +86,24 @@ class AuditLog(Base):
 
     user = relationship("User", back_populates="audit_logs")
 
+class AnalyticsEvent(Base):
+    """
+    Track user behavior events (e.g., signup drop-off).
+    Uses anonymous_id for pre-signup tracking.
+    """
+    __tablename__ = 'analytics_events'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    anonymous_id = Column(String, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    event_type = Column(String, nullable=False, index=True) # e.g. 'signup_step'
+    event_name = Column(String, nullable=False) # e.g. 'focus_email'
+    event_data = Column(Text, nullable=True) # JSON payload
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    ip_address = Column(String, nullable=True)
+
+    user = relationship("User")
+
 class OTP(Base):
     """
     One-Time Passwords for Password Reset and 2FA challenges.

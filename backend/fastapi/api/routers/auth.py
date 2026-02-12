@@ -1,12 +1,21 @@
 from datetime import timedelta
 from typing import Annotated
 import logging  
+from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
+from sqlalchemy.orm import Session
+from cachetools import TTLCache
 
 from ..config import get_settings
-from ..schemas import UserCreate, Token, UserResponse, ErrorResponse, PasswordResetRequest, PasswordResetComplete, TwoFactorLoginRequest, TwoFactorAuthRequiredResponse, TwoFactorConfirmRequest, UsernameAvailabilityResponse, CaptchaResponse, LoginRequest
+from ..schemas import (
+    UserCreate, Token, UserResponse, ErrorResponse, 
+    PasswordResetRequest, PasswordResetComplete, 
+    TwoFactorLoginRequest, TwoFactorAuthRequiredResponse, 
+    TwoFactorConfirmRequest, UsernameAvailabilityResponse, 
+    CaptchaResponse, LoginRequest
+)
 from ..services.db_service import get_db
 from ..services.auth_service import AuthService
 from ..services.mock_auth_service import MockAuthService
@@ -14,10 +23,7 @@ from ..services.captcha_service import captcha_service
 from ..constants.errors import ErrorCode
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
 from ..exceptions import AuthException, APIException, RateLimitException
-# Rate limiters imported inline within routes to avoid potential circular/timing issues
 from api.root_models import User
-from sqlalchemy.orm import Session
-from cachetools import TTLCache
 
 #  Setup Logger
 logger = logging.getLogger(__name__)
@@ -27,7 +33,6 @@ router = APIRouter()
 settings = get_settings()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
-
 
 def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
     """
@@ -41,7 +46,6 @@ def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
 async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
     """
     Get current user from JWT token.
-    This remains in the router/dependency layer as it couples HTTP security with logic.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -49,7 +53,6 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Se
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        # Pydantic schema validation for TokenData could be used here
         payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
         username: str = payload.get("sub")
         if not username:
@@ -88,7 +91,6 @@ async def check_username_availability(
     available, message = auth_service.check_username_available(username)
     return UsernameAvailabilityResponse(available=available, message=message)
 
-
 @router.post("/register", response_model=None, responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}})
 async def register(
     request: Request,
@@ -113,23 +115,17 @@ async def register(
             detail=message
         )
          
-    # Always return a generic success message to prevent enumeration
     return {"message": message}
-
 
 @router.get("/captcha", response_model=CaptchaResponse)
 async def get_captcha(request: Request):
     """
     Generate and return a new CAPTCHA for login.
-    Returns CAPTCHA code and session ID.
     """
     import uuid
     session_id = str(uuid.uuid4())
-
     captcha_code = captcha_service.generate_captcha(session_id)
-
     return CaptchaResponse(captcha_code=captcha_code, session_id=session_id)
-
 
 @router.post("/login", response_model=None, responses={401: {"model": ErrorResponse}, 202: {"model": TwoFactorAuthRequiredResponse}, 200: {"model": Token}})
 async def login(
@@ -162,6 +158,10 @@ async def login(
          raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Too many login attempts. Please try again in {wait_time}s."
+        from api.exceptions import RateLimitException
+        raise RateLimitException(
+            message=f"Too many login attempts. Please try again in {wait_time}s.",
+            wait_seconds=wait_time
         )
 
     # 3. Rate Limit by Username (Targeted Attack)
@@ -171,11 +171,22 @@ async def login(
          raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Account temporarily restricted due to multiple login attempts. Please try again in {wait_time}s."
+        from api.exceptions import RateLimitException
+        raise RateLimitException(
+            message=f"Account temporarily restricted due to multiple login attempts. Please try again in {wait_time}s.",
+            wait_seconds=wait_time
         )
 
     user = auth_service.authenticate_user(login_data.identifier, login_data.password, ip_address=ip, user_agent=user_agent)
     
     # PR 4: 2FA Check
+    if not user:
+        raise AuthException(
+            code=ErrorCode.AUTH_INVALID_CREDENTIALS,
+            message="Incorrect username or password"
+        )
+
+    # Check if 2FA is enabled
     if user.is_2fa_enabled:
         pre_auth_token = auth_service.initiate_2fa_login(user)
         response.status_code = status.HTTP_202_ACCEPTED
@@ -190,18 +201,24 @@ async def login(
     
     refresh_token = auth_service.create_refresh_token(user.id)
     
-    # Set refresh token in HttpOnly cookie
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False, # Set to True in production with HTTPS
-        samesite="lax",
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        domain=settings.cookie_domain,
+        path="/api/v1/auth",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
     
-    return Token(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
-
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=refresh_token,
+        username=user.username,
+        email=getattr(user, 'email', None)
+    )
 
 @router.post("/login/2fa", response_model=Token, responses={401: {"model": ErrorResponse}})
 async def verify_2fa(
@@ -214,7 +231,6 @@ async def verify_2fa(
     """
     user = auth_service.verify_2fa_login(login_request.pre_auth_token, login_request.code)
     
-    # Issue Tokens
     access_token = auth_service.create_access_token(
         data={"sub": user.username}
     )
@@ -225,13 +241,20 @@ async def verify_2fa(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        domain=settings.cookie_domain,
+        path="/api/v1/auth",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
     
-    return Token(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
-
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=refresh_token,
+        username=user.username,
+        email=getattr(user, 'email', None)
+    )
 
 @router.post("/refresh", response_model=Token)
 async def refresh(
@@ -252,13 +275,14 @@ async def refresh(
         key="refresh_token",
         value=new_refresh_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        domain=settings.cookie_domain,
+        path="/api/v1/auth",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
     
     return Token(access_token=access_token, token_type="bearer", refresh_token=new_refresh_token)
-
 
 @router.post("/logout")
 async def logout(
@@ -270,19 +294,24 @@ async def logout(
     if refresh_token:
         auth_service.revoke_refresh_token(refresh_token)
         
-    response.delete_cookie("refresh_token")
+    response.delete_cookie(
+        "refresh_token",
+        path="/api/v1/auth",
+        domain=settings.cookie_domain,
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite
+    )
     return {"message": "Logged out successfully"}
-
 
 @router.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]):
     return UserResponse(id=current_user.id, username=current_user.username, created_at=current_user.created_at)
 
-
 @router.post("/password-reset/initiate")
 async def initiate_password_reset(
     request: Request,
     reset_data: PasswordResetRequest, 
+    reset_data: PasswordResetRequest,
     auth_service: AuthService = Depends(get_auth_service)
 ):
     from api.middleware.rate_limiter import password_reset_limiter
@@ -315,11 +344,11 @@ async def initiate_password_reset(
         )
     return {"message": message}
 
-
 @router.post("/password-reset/complete")
 async def complete_password_reset(
     req_obj: Request, 
     request: PasswordResetComplete,
+    req_obj: Request,
     auth_service: AuthService = Depends(get_auth_service)
 ):
     from api.middleware.rate_limiter import password_reset_limiter
@@ -347,7 +376,6 @@ async def complete_password_reset(
         )
     return {"message": message}
 
-
 @router.post("/2fa/setup/initiate")
 async def initiate_2fa_setup(
     current_user: Annotated[User, Depends(get_current_user)],
@@ -357,7 +385,6 @@ async def initiate_2fa_setup(
     if auth_service.send_2fa_setup_otp(current_user):
         return {"message": "OTP sent to your email"}
     raise HTTPException(status_code=400, detail="Could not send OTP. Check email configuration.")
-
 
 @router.post("/2fa/enable")
 async def enable_2fa(
@@ -369,7 +396,6 @@ async def enable_2fa(
     if auth_service.enable_2fa(current_user.id, request.code):
         return {"message": "2FA enabled successfully"}
     raise HTTPException(status_code=400, detail="Invalid code")
-
 
 @router.post("/2fa/disable")
 async def disable_2fa(

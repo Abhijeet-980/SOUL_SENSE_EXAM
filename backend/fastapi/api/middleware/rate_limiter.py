@@ -44,7 +44,7 @@ class RateLimiter:
             return False, 0
 
 # Global limiters
-login_limiter = RateLimiter(max_requests=5, window_seconds=900)
+login_limiter = RateLimiter(max_requests=10, window_seconds=60)
 registration_limiter = RateLimiter(max_requests=3, window_seconds=3600)
 password_reset_limiter = RateLimiter(max_requests=3, window_seconds=3600)
 

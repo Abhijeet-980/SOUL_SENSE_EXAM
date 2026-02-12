@@ -44,8 +44,9 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
     setIsLoading(true);
     setError('');
 
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     try {
-      const response = await fetch('http://localhost:8000/api/v1/auth/password-reset/initiate', {
+      const response = await fetch(`${apiUrl}/api/v1/auth/password-reset/initiate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -106,8 +107,9 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
     setIsLoading(true);
     setError('');
 
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     try {
-      const response = await fetch('http://localhost:8000/api/v1/auth/password-reset/complete', {
+      const response = await fetch(`${apiUrl}/api/v1/auth/password-reset/complete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -172,12 +174,7 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
               {/* Header */}
               <div className="flex items-center justify-between p-6 border-b">
                 <h2 className="text-xl font-semibold">{getStepTitle()}</h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleClose}
-                  className="h-8 w-8 p-0"
-                >
+                <Button variant="ghost" size="sm" onClick={handleClose} className="h-8 w-8 p-0">
                   <X className="h-4 w-4" />
                 </Button>
               </div>
@@ -201,7 +198,8 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
                 {step === 'email' && (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600">
-                      Enter your email address and we&apos;ll send you a verification code to reset your password.
+                      Enter your email address and we&apos;ll send you a verification code to reset
+                      your password.
                     </p>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Email Address</label>
@@ -236,8 +234,8 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
                 {step === 'otp' && (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600">
-                      We&apos;ve sent a verification code to <strong>{email}</strong>.
-                      Enter the code below to continue.
+                      We&apos;ve sent a verification code to <strong>{email}</strong>. Enter the
+                      code below to continue.
                     </p>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Verification Code</label>
@@ -279,9 +277,7 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
 
                 {step === 'new-password' && (
                   <div className="space-y-4">
-                    <p className="text-sm text-gray-600">
-                      Enter your new password below.
-                    </p>
+                    <p className="text-sm text-gray-600">Enter your new password below.</p>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">New Password</label>
                       <Input
@@ -337,9 +333,12 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
                     <div className="flex justify-center">
                       <CheckCircle className="h-16 w-16 text-green-500" />
                     </div>
-                    <h3 className="text-lg font-semibold text-green-700">Password Reset Successful!</h3>
+                    <h3 className="text-lg font-semibold text-green-700">
+                      Password Reset Successful!
+                    </h3>
                     <p className="text-sm text-gray-600">
-                      Your password has been successfully reset. You can now log in with your new password.
+                      Your password has been successfully reset. You can now log in with your new
+                      password.
                     </p>
                     <Button onClick={handleClose} className="w-full">
                       Continue to Login
