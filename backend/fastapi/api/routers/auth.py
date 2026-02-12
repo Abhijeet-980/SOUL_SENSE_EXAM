@@ -185,8 +185,10 @@ async def login(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        domain=settings.cookie_domain,
+        path="/api/v1/auth",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
     
@@ -219,8 +221,10 @@ async def verify_2fa(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        domain=settings.cookie_domain,
+        path="/api/v1/auth",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
     
@@ -251,8 +255,10 @@ async def refresh(
         key="refresh_token",
         value=new_refresh_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        domain=settings.cookie_domain,
+        path="/api/v1/auth",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
     
@@ -268,7 +274,13 @@ async def logout(
     if refresh_token:
         auth_service.revoke_refresh_token(refresh_token)
         
-    response.delete_cookie("refresh_token")
+    response.delete_cookie(
+        "refresh_token",
+        path="/api/v1/auth",
+        domain=settings.cookie_domain,
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite
+    )
     return {"message": "Logged out successfully"}
 
 @router.get("/me", response_model=UserResponse)

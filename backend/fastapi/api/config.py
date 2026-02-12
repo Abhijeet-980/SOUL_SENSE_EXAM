@@ -57,6 +57,12 @@ class BaseAppSettings(BaseSettings):
         description="Allowed origins for CORS"
     )
 
+    # Cookie Security Settings
+    cookie_secure: bool = Field(default=False, description="Use Secure flag for cookies (Requires HTTPS)")
+    cookie_samesite: str = Field(default="lax", description="SameSite attribute for cookies (lax, strict, none)")
+    cookie_domain: Optional[str] = Field(default=None, description="Domain attribute for cookies")
+    access_token_expire_minutes: int = Field(default=30, description="Access token expiration in minutes")
+
     @property
     def cors_origins(self) -> list[str]:
         """Parse allowed_origins JSON string."""
@@ -139,6 +145,10 @@ class ProductionSettings(BaseAppSettings):
 
     app_env: str = "production"
     debug: bool = False
+
+    # Enforce secure cookies in production
+    cookie_secure: bool = True
+    cookie_samesite: str = "lax"  # Or 'strict' if API and FE are on same domain
 
     # Required production database settings
     database_host: str = Field(..., description="Database host")
