@@ -763,6 +763,11 @@ class AppAuth:
                  bg=self.app.colors.get("surface", "#FFFFFF"), fg=self.app.colors["text_primary"]).pack(anchor="w")
         first_name_entry = tk.Entry(fn_frame, font=("Segoe UI", 10), bg=self.app.colors.get("entry_bg", "#F8FAFC"), relief="flat", highlightthickness=1)
         first_name_entry.pack(fill="x", ipady=4)
+        
+        # First name error label
+        fn_error_label = tk.Label(fn_frame, text="", font=("Segoe UI", 8),
+                                  bg=self.app.colors.get("surface", "#FFFFFF"), fg="#EF4444")
+        fn_error_label.pack(anchor="w")
 
         ln_frame = tk.Frame(form_frame, bg=self.app.colors.get("surface", "#FFFFFF"))
         ln_frame.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=(0, 8))
@@ -770,6 +775,11 @@ class AppAuth:
                  bg=self.app.colors.get("surface", "#FFFFFF"), fg=self.app.colors["text_primary"]).pack(anchor="w")
         last_name_entry = tk.Entry(ln_frame, font=("Segoe UI", 10), bg=self.app.colors.get("entry_bg", "#F8FAFC"), relief="flat", highlightthickness=1)
         last_name_entry.pack(fill="x", ipady=4)
+        
+        # Last name error label
+        ln_error_label = tk.Label(ln_frame, text="", font=("Segoe UI", 8),
+                                  bg=self.app.colors.get("surface", "#FFFFFF"), fg="#EF4444")
+        ln_error_label.pack(anchor="w")
 
         # Row 1: Username & Email
         un_frame = tk.Frame(form_frame, bg=self.app.colors.get("surface", "#FFFFFF"))
@@ -778,6 +788,11 @@ class AppAuth:
                  bg=self.app.colors.get("surface", "#FFFFFF"), fg=self.app.colors["text_primary"]).pack(anchor="w")
         username_signup_entry = tk.Entry(un_frame, font=("Segoe UI", 10), bg=self.app.colors.get("entry_bg", "#F8FAFC"), relief="flat", highlightthickness=1)
         username_signup_entry.pack(fill="x", ipady=4)
+        
+        # Username error label
+        un_error_label = tk.Label(un_frame, text="", font=("Segoe UI", 8),
+                                  bg=self.app.colors.get("surface", "#FFFFFF"), fg="#EF4444")
+        un_error_label.pack(anchor="w")
 
         em_frame = tk.Frame(form_frame, bg=self.app.colors.get("surface", "#FFFFFF"))
         em_frame.grid(row=1, column=1, sticky="ew", padx=(5, 0), pady=(0, 8))
@@ -832,6 +847,11 @@ class AppAuth:
                  bg=self.app.colors.get("surface", "#FFFFFF"), fg=self.app.colors["text_primary"]).pack(anchor="w")
         age_entry = tk.Entry(ag_frame, font=("Segoe UI", 10), bg=self.app.colors.get("entry_bg", "#F8FAFC"), relief="flat", highlightthickness=1)
         age_entry.pack(fill="x", ipady=4)
+        
+        # Age error label
+        ag_error_label = tk.Label(ag_frame, text="", font=("Segoe UI", 8),
+                                  bg=self.app.colors.get("surface", "#FFFFFF"), fg="#EF4444")
+        ag_error_label.pack(anchor="w")
 
         ge_frame = tk.Frame(form_frame, bg=self.app.colors.get("surface", "#FFFFFF"))
         ge_frame.grid(row=2, column=1, sticky="ew", padx=(5, 0), pady=(0, 8))
@@ -907,9 +927,16 @@ class AppAuth:
         terms_cb = tk.Checkbutton(form_frame, text="I accept the Terms and Conditions", variable=terms_var,
                                  font=("Segoe UI", 9), bg=self.app.colors.get("surface", "#FFFFFF"),
                                  fg=self.app.colors["text_secondary"], activebackground=self.app.colors.get("surface", "#FFFFFF"))
-        terms_cb.grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        terms_cb.grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 5))
+        
+        # Terms error label
+        terms_error_label = tk.Label(form_frame, text="", font=("Segoe UI", 8),
+                                     bg=self.app.colors.get("surface", "#FFFFFF"), fg="#EF4444")
+        terms_error_label.grid(row=5, column=0, columnspan=2, sticky="w", padx=(20, 0), pady=(0, 10))
 
         def do_signup():
+            from app.validation import validate_email_strict, is_weak_password
+            
             first_name = first_name_entry.get().strip()
             last_name = last_name_entry.get().strip()
             username = username_signup_entry.get().strip()
@@ -919,56 +946,149 @@ class AppAuth:
             password = password_entry.get()
             confirm_password = confirm_password_entry.get()
 
-            # Validations
+            # Clear all previous errors
+            fn_error_label.config(text="")
+            ln_error_label.config(text="")
+            un_error_label.config(text="")
+            email_error_label.config(text="")
+            ag_error_label.config(text="")
+            password_mismatch_label.config(text="")
+            terms_error_label.config(text="")
+            
+            # Reset field highlights to default
+            for entry_widget in [first_name_entry, last_name_entry, username_signup_entry, email_entry, age_entry, password_entry, confirm_password_entry]:
+                entry_widget.config(highlightbackground=self.app.colors.get("border", "#E2E8F0"), highlightcolor=self.app.colors.get("border", "#E2E8F0"))
+            
+            # Validate all fields and collect errors
+            has_error = False
+            first_field_with_error = None
+            
+            # Check terms - must be first check
             if not terms_var.get():
-                tk.messagebox.showerror("Error", "You must accept the Terms and Conditions")
-                return
+                terms_error_label.config(text="You must accept the Terms and Conditions")
+                if not first_field_with_error:
+                    first_field_with_error = terms_cb
+                has_error = True
+            
+            # Check first name
             if not first_name:
-                tk.messagebox.showerror("Error", "First name is required")
-                return
+                fn_error_label.config(text="First name is required")
+                first_name_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = first_name_entry
+                has_error = True
+            
+            # Check username
             if not username:
-                tk.messagebox.showerror("Error", "Username is required")
-                return
+                un_error_label.config(text="Username is required")
+                username_signup_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = username_signup_entry
+                has_error = True
+            
+            # Check email
             if not email:
-                tk.messagebox.showerror("Error", "Email is required")
-                email_entry.focus_set()
-                return
-            # Strict email validation
-            from app.validation import validate_email_strict
-            email_valid, email_error = validate_email_strict(email)
-            if not email_valid:
-                tk.messagebox.showerror("Error", email_error)
-                email_entry.focus_set()
-                return
+                email_error_label.config(text="Email is required")
+                email_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = email_entry
+                has_error = True
+            elif email:
+                # Strict email validation
+                email_valid, email_error = validate_email_strict(email)
+                if not email_valid:
+                    email_error_label.config(text=email_error)
+                    email_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                    if not first_field_with_error:
+                        first_field_with_error = email_entry
+                    has_error = True
+                else:
+                    email_error_label.config(text="")
+                    email_entry.config(highlightbackground="#10B981", highlightcolor="#10B981")
+            
+            # Check age
             if not age_str:
-                tmb.showerror("Error", "Age is required")
-                return
-            if not age_str.isdigit():
-                tmb.showerror("Error", "Age must be a number")
-                return
-            age = int(age_str)
-            if age < 13 or age > 120:
-                tmb.showerror("Error", "Age must be between 13 and 120")
-                return
+                ag_error_label.config(text="Age is required")
+                age_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = age_entry
+                has_error = True
+            elif not age_str.isdigit():
+                ag_error_label.config(text="Age must be a number")
+                age_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = age_entry
+                has_error = True
+            else:
+                age = int(age_str)
+                if age < 13 or age > 120:
+                    ag_error_label.config(text="Age must be between 13 and 120")
+                    age_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                    if not first_field_with_error:
+                        first_field_with_error = age_entry
+                    has_error = True
+            
+            # Check password
             if not password:
-                tmb.showerror("Error", "Password is required")
-                return
-            # Block weak/common passwords
-            from app.validation import is_weak_password
-            if is_weak_password(password):
-                tmb.showerror("Error", "This password is too common. Please choose a stronger password.")
-                password_entry.focus_set()
-                return
-            if password != confirm_password:
-                tmb.showerror("Error", "Passwords do not match")
-                return
+                password_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                password_mismatch_label.config(text="Password is required")
+                if not first_field_with_error:
+                    first_field_with_error = password_entry
+                has_error = True
+            elif is_weak_password(password):
+                password_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                password_mismatch_label.config(text="This password is too common. Please choose a stronger password.")
+                if not first_field_with_error:
+                    first_field_with_error = password_entry
+                has_error = True
+            else:
+                # Perform comprehensive password security validation
+                try:
+                    from app.validation import validate_password_security
+                except ImportError:
+                    validate_password_security = None
 
-            # Register user
+                if validate_password_security is not None:
+                    is_secure, error_message = validate_password_security(password)
+                    if not is_secure:
+                        password_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                        password_mismatch_label.config(
+                            text=error_message or "Password does not meet security requirements."
+                        )
+                        if not first_field_with_error:
+                            first_field_with_error = password_entry
+                        has_error = True
+            # Check confirm password
+            if password and confirm_password and password != confirm_password:
+                password_mismatch_label.config(text="Passwords do not match")
+                confirm_password_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = confirm_password_entry
+                has_error = True
+            elif password and not confirm_password:
+                password_mismatch_label.config(text="Please confirm your password")
+                confirm_password_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = confirm_password_entry
+                has_error = True
+            
+            # If there are errors, focus the first field with error and return (data is preserved)
+            if has_error:
+                if first_field_with_error:
+                    try:
+                        first_field_with_error.focus_set()
+                    except Exception:
+                        pass  # Some widgets may not support focus_set()
+                return
+            
+            # All validations passed - proceed with registration
+            age = int(age_str)
             success, msg, _ = self.auth_manager.register_user(username, email, first_name, last_name, age, gender, password)
             if success:
                 tmb.showinfo("Success", "Account created successfully! You can now login.")
                 signup_win.destroy()
             else:
+                # Registration failed - show error but keep form open with data preserved
                 tmb.showerror("Registration Failed", msg)
 
         # Buttons with modern styling

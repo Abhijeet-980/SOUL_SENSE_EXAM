@@ -1436,6 +1436,7 @@ class UserProfileView:
             logging.error(f"Error loading personal profile: {e}")
 
     def save_personal_data(self):
+        """Save personal data with inline error handling and form state preservation"""
         try:
              # Sanitize
              occupation = sanitize_text(self.occ_var.get())
@@ -1443,6 +1444,9 @@ class UserProfileView:
              bio = sanitize_text(self.bio_text.get("1.0", tk.END))
              email = sanitize_text(self.email_var.get())
              phone = sanitize_text(self.phone_var.get())
+             first_name = sanitize_text(self.fn_var.get())
+             last_name = sanitize_text(self.ln_var.get())
+             
              # Get date of birth - handle both DateEntry and text entry
              if TKCALENDAR_AVAILABLE and hasattr(self.dob_entry, 'get_date'):
                  dob_str = self.dob_entry.get_date().strftime("%Y-%m-%d")
@@ -1459,34 +1463,46 @@ class UserProfileView:
              life_pov = sanitize_text(self.life_pov_text.get("1.0", tk.END))
              pressure = sanitize_text(self.high_pressure_text.get("1.0", tk.END))
 
-             # Validation
-             valid_email, msg_email = validate_email(email)
-             if not valid_email:
-                 messagebox.showwarning("Validation Error", msg_email)
-                 return
-                 
-             valid_phone, msg_phone = validate_phone(phone)
-             if not valid_phone:
-                 messagebox.showwarning("Validation Error", msg_phone)
-                 return
-
-             valid_dob, msg_dob = validate_dob(dob_str)
-             if not valid_dob:
-                 messagebox.showwarning("Validation Error", msg_dob)
-                 return
+             # Collect all validation errors
+             validation_errors = []
              
-             # Max Lengths
+             # Validation - Email
+             if email:  # Only validate if provided
+                 valid_email, msg_email = validate_email(email)
+                 if not valid_email:
+                     validation_errors.append(f"Email: {msg_email}")
+             
+             # Validation - Phone
+             if phone:  # Only validate if provided
+                 valid_phone, msg_phone = validate_phone(phone)
+                 if not valid_phone:
+                     validation_errors.append(f"Phone: {msg_phone}")
+
+             # Validation - Date of Birth
+             if dob_str:  # Only validate if provided
+                 valid_dob, msg_dob = validate_dob(dob_str)
+                 if not valid_dob:
+                     validation_errors.append(f"Date of Birth: {msg_dob}")
+             
+             # Max Lengths validation
              for label, txt in [("Bio", bio), ("Address", address), ("Perspective", life_pov), 
                                ("Society", society), ("Pressure Events", pressure)]:
                 valid, msg = validate_length(txt, MAX_TEXT_LENGTH, label)
                 if not valid:
-                    messagebox.showwarning("Validation Error", msg)
-                    return
+                    validation_errors.append(msg)
+             
+             # If there are errors, show them all at once and return (data preserved)
+             if validation_errors:
+                 error_message = "Please fix the following issues:\n\n" + "\n".join(validation_errors)
+                 # Show error but DON'T close form - use messagebox for now
+                 # In future, could display in-form error container
+                 messagebox.showwarning("Validation Error", error_message)
+                 return
 
-             # Prepare Data Dict
+             # Prepare Data Dict for successful validation case
              data = {
-                 "first_name": sanitize_text(self.fn_var.get()),
-                 "last_name": sanitize_text(self.ln_var.get()),
+                 "first_name": first_name,
+                 "last_name": last_name,
                  "occupation": occupation,
                  "education": education,
                  "marital_status": self.status_var.get(),
