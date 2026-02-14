@@ -180,6 +180,10 @@ const config: Config = {
           '0%': { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' },
         },
+
+        'shimmer-slide': {
+            '100%': { transform: 'translateX(100%)' },
+        },
         'pulse-slow': {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.5' },
@@ -204,6 +208,7 @@ const config: Config = {
         'scale-out': 'scale-out 0.2s ease-in',
         'bounce-in': 'bounce-in 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55)',
         'shimmer': 'shimmer 2s linear infinite',
+        'shimmer-slide': 'shimmer-slide 2s infinite',
         'pulse-slow': 'pulse-slow 3s ease-in-out infinite',
         'spin-slow': 'spin-slow 3s linear infinite',
       },
