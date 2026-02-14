@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bell, LogOut, Settings, User } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage, Button } from '@/components/ui';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
