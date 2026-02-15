@@ -121,7 +121,11 @@ export default function ResultDetailPage() {
         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            <span>{formatDate(result.completed_at || result.timestamp || '')}</span>
+            <span>
+              {result.completed_at || result.timestamp
+                ? formatDate(result.completed_at || result.timestamp)
+                : 'N/A'}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
