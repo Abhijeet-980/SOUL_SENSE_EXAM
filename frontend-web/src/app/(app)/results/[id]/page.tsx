@@ -119,10 +119,17 @@ export default function ResultDetailPage() {
           <CardContent>
             {result.categories && result.categories.length > 0 ? (
               <CategoryBreakdown
-                categories={result.categories.map((category) => ({
-                  name: category.name,
-                  score: category.score,
-                }))}
+                categories={result.categories.map((category) => {
+                  const percentageScore =
+                    typeof category.max_score === 'number' && category.max_score > 0
+                      ? (category.score / category.max_score) * 100
+                      : category.score;
+
+                  return {
+                    name: category.name,
+                    score: percentageScore,
+                  };
+                })}
               />
             ) : (
               <div className="rounded-lg border border-dashed border-slate-200 bg-white/60 p-6 text-center text-sm text-muted-foreground">
