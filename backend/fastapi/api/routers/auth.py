@@ -12,7 +12,7 @@ from ..services.mock_auth_service import MockAuthService
 from ..constants.errors import ErrorCode
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
 from ..exceptions import AuthException
-from api.root_models import User
+from ..root_models import User
 from sqlalchemy.orm import Session
 
 router = APIRouter()
