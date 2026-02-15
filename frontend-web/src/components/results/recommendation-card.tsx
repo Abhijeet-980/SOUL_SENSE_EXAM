@@ -87,6 +87,11 @@ export default function RecommendationCard({
             size="sm"
             onClick={handleToggle}
             className="px-2"
+            aria-label={
+              expanded
+                ? `Show less for ${recommendation.title}`
+                : `Read more about ${recommendation.title}`
+            }
           >
             {expanded ? 'Show less' : 'Read more'}
           </Button>
