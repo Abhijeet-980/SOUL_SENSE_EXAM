@@ -202,9 +202,9 @@ export default function ResultDetailPage() {
             </p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
-            {result.recommendations.map((recommendation) => (
+            {result.recommendations.map((recommendation, index) => (
               <RecommendationCard 
-                key={recommendation.id} 
+                key={`${recommendation.id}-${index}`} 
                 recommendation={recommendation}
               />
             ))}
