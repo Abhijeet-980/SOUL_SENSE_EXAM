@@ -10,6 +10,8 @@ from ..services.db_service import get_db
 from ..services.auth_service import AuthService
 from ..constants.errors import ErrorCode
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
+from ..exceptions import AuthException
+from ..root_models import User
 from ..exceptions import AuthException, APIException, RateLimitException
 # Rate limiters imported inline within routes to avoid potential circular/timing issues
 from api.root_models import User

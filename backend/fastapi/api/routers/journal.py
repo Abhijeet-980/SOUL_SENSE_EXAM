@@ -33,7 +33,7 @@ from ..services.journal_service import JournalService, get_journal_prompts
 from ..services.smart_prompt_service import SmartPromptService
 from ..services.db_service import get_db
 from ..routers.auth import get_current_user
-from api.root_models import User
+from ..root_models import User
 
 router = APIRouter(tags=["Journal"])
 

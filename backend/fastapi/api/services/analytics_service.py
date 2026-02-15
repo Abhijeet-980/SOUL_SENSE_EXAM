@@ -5,8 +5,7 @@ from typing import List, Dict, Tuple, Optional
 from datetime import datetime, timedelta
 
 # Import models from root_models module (handles namespace collision)
-# Import models from root_models module (handles namespace collision)
-from api.root_models import Score, User, AnalyticsEvent
+from ..root_models import Score, User, AnalyticsEvent
 
 
 class AnalyticsService:
