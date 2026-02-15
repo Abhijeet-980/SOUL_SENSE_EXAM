@@ -23,7 +23,7 @@ const normalizeResults = (raw: { id: number; completed_at: string; overall_score
       id: String(item.id),
       completedAt: item.completed_at,
       score: item.overall_score,
-      durationSeconds: item.duration_seconds ? item.duration_seconds : null,
+      durationSeconds: item.duration_seconds,
     }))
     .filter((item) => Boolean(item.completedAt));
 };
