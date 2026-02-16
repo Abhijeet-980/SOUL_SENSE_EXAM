@@ -3,9 +3,8 @@ import unittest
 from datetime import datetime
 from backend.fastapi.api.services.auth_service import AuthService
 from app.db import get_session, engine
-from app.models import User, AuditLog, PersonalProfile, UserSettings, Base
-# Ensure models are loaded
-import app.models
+from backend.fastapi.api.root_models import User, AuditLog, PersonalProfile, UserSettings, Base
+import backend.fastapi.api.root_models as root_models
 
 class TestAuthAuditConnection(unittest.TestCase):
     def setUp(self):

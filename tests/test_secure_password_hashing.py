@@ -16,7 +16,7 @@ import pytest
 import bcrypt
 from unittest.mock import patch, MagicMock
 from app.auth.auth import AuthManager
-from app.models import User, PersonalProfile
+from backend.fastapi.api.root_models import User, PersonalProfile
 
 
 # ==============================================================================
@@ -226,7 +226,7 @@ class TestLoginHashVerification:
 
     def test_login_with_plaintext_of_hash_fails(self):
         """Attempting to log in with the hash string itself must fail."""
-        from app.models import User
+        from backend.fastapi.api.root_models import User
         from app.db import get_session
         session = get_session()
         user = session.query(User).filter_by(username="login_hash").first()

@@ -2,8 +2,8 @@ import unittest
 from unittest.mock import patch, MagicMock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.auth.auth import AuthManager
-from app.models import Base, User, AuditLog, PersonalProfile
+from backend.fastapi.api.services.auth_service import AuthService
+from backend.fastapi.api.root_models import Base, User, AuditLog, PersonalProfile
 from app.services.audit_service import AuditService
 
 class TestAuditIntegration(unittest.TestCase):

@@ -53,329 +53,220 @@ class User(Base):
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
 
-
 class LoginAttempt(Base):
-    """
-    Track login attempts for security auditing and persistent locking.
+    """Track login attempts for security auditing and persistent locking.
     Replaces in-memory 'failed_attempts' dictionary.
     """
     __tablename__ = 'login_attempts'
-    
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, index=True)
     ip_address = Column(String)
     timestamp = Column(DateTime, default=datetime.utcnow)
     is_successful = Column(Boolean)
-    
-    # PR 1: Audit Auditing
     user_agent = Column(String, nullable=True)
     failure_reason = Column(String, nullable=True)
 
 class AuditLog(Base):
-    """
-    Audit Log for tracking security-critical user actions.
+    """Audit Log for tracking security-critical user actions.
     Separated from LoginAttempt to provide a user-facing history.
     """
     __tablename__ = 'audit_logs'
-    
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
-    action = Column(String, nullable=False) # LOGIN, LOGOUT, 2FA_UPDATE, PASSWORD_CHANGE
-    ip_address = Column(String, nullable=True, default="SYSTEM")
-    user_agent = Column(String, nullable=True) # Truncated to 255 chars
-    details = Column(Text, nullable=True) # JSON string for additional context (allow-listed fields only)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    action = Column(String, nullable=False) # e.g., 'password_change', '2fa_enable'
+    ip_address = Column(String)
+    user_agent = Column(String, nullable=True)
+    details = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
-
     user = relationship("User", back_populates="audit_logs")
 
 class AnalyticsEvent(Base):
-    """
-    Track user behavior events (e.g., signup drop-off).
+    """Track user behavior events (e.g., signup drop-off).
     Uses anonymous_id for pre-signup tracking.
     """
     __tablename__ = 'analytics_events'
-
     id = Column(Integer, primary_key=True, autoincrement=True)
-    anonymous_id = Column(String, index=True, nullable=False)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
-    event_type = Column(String, nullable=False, index=True) # e.g. 'signup_step'
-    event_name = Column(String, nullable=False) # e.g. 'focus_email'
-    event_data = Column(Text, nullable=True) # JSON payload
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    anonymous_id = Column(String, nullable=True, index=True)
+    event_name = Column(String, nullable=False)
+    event_data = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     ip_address = Column(String, nullable=True)
-
     user = relationship("User")
 
 class OTP(Base):
-    """
-    One-Time Passwords for Password Reset and 2FA challenges.
-    """
+    """One-Time Passwords for Password Reset and 2FA challenges."""
     __tablename__ = 'otp_codes'
-
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     code_hash = Column(String, nullable=False)
-    type = Column(String, nullable=False) # 'RESET_PASSWORD', 'LOGIN_CHALLENGE'
-    created_at = Column(DateTime, default=datetime.utcnow)
+    purpose = Column(String, nullable=False) # e.g. 'PASSWORD_RESET', '2FA'
     expires_at = Column(DateTime, nullable=False)
     is_used = Column(Boolean, default=False)
     attempts = Column(Integer, default=0)
     is_locked = Column(Boolean, default=False)
-
     user = relationship("User")
 
-
 class PasswordHistory(Base):
-    """
-    Stores hashed previous passwords to prevent reuse.
+    """Stores hashed previous passwords to prevent reuse.
     Configurable via PASSWORD_HISTORY_LIMIT in security_config.
     """
     __tablename__ = 'password_history'
-
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-
     user = relationship("User", back_populates="password_history")
 
 class RefreshToken(Base):
-    """
-    Persistent storage for JWT refresh tokens.
+    """Persistent storage for JWT refresh tokens.
     Enables long-lived sessions with high security via:
     - Token Rotation: New refresh token issued on every use.
     - Revocation: Ability to kill sessions remotely.
     """
     __tablename__ = 'refresh_tokens'
-    
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     token_hash = Column(String, unique=True, index=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=False)
     is_revoked = Column(Boolean, default=False)
-    
     user = relationship("User", back_populates="refresh_tokens")
-
 
 class UserSession(Base):
     """Track user login sessions with unique session IDs"""
     __tablename__ = 'user_sessions'
-
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String, unique=True, nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
-    username = Column(String, nullable=False, index=True)  # Denormalized for quick lookups
-    created_at = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)
-    last_accessed = Column(String, default=lambda: datetime.now(UTC).isoformat())
-    ip_address = Column(String, nullable=True)  # Optional: track IP for security
-    user_agent = Column(String, nullable=True)  # Optional: track user agent
-    is_active = Column(Boolean, default=True, index=True)
-    logged_out_at = Column(String, nullable=True)
-
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    username = Column(String, nullable=True)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    last_activity = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
     user = relationship("User", back_populates="sessions")
-
-    # Composite indexes for performance
+    
     __table_args__ = (
         Index('idx_session_user_active', 'user_id', 'is_active'),
         Index('idx_session_username_active', 'username', 'is_active'),
         Index('idx_session_created', 'created_at'),
     )
 
-
 class UserSyncSetting(Base):
     """Store user-specific sync settings as key-value pairs with version control for conflict detection."""
     __tablename__ = 'user_sync_settings'
-    
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
-    key = Column(String(100), nullable=False)
-    value = Column(Text, nullable=True)  # JSON-serialized value
-    version = Column(Integer, default=1, nullable=False)  # For optimistic locking
-    created_at = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=False)
+    key = Column(String, nullable=False)
+    value = Column(Text, nullable=True)
+    version = Column(Integer, default=1)
     updated_at = Column(String, default=lambda: datetime.now(UTC).isoformat())
-    
     user = relationship("User", back_populates="sync_settings")
-    
     __table_args__ = (
         Index('idx_sync_user_key', 'user_id', 'key', unique=True),
     )
 
 class UserSettings(Base):
     __tablename__ = 'user_settings'
-    
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
-    theme = Column(String, default='light')
+    theme = Column(String, default="light")
     question_count = Column(Integer, default=10)
     sound_enabled = Column(Boolean, default=True)
-    notifications_enabled = Column(Boolean, default=True) # Web-ready
-    language = Column(String, default='en') # Web-ready
-    updated_at = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    notifications_enabled = Column(Boolean, default=True)
+    language = Column(String, default="en")
     
-    # Wave 2 Phase 2.3 & 2.4: Calibration & Safety
-    decision_making_style = Column(String, nullable=True) # Analytical/Intuitive/etc.
-    risk_tolerance = Column(Integer, nullable=True)     # 1-10 slider
-    readiness_for_change = Column(Integer, nullable=True) # 1-10 scale
-    advice_frequency = Column(String, nullable=True)     # Daily/Weekly/Rarely
-    reminder_style = Column(String, default='Gentle')    # Gentle/Motivational
-    advice_boundaries = Column(Text, default="[]")       # JSON multi-select
-    ai_trust_level = Column(Integer, nullable=True)      # 1-10 slider
-    
-    data_usage_consent = Column(Boolean, default=False)
-    emergency_disclaimer_accepted = Column(Boolean, default=False)
+    # Crisis support settings (Integration with emotional support features)
     crisis_support_preference = Column(Boolean, default=True)
-    
     updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
-
     user = relationship("User", back_populates="settings")
 
 class MedicalProfile(Base):
     __tablename__ = 'medical_profiles'
-    
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
-    
     blood_type = Column(String, nullable=True)
-    allergies = Column(Text, nullable=True)        # Store as JSON string or plain text
-    medications = Column(Text, nullable=True)      # Store as JSON string or plain text
-    medical_conditions = Column(Text, nullable=True) # Store as JSON string or plain text
-    
-    # New fields for PR #5 (Issues #258, #263)
-    surgeries = Column(Text, nullable=True)        # History of surgeries
-    therapy_history = Column(Text, nullable=True)  # Past counselling/therapy
-    ongoing_health_issues = Column(Text, nullable=True) # Issue #262: Ongoing health issues
-    
+    allergies = Column(Text, nullable=True) # JSON string
+    medications = Column(Text, nullable=True) # JSON string
+    medical_conditions = Column(Text, nullable=True) # JSON string
     emergency_contact_name = Column(String, nullable=True)
     emergency_contact_phone = Column(String, nullable=True)
-    
     last_updated = Column(String, default=lambda: datetime.now(UTC).isoformat())
-
     user = relationship("User", back_populates="medical_profile")
 
 class PersonalProfile(Base):
     __tablename__ = 'personal_profiles'
-    
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
-    
-    # Basic Info
-    first_name = Column(String, nullable=True)
-    last_name = Column(String, nullable=True)
     occupation = Column(String, nullable=True)
     education = Column(String, nullable=True)
     marital_status = Column(String, nullable=True)
-    hobbies = Column(Text, nullable=True)     # Store as JSON string or comma-separated
+    hobbies = Column(Text, nullable=True) # JSON string
     bio = Column(Text, nullable=True)
-    life_events = Column(Text, nullable=True) # JSON: [{date, title, description, impact}]
-    
-    # Contact Info (Phase 53: Profile Redesign)
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
-    date_of_birth = Column(String, nullable=True)  # Format: YYYY-MM-DD
-    gender = Column(String, nullable=True)         # Male/Female/Other/Prefer not to say
-    address = Column(Text, nullable=True)
-    
-    # Existing fields from PR #5 (Issues #261, #260)
-    society_contribution = Column(Text, nullable=True) # How user contributes to community
-    life_pov = Column(Text, nullable=True)             # User's philosophy/perspective
-    high_pressure_events = Column(Text, nullable=True) # Issue #275: Recent high-pressure events
-    
-    avatar_path = Column(String, nullable=True) # Path to local image file
+    gender = Column(String, nullable=True)
+    avatar_path = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
     age = Column(Integer, nullable=True)
-    
-    last_updated = Column(String, default=lambda: datetime.now(UTC).isoformat())
-    # Wave 2 Phase 2.1: Lifestyle & Health
-    support_system = Column(Text, nullable=True)     # friends/family/colleagues
-    social_interaction_freq = Column(String, nullable=True) # Daily/Weekly/Rarely
-    exercise_freq = Column(String, nullable=True)     # Daily/Weekly/Monthly/None
-    dietary_patterns = Column(String, nullable=True)  # Balanced/Unbalanced/Vegetarian/etc.
-    
+    street_address = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    zip_code = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+    sleep_hours = Column(Float, nullable=True)
+    exercise_freq = Column(String, nullable=True)
+    dietary_patterns = Column(String, nullable=True)
     last_updated = Column(String, default=lambda: datetime.utcnow().isoformat())
-
     user = relationship("User", back_populates="personal_profile")
 
 class UserStrengths(Base):
     __tablename__ = 'user_strengths'
-    
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
-    
-    # JSON Lists for Tags
-    top_strengths = Column(Text, default="[]") # e.g. ["Creativity", "Empathy"]
-    areas_for_improvement = Column(Text, default="[]") # e.g. ["Public Speaking"]
-    current_challenges = Column(Text, default="[]") # Issue #271: New field
-    
-    # Preferences
-    learning_style = Column(String, nullable=True) # Visual, Auditory, etc.
-    communication_preference = Column(String, nullable=True) # Direct, Supportive
-    
-    # New field for PR #5 (Issue #266)
-    comm_style = Column(Text, nullable=True) # Detailed communication style
-    
-    # Boundaries & Goals
-    sharing_boundaries = Column(Text, default="[]") # JSON List
-    goals = Column(Text, nullable=True)
-    
-    last_updated = Column(String, default=lambda: datetime.now(UTC).isoformat())
-    # Wave 2 Phase 2.2: Goals & Vision
-    short_term_goals = Column(Text, nullable=True)
-    long_term_vision = Column(Text, nullable=True)
+    top_strengths = Column(Text, nullable=True) # JSON string
+    areas_for_improvement = Column(Text, nullable=True) # JSON string
+    current_challenges = Column(Text, nullable=True) # JSON string
+    learning_style = Column(String, nullable=True)
+    communication_preference = Column(String, nullable=True)
     primary_help_area = Column(String, nullable=True)
-
-    # Wave 2 Phase 2.1: Calibration
-    relationship_stress = Column(Integer, nullable=True) # 1-10 slider
-    
+    relationship_stress = Column(Integer, nullable=True)
     last_updated = Column(String, default=lambda: datetime.utcnow().isoformat())
-
     user = relationship("User", back_populates="strengths")
-
 
 class UserEmotionalPatterns(Base):
     """Store user-defined emotional patterns for empathetic AI responses (Issue #269)."""
     __tablename__ = 'user_emotional_patterns'
-    
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
-    
-    # Common emotional states (JSON array)
-    common_emotions = Column(Text, default="[]")  # e.g., ["anxiety", "calmness", "overthinking"]
-    
-    # Emotional triggers (what causes these emotions)
+    common_emotions = Column(Text, nullable=True) # JSON list
     emotional_triggers = Column(Text, nullable=True)
-    
-    # User's coping strategies
     coping_strategies = Column(Text, nullable=True)
-    
-    # Preferred support style during distress
-    preferred_support = Column(String, nullable=True)  # "Encouraging", "Problem-solving", "Just listen"
-    
+    preferred_support = Column(String, nullable=True)
     last_updated = Column(String, default=lambda: datetime.now(UTC).isoformat())
-    
     user = relationship("User", back_populates="emotional_patterns")
-
 
 class Score(Base):
     __tablename__ = 'scores'
-
     id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String, index=True)  # Added index
-    total_score = Column(Integer, index=True)  # Added index
-    sentiment_score = Column(Float, default=0.0)  # New: NLTK Sentiment Score
-    reflection_text = Column(Text, nullable=True) # New: Open-ended response
-    is_rushed = Column(Boolean, default=False) # Behavioral pattern: Rushed answering
-    is_inconsistent = Column(Boolean, default=False) # Behavioral pattern: Inconsistent answering
-    age = Column(Integer, index=True)  # Added index
-    detailed_age_group = Column(String, index=True)  # Added index
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)  # Added index
-    session_id = Column(String, index=True, nullable=True) # PR 6.1: API Session ID
-    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)  # Added timestamp and index
-
+    username = Column(String, index=True)
+    total_score = Column(Integer, index=True)
+    sentiment_score = Column(Float, default=0.0)
+    age = Column(Integer, nullable=True)
+    detailed_age_group = Column(String, nullable=True)
+    is_rushed = Column(Boolean, default=False)
+    is_inconsistent = Column(Boolean, default=False)
+    reflection_text = Column(Text, nullable=True)
+    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat())
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    session_id = Column(String, nullable=True)
+    
     user = relationship("User", back_populates="scores")
-
-    # Composite indexes for performance
+    
     __table_args__ = (
-        Index('idx_score_username_timestamp', 'username', 'timestamp'),
         Index('idx_score_user_timestamp', 'user_id', 'timestamp'),
         Index('idx_score_age_score', 'age', 'total_score'),
         Index('idx_score_agegroup_score', 'detailed_age_group', 'total_score'),
@@ -383,23 +274,19 @@ class Score(Base):
 
 class Response(Base):
     __tablename__ = 'responses'
-
     id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String, index=True)  # Added index
-    question_id = Column(Integer, index=True)  # Added index
-    response_value = Column(Integer, index=True)  # Added index
-    age_group = Column(String, index=True)  # Added index
-    detailed_age_group = Column(String, index=True)  # Added index
-    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)  # Added index
-    session_id = Column(String, index=True, nullable=True) # PR 6.1: API Session ID
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)  # Added index
-
+    username = Column(String, index=True)
+    question_id = Column(Integer, index=True)
+    response_value = Column(Integer, index=True)
+    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat())
+    age = Column(Integer, nullable=True)
+    detailed_age_group = Column(String, nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    session_id = Column(String, nullable=True)
+    
     user = relationship("User", back_populates="responses")
-
-    # Composite indexes for common query patterns
+    
     __table_args__ = (
-        Index('idx_response_user_question', 'user_id', 'question_id'),
-        Index('idx_response_username_timestamp', 'username', 'timestamp'),
         Index('idx_response_question_timestamp', 'question_id', 'timestamp'),
         Index('idx_response_user_timestamp', 'user_id', 'timestamp'),
         Index('idx_response_agegroup_timestamp', 'detailed_age_group', 'timestamp'),
@@ -425,60 +312,31 @@ class QuestionCategory(Base):
 
 class JournalEntry(Base):
     __tablename__ = 'journal_entries'
-    
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
-    entry_date = Column(String, default=lambda: datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
-    content = Column(Text)
-    sentiment_score = Column(Float)
-    emotional_patterns = Column(Text)
-    
-    # New fields for daily wellbeing tracking (Issues #255, #267, #272)
-    sleep_hours = Column(Float, nullable=True)     # Range: 0-24
-    sleep_quality = Column(Integer, nullable=True) # Range: 1-10
-    energy_level = Column(Integer, nullable=True)  # Range: 1-10
-    work_hours = Column(Float, nullable=True)      # Range: 0-24
-
-    # PR #6: Expanded Daily Metrics (Issues #254, #259, #268, #253)
-    screen_time_mins = Column(Integer, nullable=True)  # Minutes of screen time
-    stress_level = Column(Integer, nullable=True)      # Range: 1-10
-    stress_triggers = Column(Text, nullable=True)      # What triggered stress
-    daily_schedule = Column(Text, nullable=True)       # Daily routine/schedule
-
-    # Enhanced Journal Extensions: Tagging system
-    tags = Column(Text, nullable=True)  # JSON list of tags like ["stress", "gratitude", "relationships"]
-    
-    # Soft delete and status (PR #8)
+    title = Column(String, nullable=True)
+    content = Column(Text, nullable=False)
+    sentiment_score = Column(Float, default=0.0)
+    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    category = Column(String, nullable=True)
+    mood_score = Column(Integer, nullable=True) # 1-10
+    daily_schedule = Column(Text, nullable=True)
+    tags = Column(Text, nullable=True)
     is_deleted = Column(Boolean, default=False)
-    privacy_level = Column(String, default="private") # private, shared, public
+    privacy_level = Column(String, default="private")
     word_count = Column(Integer, default=0)
 
 class SatisfactionRecord(Base):
     __tablename__ = 'satisfaction_records'
-    
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=True)
     username = Column(String, index=True)
-    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)
+    satisfaction_category = Column(String, nullable=False) # e.g. 'work', 'social', 'health'
+    satisfaction_score = Column(Integer, nullable=False) # 1-5
+    context = Column(Text, nullable=True)
+    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat())
     
-    # Core satisfaction metrics
-    satisfaction_score = Column(Integer, index=True)  # 1-10 scale
-    satisfaction_category = Column(String, index=True)  # 'work', 'academic', 'both', 'other'
-    
-    # Detailed factors (JSON encoded for flexibility)
-    positive_factors = Column(Text, nullable=True)  # JSON list
-    negative_factors = Column(Text, nullable=True)  # JSON list
-    improvement_suggestions = Column(Text, nullable=True)
-    
-    # Context information
-    context = Column(String, nullable=True)  # 'workplace', 'school', 'university', 'remote', 'hybrid'
-    duration_months = Column(Integer, nullable=True)  # How long in current role/studies
-    
-    # Optional: Link to EQ test if taken around same time
-    eq_score_id = Column(Integer, ForeignKey('scores.id'), nullable=True, index=True)
-    
-    # Composite indexes
     __table_args__ = (
         Index('idx_satisfaction_user_time', 'user_id', 'timestamp'),
         Index('idx_satisfaction_category_score', 'satisfaction_category', 'satisfaction_score'),
@@ -488,43 +346,32 @@ class SatisfactionRecord(Base):
 class SatisfactionHistory(Base):
     """Track satisfaction trends over time"""
     __tablename__ = 'satisfaction_history'
-    
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=False)
-    month_year = Column(String, index=True)  # Format: 'YYYY-MM'
+    month_year = Column(String, index=True)
     avg_satisfaction = Column(Float)
-    trend = Column(String)  # 'improving', 'declining', 'stable'
+    trend = Column(String)
     insights = Column(Text, nullable=True)
-    
     __table_args__ = (
         Index('idx_satisfaction_history_user_month', 'user_id', 'month_year'),
     )
 
 class AssessmentResult(Base):
-    """
-    Stores results for periodic/specialized assessments (PR #7).
+    """Stores results for periodic/specialized assessments (PR #7).
     Supported types: 'career_clarity', 'work_satisfaction', 'strengths'.
     """
     __tablename__ = 'assessment_results'
-    
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
-    
-    assessment_type = Column(String, nullable=False, index=True) # e.g. 'career_clarity'
-    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)
-    
-    total_score = Column(Integer, nullable=False) # 0-100 or similar scale
-    details = Column(Text, nullable=False) # JSON string: {"q1": "yes", "q2": 5, "raw_score": 85}
-    
-    # Optional: Link to a specific Journal Entry if triggered by one
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    assessment_type = Column(String, nullable=False, index=True)
+    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    overall_score = Column(Float, nullable=True)
+    details = Column(Text, nullable=False)
     journal_entry_id = Column(Integer, ForeignKey('journal_entries.id'), nullable=True)
-
     user = relationship("User")
-    
     __table_args__ = (
         Index('idx_assessment_user_type', 'user_id', 'assessment_type'),
     )
-    
 
 
 # ==================== DATABASE PERFORMANCE OPTIMIZATIONS ====================

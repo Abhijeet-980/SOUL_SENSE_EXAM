@@ -32,7 +32,7 @@ import sys
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from app.models import Base
+from backend.fastapi.api.root_models import Base
 import backend.fastapi.api.root_models as backend_models
 
 import tkinter as tk

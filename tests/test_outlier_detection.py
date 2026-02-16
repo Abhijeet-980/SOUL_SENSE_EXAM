@@ -4,7 +4,7 @@ import pytest
 import numpy as np
 from app.analysis.outlier_detection import OutlierDetector
 from app.db import get_session
-from app.models import Score, User, Base
+from backend.fastapi.api.root_models import Score, User, Base
 from datetime import datetime
 import logging
 

@@ -7,11 +7,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Sidebar } from '@/components/app';
 
-export default function AppLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Requirement: Check authentication status
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
@@ -40,10 +36,12 @@ export default function AppLayout({
 
   useEffect(() => {
     // Requirement: Redirect to /login if user is not authenticated
+    // Capture current path to redirect back after login
     if (!isLoading && !isAuthenticated) {
-      router.push('/login');
+      const callbackUrl = encodeURIComponent(pathname);
+      router.push(`/login?callbackUrl=${callbackUrl}`);
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, router, pathname]);
 
   // Requirement: Include a loading state while auth check is in progress
   if (isLoading) {
@@ -66,7 +64,6 @@ export default function AppLayout({
       <Sidebar />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        
         {/* Header */}
         <header className="flex items-center justify-between border-b bg-background px-6 py-4 h-16">
           <h1 className="text-xl font-semibold">{pageTitle}</h1>
@@ -74,9 +71,7 @@ export default function AppLayout({
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
-          {children}
-        </main>
+        <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
       </div>
     </div>
   );

@@ -9,21 +9,22 @@ export const authApi = {
   }): Promise<{
     access_token: string;
     pre_auth_token?: string;
+    refresh_token?: string;
     email?: string;
     username?: string;
+    warnings?: any[];
   }> {
-    const payload = {
-      identifier: data.username,
-      password: data.password,
-      captcha_input: data.captcha_input,
-      session_id: data.session_id,
-    };
     return apiClient('/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        identifier: data.username,
+        password: data.password,
+        captcha_input: data.captcha_input,
+        session_id: data.session_id,
+      }),
     });
   },
 

@@ -236,7 +236,7 @@ class TestLoginDeactivatedAccount:
 
     def test_deactivated_account_rejected(self):
         """Login fails with AUTH003 if account is deactivated."""
-        from app.models import User
+        from backend.fastapi.api.root_models import User
         user = self.db.query(User).filter(User.username == "deactuser").first()
         if hasattr(user, 'is_active'):
             user.is_active = False
@@ -267,7 +267,7 @@ class TestLogin2FAFlow:
     @patch("app.auth.otp_manager.OTPManager.generate_otp", return_value=("123456", None))
     def test_2fa_required_when_enabled(self, mock_gen, mock_send):
         """Login returns AUTH_2FA_REQUIRED when 2FA is enabled."""
-        from app.models import User
+        from backend.fastapi.api.root_models import User
         user = self.db.query(User).filter(User.username == "twofauser").first()
         user.is_2fa_enabled = True
         self.db.commit()

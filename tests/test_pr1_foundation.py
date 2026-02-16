@@ -2,7 +2,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.models import Base, User, LoginAttempt, OTP
+from backend.fastapi.api.root_models import Base, User, LoginAttempt, OTP
 from app.auth.auth import AuthManager
 from datetime import datetime, timedelta
 

@@ -6,7 +6,7 @@ from datetime import datetime
 # Adjust import based on your actual structure
 from backend.fastapi.api.main import app
 from backend.fastapi.api.schemas import ExamResponseCreate, ExamResultCreate
-from app.models import User, Score, Response
+from backend.fastapi.api.root_models import User, Score, Response
 from app.auth.auth import AuthManager
 
 client = TestClient(app)

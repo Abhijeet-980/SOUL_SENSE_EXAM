@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Progress } from '@/components/ui/progress';
+import { Progress } from '@/components/ui';
 import { useExamStore } from '@/stores/examStore';
 import { cn } from '@/lib/utils';
 
@@ -22,17 +22,9 @@ export const ExamProgress: React.FC<ExamProgressProps> = ({ className }) => {
         <span className="text-muted-foreground">
           Question {answeredCount} of {totalQuestions}
         </span>
-        <span className="font-medium">
-          {Math.round(progress)}% Complete
-        </span>
+        <span className="font-medium">{Math.round(progress)}% Complete</span>
       </div>
-      <Progress
-        value={progress}
-        showLabel={false}
-        size="sm"
-        color="primary"
-        className="w-full"
-      />
+      <Progress value={progress} showLabel={false} size="sm" color="primary" className="w-full" />
     </div>
   );
 };

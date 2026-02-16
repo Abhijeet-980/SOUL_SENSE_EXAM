@@ -13,7 +13,7 @@ from unittest.mock import patch, MagicMock
 from datetime import datetime, timedelta
 from app.auth.auth import AuthManager
 from app.auth.otp_manager import OTPManager
-from app.models import User, PersonalProfile, OTP
+from backend.fastapi.api.root_models import User, PersonalProfile, OTP
 
 
 # ─── Fixtures ───

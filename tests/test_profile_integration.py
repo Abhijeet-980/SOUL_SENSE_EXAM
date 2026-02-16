@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.models import Base, User, MedicalProfile, PersonalProfile, UserSettings
+from backend.fastapi.api.root_models import Base, User, MedicalProfile, PersonalProfile, UserSettings
 
 # Use temp_db fixture from conftest.py
 # (No local db_session fixture needed)

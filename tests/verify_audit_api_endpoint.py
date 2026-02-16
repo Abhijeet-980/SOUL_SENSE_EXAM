@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from typing import List
 from backend.fastapi.api.main import app
 from app.db import get_session, engine
-from app.models import User, AuditLog, Base
+from backend.fastapi.api.root_models import User, AuditLog, Base
 
 class TestAuditAPI(unittest.TestCase):
     def setUp(self):

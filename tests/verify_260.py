@@ -1,6 +1,6 @@
 
 from app.db import get_session
-from app.models import User, PersonalProfile
+from backend.fastapi.api.root_models import User, PersonalProfile
 import sys
 
 def verify_life_pov():

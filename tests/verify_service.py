@@ -6,7 +6,7 @@ import os
 sys.path.append(os.getcwd())
 
 from app.services.exam_service import ExamSession
-from app.models import Base
+from backend.fastapi.api.root_models import Base
 from app.db import engine
 
 def test_exam_flow():

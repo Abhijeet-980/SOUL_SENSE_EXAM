@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, UTC
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.auth import AuthManager
-from app.models import User, UserSession
+from backend.fastapi.api.root_models import User, UserSession
 from app.db import get_session
 
 

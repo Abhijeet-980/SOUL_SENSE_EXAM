@@ -452,9 +452,15 @@ class AuthService:
             
             # In a real app, send "Welcome/Verify" email here
             return True, new_user, "Registration successful. Please verify your email."
+        except AttributeError as e:
+            self.db.rollback()
+            logger.error(f"Registration Model Mismatch: {e}")
+            return False, None, "A configuration error occurred on the server."
         except Exception as e:
             self.db.rollback()
-            logger.error(f"Registration failed: {e}")
+            import traceback
+            logger.error(f"Registration failed error: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False, None, "An internal error occurred. Please try again later."
 
     def create_refresh_token(self, user_id: int) -> str:

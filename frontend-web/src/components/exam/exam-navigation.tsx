@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui';
 import { ChevronLeft, ChevronRight, Send } from 'lucide-react';
 import { useExamStore } from '@/stores/examStore';
 import { cn } from '@/lib/utils';
@@ -19,16 +19,11 @@ export const ExamNavigation: React.FC<ExamNavigationProps> = ({
   className,
   canGoNext = true,
 }) => {
-  const {
-    previousQuestion,
-    nextQuestion,
-    getIsFirstQuestion,
-    getIsLastQuestion,
-  } = useExamStore();
+  const { previousQuestion, nextQuestion, getIsFirstQuestion, getIsLastQuestion } = useExamStore();
 
   const isFirst = getIsFirstQuestion();
   const isLast = getIsLastQuestion();
-  
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
@@ -36,7 +31,7 @@ export const ExamNavigation: React.FC<ExamNavigationProps> = ({
       if (e.key === 'ArrowLeft' && !isFirst) {
         previousQuestion();
       }
-      
+
       if (e.key === 'ArrowRight' && canGoNext && !isLast) {
         nextQuestion();
       }

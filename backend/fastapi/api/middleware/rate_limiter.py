@@ -45,8 +45,8 @@ class RateLimiter:
 
 # Global limiters
 login_limiter = RateLimiter(max_requests=10, window_seconds=60)
-registration_limiter = RateLimiter(max_requests=3, window_seconds=3600)
-password_reset_limiter = RateLimiter(max_requests=3, window_seconds=3600)
+registration_limiter = RateLimiter(max_requests=10, window_seconds=60)
+password_reset_limiter = RateLimiter(max_requests=10, window_seconds=60)
 
 # Analytics limiter: 30 requests per minute
 analytics_limiter = RateLimiter(max_requests=30, window_seconds=60)

@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 # Add app to path
 sys.path.append(os.getcwd())
 
-from app.models import JournalEntry
+from backend.fastapi.api.root_models import JournalEntry
 from app.config import DATABASE_URL
 from app.db import get_session
 

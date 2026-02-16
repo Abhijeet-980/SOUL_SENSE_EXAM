@@ -8,13 +8,8 @@ import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { useQuestions } from '@/hooks/useQuestions';
 import { useExamStore } from '@/stores/examStore';
 import { useExamSubmit } from '@/hooks/useExamSubmit';
-import { ExamTimer } from '@/components/exam/exam-timer';
-import { ExamProgress } from '@/components/exam/exam-progress';
-import { ExamNavigation } from '@/components/exam/exam-navigation';
-import { QuestionCard } from '@/components/exam/question-card';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ExamTimer, ExamProgress, ExamNavigation, QuestionCard } from '@/components/exam';
+import { Button, Skeleton, Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 
 export default function ExamPage() {
   const router = useRouter();
@@ -40,7 +35,12 @@ export default function ExamPage() {
   } = useExamStore();
 
   // API hooks
-  const { questions: apiQuestions, isLoading, error, refetch } = useQuestions({
+  const {
+    questions: apiQuestions,
+    isLoading,
+    error,
+    refetch,
+  } = useQuestions({
     count: 20, // Default count, could be configurable based on exam type
     enabled: !isCompleted,
   });
@@ -198,12 +198,8 @@ export default function ExamPage() {
         <Card className="text-center">
           <CardContent className="pt-6">
             <h2 className="text-xl font-semibold mb-2">No Questions Available</h2>
-            <p className="text-muted-foreground mb-4">
-              Unable to load questions for this exam.
-            </p>
-            <Button onClick={handleLeaveAttempt}>
-              Return to Exam Selection
-            </Button>
+            <p className="text-muted-foreground mb-4">Unable to load questions for this exam.</p>
+            <Button onClick={handleLeaveAttempt}>Return to Exam Selection</Button>
           </CardContent>
         </Card>
       </div>
@@ -261,10 +257,7 @@ export default function ExamPage() {
 
         {/* Navigation */}
         <div className="mt-8">
-          <ExamNavigation
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-          />
+          <ExamNavigation onSubmit={handleSubmit} isSubmitting={isSubmitting} />
         </div>
 
         {/* Submit Error */}
@@ -296,7 +289,8 @@ export default function ExamPage() {
             >
               <h3 className="text-lg font-semibold mb-2">Leave Exam?</h3>
               <p className="text-muted-foreground mb-4">
-                You have answered {getAnsweredCount()} questions. Your progress will be lost if you leave now.
+                You have answered {getAnsweredCount()} questions. Your progress will be lost if you
+                leave now.
               </p>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={handleStay}>

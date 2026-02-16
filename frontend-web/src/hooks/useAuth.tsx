@@ -10,6 +10,7 @@ import {
   getExpiryTimestamp,
 } from '@/lib/utils/sessionStorage';
 import { authApi } from '@/lib/api/auth';
+import { Loader } from '@/components/ui';
 
 interface AuthContextType {
   user: UserSession['user'] | null;
@@ -23,9 +24,16 @@ interface AuthContextType {
       captcha_input?: string;
       session_id?: string;
     },
-    rememberMe: boolean
+    rememberMe: boolean,
+    shouldRedirect?: boolean,
+    redirectTo?: string
   ) => Promise<any>;
-  login2FA: (data: { pre_auth_token: string; code: string }, rememberMe: boolean) => Promise<void>;
+  login2FA: (
+    data: { pre_auth_token: string; code: string },
+    rememberMe: boolean,
+    shouldRedirect?: boolean,
+    redirectTo?: string
+  ) => Promise<any>;
   logout: () => void;
 }
 
@@ -76,7 +84,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       captcha_input?: string;
       session_id?: string;
     },
-    rememberMe: boolean
+    rememberMe: boolean,
+    shouldRedirect = true,
+    redirectTo = '/dashboard'
   ) => {
     setIsLoading(true);
     try {
@@ -85,8 +95,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (result.pre_auth_token) {
         return result; // 2FA Required
       }
-
-      console.log('useAuth: Login successful, result:', !!result.access_token);
 
       const session: UserSession = {
         user: {
@@ -99,12 +107,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         expiresAt: getExpiryTimestamp(),
       };
 
-      console.log('useAuth: Saving session for:', session.user.email || session.user.name);
       saveSession(session, rememberMe);
       setUser(session.user);
 
-      console.log('useAuth: Navigation to /community triggered');
-      router.push('/community');
+      if (shouldRedirect) {
+        console.log(`useAuth: Navigation to ${redirectTo} triggered`);
+        router.push(redirectTo);
+      }
+
+      return result;
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -113,7 +124,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const login2FA = async (data: { pre_auth_token: string; code: string }, rememberMe: boolean) => {
+  const login2FA = async (
+    data: { pre_auth_token: string; code: string },
+    rememberMe: boolean,
+    shouldRedirect = true,
+    redirectTo = '/dashboard'
+  ) => {
     setIsLoading(true);
     try {
       const result = await authApi.login2FA(data);
@@ -130,7 +146,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       saveSession(session, rememberMe);
       setUser(session.user);
-      router.push('/community');
+
+      if (shouldRedirect) {
+        router.push(redirectTo);
+      }
+
+      return result;
     } catch (error) {
       console.error('2FA verification failed:', error);
       throw error;
@@ -159,6 +180,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     router.push('/login');
   };
 
+  // ... existing code ...
+
   return (
     <AuthContext.Provider
       value={{
@@ -171,7 +194,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         logout,
       }}
     >
-      {!isLoading && children}
+      {isLoading ? <Loader fullScreen text="Authenticating..." /> : children}
     </AuthContext.Provider>
   );
 };

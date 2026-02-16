@@ -19,12 +19,8 @@ class AnalyticsService:
     def log_event(db: Session, event_data: dict, ip_address: Optional[str] = None) -> AnalyticsEvent:
         """
         Log a user behavior event.
-        
-        Args:
-            db: Database session
-            event_data: validated AnalyticsEventCreate dict
-            ip_address: Optional IP address of the user
         """
+        print(f"DEBUG: log_event called with event_data keys: {list(event_data.keys())}")
         import json
         
         # Serialize event_data JSON

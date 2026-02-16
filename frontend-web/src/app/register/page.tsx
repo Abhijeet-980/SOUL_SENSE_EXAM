@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -34,6 +34,7 @@ import { authApi } from '@/lib/api/auth';
 import { ApiError } from '@/lib/api/errors';
 import { useRateLimiter } from '@/hooks/useRateLimiter';
 import { analyticsApi } from '@/lib/api/analytics';
+import { useAuth } from '@/hooks/useAuth';
 
 type RegisterFormData = z.infer<typeof registrationSchema>;
 
@@ -520,6 +521,16 @@ export default function RegisterPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+  const { login, isAuthenticated, isLoading: authLoading } = useAuth();
+
+  // Guard: Redirect if already logged in
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && !isLoading) {
+      router.push(callbackUrl);
+    }
+  }, [isAuthenticated, authLoading, isLoading, router, callbackUrl]);
 
   const { lockoutTime, isLocked, handleRateLimitError } = useRateLimiter();
 
@@ -613,7 +624,6 @@ export default function RegisterPage() {
         gender: data.gender,
       });
 
-      setIsSuccess(true);
       setSuccessMessage(
         result.message || 'Registration request received. Please check your email for next steps.'
       );
@@ -623,6 +633,22 @@ export default function RegisterPage() {
         event_type: 'signup_workflow',
         event_name: 'signup_success',
       });
+
+      // AUTOMATIC LOGIN
+      try {
+        await login(
+          {
+            username: data.username,
+            password: data.password,
+          },
+          true, // rememberMe
+          true, // shouldRedirect
+          callbackUrl
+        );
+      } catch (loginError) {
+        console.warn('Auto-login after registration failed:', loginError);
+        setIsSuccess(true); // Only show success state if auto-login fails
+      }
     } catch (error) {
       if (error instanceof ApiError) {
         const result = error.data || {};
@@ -654,13 +680,16 @@ export default function RegisterPage() {
           event_data: { error: errorMessage || 'Registration failed' },
         });
       } else {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Registration non-api error:', error);
         methods.setError('root', {
-          message: 'Network error. Please check your connection and try again.',
+          message: `Registration encountered an unexpected error: ${errorMsg}. Please try again or contact support.`,
         });
 
         analyticsApi.trackEvent({
           event_type: 'signup_workflow',
           event_name: 'signup_network_error',
+          event_data: { error: errorMsg },
         });
         setCurrentStep(2);
       }

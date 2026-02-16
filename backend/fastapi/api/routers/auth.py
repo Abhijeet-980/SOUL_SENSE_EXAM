@@ -5,22 +5,31 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 
 from ..config import get_settings
-from ..schemas import UserCreate, Token, UserResponse, ErrorResponse, PasswordResetRequest, PasswordResetComplete, TwoFactorLoginRequest, TwoFactorAuthRequiredResponse, TwoFactorConfirmRequest, UsernameAvailabilityResponse
+from ..schemas import UserCreate, Token, UserResponse, ErrorResponse, PasswordResetRequest, PasswordResetComplete, TwoFactorLoginRequest, TwoFactorAuthRequiredResponse, TwoFactorConfirmRequest, UsernameAvailabilityResponse, CaptchaResponse, LoginRequest
 from ..services.db_service import get_db
 from ..services.auth_service import AuthService
+from ..services.captcha_service import captcha_service
 from ..constants.errors import ErrorCode
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
 from ..exceptions import AuthException
 from ..root_models import User
 from ..exceptions import AuthException, APIException, RateLimitException
 # Rate limiters imported inline within routes to avoid potential circular/timing issues
-from api.root_models import User
 from sqlalchemy.orm import Session
 from cachetools import TTLCache
+import secrets
 
 router = APIRouter()
 settings = get_settings()
 
+@router.get("/captcha", response_model=CaptchaResponse)
+async def get_captcha():
+    """Generate a new CAPTCHA."""
+    session_id = secrets.token_urlsafe(16)
+    code = captcha_service.generate_captcha(session_id)
+    return CaptchaResponse(captcha_code=code, session_id=session_id)
+
+# oauth2_scheme is still needed for other endpoints but login now uses custom JSON
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
@@ -80,7 +89,7 @@ async def register(
     user: UserCreate, 
     auth_service: AuthService = Depends()
 ):
-    from api.middleware.rate_limiter import registration_limiter
+    from ..middleware.rate_limiter import registration_limiter
     # Rate limit by IP
     is_limited, wait_time = registration_limiter.is_rate_limited(request.client.host)
     if is_limited:
@@ -104,15 +113,22 @@ async def register(
 @router.post("/login", response_model=None, responses={401: {"model": ErrorResponse}, 202: {"model": TwoFactorAuthRequiredResponse}, 200: {"model": Token}})
 async def login(
     response: Response,
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()], 
+    login_request: LoginRequest, 
     request: Request,
     auth_service: AuthService = Depends()
 ):
-    from api.middleware.rate_limiter import login_limiter
+    from ..middleware.rate_limiter import login_limiter
     ip = request.client.host
     user_agent = request.headers.get("user-agent", "Unknown")
 
-    # 1. Rate Limit by IP
+    # 1. Start with CAPTCHA Validation (Before Rate Limiting to prevent spam cheapness)
+    if not captcha_service.validate_captcha(login_request.session_id, login_request.captcha_input):
+         raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "AUTH003", "message": "Invalid CAPTCHA"}
+        )
+
+    # 2. Rate Limit by IP
     is_limited, wait_time = login_limiter.is_rate_limited(ip)
     if is_limited:
          raise HTTPException(
@@ -120,15 +136,15 @@ async def login(
             detail=f"Too many login attempts. Please try again in {wait_time}s."
         )
 
-    # 2. Rate Limit by Username (Identifier)
-    is_limited, wait_time = login_limiter.is_rate_limited(f"login_{form_data.username}")
+    # 3. Rate Limit by Username (Identifier)
+    is_limited, wait_time = login_limiter.is_rate_limited(f"login_{login_request.identifier}")
     if is_limited:
          raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Account temporarily restricted due to multiple login attempts. Please try again in {wait_time}s."
         )
 
-    user = auth_service.authenticate_user(form_data.username, form_data.password, ip_address=ip, user_agent=user_agent)
+    user = auth_service.authenticate_user(login_request.identifier, login_request.password, ip_address=ip, user_agent=user_agent)
     
     # PR 4: 2FA Check
     if user.is_2fa_enabled:
@@ -162,6 +178,8 @@ async def login(
     "access_token": access_token,
     "token_type": "bearer",
     "refresh_token": refresh_token,
+    "username": user.username,
+    "email": user.personal_profile.email if user.personal_profile else None,
     "warnings": (
         [{
             "code": "MULTIPLE_SESSIONS_ACTIVE",
@@ -206,6 +224,8 @@ async def verify_2fa(
     "access_token": access_token,
     "token_type": "bearer",
     "refresh_token": refresh_token,
+    "username": user.username,
+    "email": user.personal_profile.email if user.personal_profile else None,
     "warnings": (
         [{
             "code": "MULTIPLE_SESSIONS_ACTIVE",
@@ -268,7 +288,7 @@ async def initiate_password_reset(
     reset_data: PasswordResetRequest, # Renamed to avoid name conflict with Request
     auth_service: AuthService = Depends()
 ):
-    from api.middleware.rate_limiter import password_reset_limiter
+    from ..middleware.rate_limiter import password_reset_limiter
     """
     Initiate the password reset flow.
     ALWAYS returns success message to prevent user enumeration.
@@ -305,7 +325,7 @@ async def complete_password_reset(
     req_obj: Request, # Need Request object for IP
     auth_service: AuthService = Depends()
 ):
-    from api.middleware.rate_limiter import password_reset_limiter
+    from ..middleware.rate_limiter import password_reset_limiter
     """
     Verify OTP and set new password.
     """
