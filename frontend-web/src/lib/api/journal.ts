@@ -3,12 +3,14 @@ import { deduplicateRequest } from '../utils/requestUtils';
 
 export interface JournalEntry {
   id: number;
-  title?: string;
   content: string;
-  timestamp: string;
   sentiment_score?: number;
   mood_score?: number;
-  tags?: string[];
+  energy_level?: number;
+  stress_level?: number;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
 }
 
 export interface JournalListResponse {
@@ -19,9 +21,11 @@ export interface JournalListResponse {
 }
 
 export interface CreateJournalEntry {
-  title?: string;
   content: string;
   tags?: string[];
+  privacy_level?: string;
+  energy_level?: number;
+  stress_level?: number;
 }
 
 export interface JournalAnalytics {
