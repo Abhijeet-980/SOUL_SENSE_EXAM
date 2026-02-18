@@ -38,22 +38,22 @@ export const JournalEntryCard: React.FC<EntryCardProps> = ({
     className,
 }) => {
     const {
-        entry_date,
+        created_at,
         content,
-        mood_score,
+        mood_rating,
         tags = [],
         sentiment_score,
     } = entry;
 
     const formattedDate = React.useMemo(() => {
         try {
-            return format(parseISO(entry_date), 'MMMM d, yyyy');
+            return format(parseISO(created_at), 'MMMM d, yyyy');
         } catch (e) {
-            return entry_date;
+            return created_at;
         }
-    }, [entry_date]);
+    }, [created_at]);
 
-    const moodEmoji = getMoodEmoji(mood_score);
+    const moodEmoji = getMoodEmoji(mood_rating);
     const sentimentClass = getSentimentColorClass(sentiment_score);
 
     return (
@@ -76,8 +76,8 @@ export const JournalEntryCard: React.FC<EntryCardProps> = ({
                 <span className={styles.date}>{formattedDate}</span>
                 <div className={styles.moodContainer}>
                     <span className={styles.moodEmoji}>{moodEmoji}</span>
-                    {mood_score !== undefined && (
-                        <span className={styles.moodRating}>{mood_score}/10</span>
+                    {mood_rating !== undefined && (
+                        <span className={styles.moodRating}>{mood_rating}/10</span>
                     )}
                 </div>
             </div>

@@ -1,12 +1,3 @@
-export const PRESET_TAGS = [
-    'Gratitude',
-    'Anxiety',
-    'Reflection',
-    'Work',
-    'Personal',
-    'Growth',
-    'Stress',
-    'Happiness',
-    'Health',
-    'Goals',
-];
+import { PRESET_TAGS as TAG_LIST } from '@/types/journal';
+
+export const PRESET_TAGS = TAG_LIST;

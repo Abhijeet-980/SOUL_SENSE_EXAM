@@ -7,25 +7,28 @@ import { JournalEntry } from '@/types/journal';
 const MOCK_ENTRIES: JournalEntry[] = [
     {
         id: 1,
-        entry_date: '2024-01-15T10:00:00Z',
+        created_at: '2024-01-15T10:00:00Z',
+        updated_at: '2024-01-15T10:00:00Z',
         content: 'Today was a productive day. I managed to finish all my tasks and even had some time for a walk in the park. The weather was beautiful and I felt very peaceful.',
-        mood_score: 8,
+        mood_rating: 8,
         tags: ['Productive', 'Nature', 'Peaceful'],
         sentiment_score: 0.8
     },
     {
         id: 2,
-        entry_date: '2024-01-16T18:30:00Z',
+        created_at: '2024-01-16T18:30:00Z',
+        updated_at: '2024-01-16T18:30:00Z',
         content: 'Feeling a bit overwhelmed with work. There are so many deadlines approaching and I feel like I am falling behind. I need to take a break soon.',
-        mood_score: 3,
+        mood_rating: 3,
         tags: ['Work', 'Stress', 'Deadlines'],
         sentiment_score: -0.6
     },
     {
         id: 3,
-        entry_date: '2024-01-17T09:15:00Z',
+        created_at: '2024-01-17T09:15:00Z',
+        updated_at: '2024-01-17T09:15:00Z',
         content: 'Neutral day. Just regular routines. Nothing much happened, but that is okay sometimes.',
-        mood_score: 5,
+        mood_rating: 5,
         tags: ['Routine'],
         sentiment_score: 0.1
     }

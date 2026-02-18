@@ -34,15 +34,15 @@ export function MoodTrend({ entries, timeRange, showAverage }: MoodTrendProps) {
         // Filter and sort entries
         const filteredEntries = entries
             .filter((entry) => {
-                const entryDate = parseISO(entry.entry_date);
+                const entryDate = parseISO(entry.created_at);
                 return isWithinInterval(entryDate, { start: startDate, end: now });
             })
-            .sort((a, b) => parseISO(a.entry_date).getTime() - parseISO(b.entry_date).getTime());
+            .sort((a, b) => parseISO(a.created_at).getTime() - parseISO(b.created_at).getTime());
 
         // Create a map of date string to entry for easy lookup
         const entryMap = new Map<string, JournalEntry>();
         filteredEntries.forEach((entry) => {
-            const dateStr = format(parseISO(entry.entry_date), 'yyyy-MM-dd');
+            const dateStr = format(parseISO(entry.created_at), 'yyyy-MM-dd');
             entryMap.set(dateStr, entry);
         });
 
@@ -56,8 +56,8 @@ export function MoodTrend({ entries, timeRange, showAverage }: MoodTrendProps) {
             data.push({
                 date: dateStr,
                 displayDate: format(date, 'MMM d'),
-                // Use mood_score if available, otherwise fallback to sentiment_score/10 or null
-                mood: entry ? entry.mood_score ?? (entry.sentiment_score ? entry.sentiment_score / 10 : null) : null,
+                // Use mood_rating if available, otherwise fallback to sentiment_score/10 or null
+                mood: entry ? entry.mood_rating ?? (entry.sentiment_score ? entry.sentiment_score / 10 : null) : null,
                 fullDate: format(date, 'PPPP'),
                 hasEntry: !!entry,
                 content: entry?.content?.substring(0, 100) + (entry?.content && entry.content.length > 100 ? '...' : ''),
