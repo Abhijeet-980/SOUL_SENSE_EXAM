@@ -9,6 +9,8 @@ export * from './progress';
 export * from './slider';
 export * from './modal';
 export * from './toast';
+export * from './switch';
+export * from './select';
 export * from './loader';
 export * from './label';
 export * from './select';
