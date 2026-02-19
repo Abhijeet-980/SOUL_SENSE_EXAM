@@ -1,67 +1,57 @@
-'use client';
+import { useState, useEffect, useCallback } from 'react';
+import { settingsApi, UserSettings } from '@/lib/api/settings';
 
-import { useState, useCallback } from 'react';
-import { settingsApi, UserSettings, UpdateSettingsData } from '@/lib/api/settings';
-import { useApi } from './useApi';
+export function useSettings() {
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-export interface UseSettingsResult {
-  settings: UserSettings | null;
-  isLoading: boolean;
-  error: string | null;
-  updateSettings: (data: UpdateSettingsData) => Promise<void>;
-  syncSettings: () => Promise<void>;
-  refetch: () => Promise<void>;
-}
-
-/**
- * Hook for managing user settings operations
- */
-export function useSettings(): UseSettingsResult {
-  const [updating, setUpdating] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-
-  const {
-    data: settings,
-    loading,
-    error,
-    refetch,
-  } = useApi({
-    apiFn: () => settingsApi.getSettings(),
-    deps: [],
-  });
-
-  const updateSettings = useCallback(async (data: UpdateSettingsData) => {
-    setUpdating(true);
+  const fetchSettings = useCallback(async () => {
     try {
-      await settingsApi.updateSettings(data);
-      // Refetch settings data after successful update
-      await refetch();
+      setIsLoading(true);
+      setError(null);
+      const data = await settingsApi.getSettings();
+      setSettings(data);
     } catch (err) {
-      throw err;
+      setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
-      setUpdating(false);
+      setIsLoading(false);
     }
-  }, [refetch]);
+  }, []);
+
+  const updateSettings = useCallback(async (updates: Partial<UserSettings>) => {
+    if (!settings) return;
+
+    try {
+      const updatedSettings = { ...settings, ...updates };
+      setSettings(updatedSettings);
+      await settingsApi.updateSettings(updates);
+    } catch (err) {
+      // Revert on error
+      setSettings(settings);
+      throw err;
+    }
+  }, [settings]);
 
   const syncSettings = useCallback(async () => {
-    setSyncing(true);
     try {
-      await settingsApi.syncSettings();
-      // Refetch settings to get updated last_synced timestamp
-      await refetch();
+      const data = await settingsApi.syncSettings();
+      setSettings(data);
     } catch (err) {
-      throw err;
-    } finally {
-      setSyncing(false);
+      setError(err instanceof Error ? err.message : 'Failed to sync settings');
     }
-  }, [refetch]);
+  }, []);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   return {
     settings,
-    isLoading: loading || updating || syncing,
+    isLoading,
     error,
     updateSettings,
     syncSettings,
-    refetch,
+    refetch: fetchSettings,
   };
 }

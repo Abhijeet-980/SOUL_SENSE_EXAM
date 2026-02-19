@@ -1,80 +1,90 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useApi } from '@/hooks/useApi';
-import { profileApi, UserSettings, UpdateSettings } from '@/lib/api/profile';
-import { ErrorDisplay, Skeleton } from '@/components/common';
-import { Button, Card, CardContent } from '@/components/ui';
-import { Settings, Bell, Globe, Palette, Save, CheckCircle, AlertCircle } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { useSettings } from '@/hooks/useSettings';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
+import { Button } from '@/components/ui';
+import { Skeleton } from '@/components/ui';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui';
+import { ThemeToggle } from '@/components/settings/ThemeToggle';
+import { NotificationSettings } from '@/components/settings/NotificationSettings';
+import { PrivacySettings } from '@/components/settings/PrivacySettings';
+import { AccountSettings } from '@/components/settings/AccountSettings';
+import { AboutSettings } from '@/components/settings/AboutSettings';
+import { cn } from '@/lib/utils';
+import { CheckCircle, AlertCircle, Settings as SettingsIcon } from 'lucide-react';
 
-type FeedbackState = { type: 'success' | 'error'; message: string } | null;
+const tabs = [
+  { id: 'appearance', label: 'Appearance', icon: '🎨' },
+  { id: 'notifications', label: 'Notifications', icon: '🔔' },
+  { id: 'privacy', label: 'Privacy & Data', icon: '🔒' },
+  { id: 'account', label: 'Account', icon: '👤' },
+  { id: 'about', label: 'About', icon: 'ℹ️' },
+];
 
 export default function SettingsPage() {
-  const {
-    data: settings,
-    loading,
-    error,
-    refetch,
-  } = useApi({
-    apiFn: () => profileApi.getSettings(),
-    deps: [],
-  });
+  const { settings, isLoading, error, updateSettings, syncSettings } = useSettings();
+  const [activeTab, setActiveTab] = useState('appearance');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [isMobile, setIsMobile] = useState(false);
 
-  const [form, setForm] = useState<UpdateSettings>({
-    theme: 'system',
-    notifications_enabled: true,
-    email_notifications: true,
-    language: 'en',
-  });
-  const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<FeedbackState>(null);
-
-  // Sync API data into form when loaded
+  // Handle URL hash for direct tab links
   useEffect(() => {
-    if (settings) {
-      setForm({
-        theme: settings.theme ?? 'system',
-        notifications_enabled: settings.notifications_enabled ?? true,
-        email_notifications: settings.email_notifications ?? true,
-        language: settings.language ?? 'en',
-      });
+    const hash = window.location.hash.replace('#', '');
+    if (hash && tabs.some(tab => tab.id === hash)) {
+      setActiveTab(hash);
     }
-  }, [settings]);
+  }, []);
 
-  const handleSave = async () => {
-    setSaving(true);
-    setFeedback(null);
+  // Update URL hash when tab changes
+  useEffect(() => {
+    window.location.hash = activeTab;
+  }, [activeTab]);
+
+  // Check if mobile
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const handleSettingChange = async (updates: any) => {
+    setSaveStatus('saving');
     try {
-      await profileApi.updateSettings(form);
-      setFeedback({ type: 'success', message: 'Settings saved successfully!' });
-      refetch();
-    } catch {
-      setFeedback({ type: 'error', message: 'Failed to save settings. Please try again.' });
-    } finally {
-      setSaving(false);
-      setTimeout(() => setFeedback(null), 4000);
+      await updateSettings(updates);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 3000);
     }
   };
 
-  const updateField = <K extends keyof UpdateSettings>(key: K, value: UpdateSettings[K]) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const handleSync = async () => {
+    try {
+      await syncSettings();
+    } catch (err) {
+      console.error('Failed to sync settings:', err);
+    }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="space-y-6 max-w-2xl mx-auto">
-        <div>
-          <Skeleton className="h-9 w-48 mb-2" />
-          <Skeleton className="h-5 w-80" />
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        <div className="flex items-center gap-3 mb-8">
+          <SettingsIcon className="h-8 w-8" />
+          <h1 className="text-3xl font-bold">Settings</h1>
         </div>
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-2xl border p-6 space-y-3">
-              <Skeleton className="h-5 w-32" />
-              <Skeleton className="h-8 w-full" />
-            </div>
-          ))}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <Skeleton className="h-96 lg:col-span-1" />
+          <div className="lg:col-span-3 space-y-6">
+            <Skeleton className="h-64" />
+            <Skeleton className="h-64" />
+            <Skeleton className="h-64" />
+          </div>
         </div>
       </div>
     );
@@ -82,172 +92,196 @@ export default function SettingsPage() {
 
   if (error) {
     return (
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground mt-2">Manage your preferences.</p>
-        </div>
-        <ErrorDisplay message={error} onRetry={refetch} />
+      <div className="max-w-7xl mx-auto p-6">
+        <Card className="border-red-200">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              <p className="font-medium">Error loading settings</p>
+            </div>
+            <p className="text-red-500 mt-2">{error}</p>
+            <Button
+              onClick={() => window.location.reload()}
+              className="mt-4"
+              variant="outline"
+            >
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!settings) {
+    return (
+      <div className="max-w-7xl mx-auto p-6">
+        <Card>
+          <CardContent className="p-6">
+            <p className="text-muted-foreground">No settings available</p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-8 max-w-2xl mx-auto"
-    >
-      <div>
-        <h1 className="text-3xl font-black tracking-tight flex items-center gap-3">
-          <Settings className="w-7 h-7 text-primary" />
-          Settings
-        </h1>
-        <p className="text-muted-foreground mt-2">Manage your preferences and account settings.</p>
+    <div className="max-w-7xl mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <SettingsIcon className="h-8 w-8" />
+          <h1 className="text-3xl font-bold">Settings</h1>
+        </div>
+
+        {/* Save Status */}
+        <div className="flex items-center gap-4">
+          {saveStatus === 'saving' && (
+            <div className="flex items-center gap-2 text-blue-600">
+              <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
+              <span className="text-sm">Saving...</span>
+            </div>
+          )}
+          {saveStatus === 'saved' && (
+            <div className="flex items-center gap-2 text-green-600">
+              <CheckCircle className="h-4 w-4" />
+              <span className="text-sm">Saved</span>
+            </div>
+          )}
+          {saveStatus === 'error' && (
+            <div className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm">Save failed</span>
+            </div>
+          )}
+
+          <Button onClick={handleSync} variant="outline" size="sm">
+            Sync Settings
+          </Button>
+        </div>
       </div>
 
-      {/* Feedback Banner */}
-      {feedback && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`flex items-center gap-3 p-4 rounded-2xl border ${
-            feedback.type === 'success'
-              ? 'bg-green-500/10 border-green-500/20 text-green-700 dark:text-green-400'
-              : 'bg-red-500/10 border-red-500/20 text-red-700 dark:text-red-400'
-          }`}
-        >
-          {feedback.type === 'success' ? (
-            <CheckCircle className="w-5 h-5 shrink-0" />
-          ) : (
-            <AlertCircle className="w-5 h-5 shrink-0" />
+      {/* Settings Content */}
+      <div className={cn(
+        "grid gap-6",
+        isMobile ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-4"
+      )}>
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          orientation={isMobile ? "horizontal" : "vertical"}
+          className={cn(
+            "w-full",
+            isMobile ? "" : "lg:col-span-1"
           )}
-          <span className="text-sm font-medium">{feedback.message}</span>
-        </motion.div>
-      )}
-
-      {/* Appearance */}
-      <Card className="rounded-[2rem] border-none bg-background/60 backdrop-blur-xl shadow-xl shadow-black/5">
-        <CardContent className="p-8">
-          <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
-            <Palette className="w-5 h-5 text-primary" />
-            Appearance
-          </h2>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Theme</p>
-              <p className="text-xs text-muted-foreground">Choose your preferred color scheme</p>
-            </div>
-            <select
-              value={form.theme}
-              onChange={(e) => updateField('theme', e.target.value as UpdateSettings['theme'])}
-              className="px-4 py-2 rounded-xl border bg-muted/40 text-sm font-medium focus:ring-2 focus:ring-primary/40 outline-none transition-all"
-            >
-              <option value="system">System</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Notifications */}
-      <Card className="rounded-[2rem] border-none bg-background/60 backdrop-blur-xl shadow-xl shadow-black/5">
-        <CardContent className="p-8">
-          <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
-            <Bell className="w-5 h-5 text-primary" />
-            Notifications
-          </h2>
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">Push Notifications</p>
-                <p className="text-xs text-muted-foreground">Get notified about new insights</p>
-              </div>
-              <button
-                onClick={() => updateField('notifications_enabled', !form.notifications_enabled)}
-                className={`relative w-12 h-7 rounded-full transition-colors duration-300 ${
-                  form.notifications_enabled ? 'bg-primary' : 'bg-muted'
-                }`}
-                role="switch"
-                aria-checked={form.notifications_enabled}
-                aria-label="Toggle push notifications"
-              >
-                <span
-                  className={`absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-white shadow-md transition-transform duration-300 ${
-                    form.notifications_enabled ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">Email Notifications</p>
-                <p className="text-xs text-muted-foreground">Receive email updates and reminders</p>
-              </div>
-              <button
-                onClick={() => updateField('email_notifications', !form.email_notifications)}
-                className={`relative w-12 h-7 rounded-full transition-colors duration-300 ${
-                  form.email_notifications ? 'bg-primary' : 'bg-muted'
-                }`}
-                role="switch"
-                aria-checked={form.email_notifications}
-                aria-label="Toggle email notifications"
-              >
-                <span
-                  className={`absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-white shadow-md transition-transform duration-300 ${
-                    form.email_notifications ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Language */}
-      <Card className="rounded-[2rem] border-none bg-background/60 backdrop-blur-xl shadow-xl shadow-black/5">
-        <CardContent className="p-8">
-          <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
-            <Globe className="w-5 h-5 text-primary" />
-            Language
-          </h2>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Display Language</p>
-              <p className="text-xs text-muted-foreground">Choose your preferred language</p>
-            </div>
-            <select
-              value={form.language}
-              onChange={(e) => updateField('language', e.target.value)}
-              className="px-4 py-2 rounded-xl border bg-muted/40 text-sm font-medium focus:ring-2 focus:ring-primary/40 outline-none transition-all"
-            >
-              <option value="en">English</option>
-              <option value="es">Spanish</option>
-              <option value="fr">French</option>
-              <option value="hi">Hindi</option>
-            </select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <Button
-          onClick={handleSave}
-          disabled={saving}
-          className="rounded-full px-8 shadow-lg shadow-primary/20 hover:scale-105 transition-transform"
         >
-          {saving ? (
-            <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin mr-2" />
-          ) : (
-            <Save className="w-4 h-4 mr-2" />
-          )}
-          {saving ? 'Saving...' : 'Save Settings'}
-        </Button>
+          <TabsList className={cn(
+            "grid w-full",
+            isMobile
+              ? "grid-cols-5 h-auto p-1"
+              : "grid-cols-1 h-auto p-2 space-y-1 bg-transparent"
+          )}>
+            {tabs.map((tab) => (
+              <TabsTrigger
+                key={tab.id}
+                value={tab.id}
+                className={cn(
+                  "flex items-center gap-3 justify-start p-3 h-auto",
+                  isMobile ? "flex-col text-xs" : "text-left",
+                  activeTab === tab.id && "bg-primary text-primary-foreground"
+                )}
+              >
+                <span className="text-lg">{tab.icon}</span>
+                <span className={cn(isMobile ? "text-xs" : "text-sm")}>
+                  {tab.label}
+                </span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          <div className={cn(
+            "lg:col-span-3",
+            isMobile ? "mt-6" : ""
+          )}>
+            <TabsContent value="appearance" className="mt-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    🎨 Appearance
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ThemeToggle
+                    settings={settings}
+                    onChange={handleSettingChange}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="notifications" className="mt-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    🔔 Notifications
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <NotificationSettings
+                    settings={settings}
+                    onChange={handleSettingChange}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="privacy" className="mt-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    🔒 Privacy & Data
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <PrivacySettings
+                    settings={settings}
+                    onChange={handleSettingChange}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="account" className="mt-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    👤 Account
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <AccountSettings
+                    settings={settings}
+                    onChange={handleSettingChange}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="about" className="mt-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    ℹ️ About
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <AboutSettings />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </div>
+        </Tabs>
       </div>
-    </motion.div>
+    </div>
   );
 }

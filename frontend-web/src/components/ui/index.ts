@@ -12,3 +12,4 @@ export * from './toast';
 export * from './loader';
 export * from './label';
 export * from './select';
+export * from './tabs';

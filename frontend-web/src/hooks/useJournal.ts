@@ -194,3 +194,4 @@ export function useJournal(initialParams: JournalQueryParams = {}) {
         updateEntry,
         deleteEntry,
     };
+}
