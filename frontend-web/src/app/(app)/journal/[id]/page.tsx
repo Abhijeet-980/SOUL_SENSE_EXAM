@@ -75,7 +75,6 @@ export default function JournalEntryDetailPage() {
   });
 
   const [editForm, setEditForm] = useState<CreateJournalEntry>({
-    title: '',
     content: '',
     tags: [],
     mood_rating: undefined,
@@ -88,7 +87,6 @@ export default function JournalEntryDetailPage() {
   React.useEffect(() => {
     if (entry && !isEditing) {
       setEditForm({
-        title: entry.title || '',
         content: entry.content,
         tags: entry.tags || [],
         mood_rating: entry.mood_rating || entry.mood_score,
@@ -106,7 +104,6 @@ export default function JournalEntryDetailPage() {
     setIsEditing(false);
     if (entry) {
       setEditForm({
-        title: entry.title || '',
         content: entry.content,
         tags: entry.tags || [],
         mood_rating: entry.mood_rating || entry.mood_score,
@@ -145,7 +142,7 @@ export default function JournalEntryDetailPage() {
     if (navigator.share && entry) {
       try {
         await navigator.share({
-          title: entry.title || 'Journal Entry',
+          title: 'Journal Entry',
           text: entry.content.substring(0, 100) + (entry.content.length > 100 ? '...' : ''),
           url: window.location.href,
         });
@@ -284,14 +281,6 @@ export default function JournalEntryDetailPage() {
                     Edit Journal Entry
                   </span>
                 </div>
-
-                <Input
-                  type="text"
-                  placeholder="Title (optional)"
-                  value={editForm.title}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, title: e.target.value }))}
-                  className="rounded-xl text-lg font-medium"
-                />
 
                 <textarea
                   placeholder="What's on your mind today?"
@@ -433,11 +422,11 @@ export default function JournalEntryDetailPage() {
             {/* Title & Date */}
             <div className="space-y-4">
               <h1 className="text-3xl font-bold">
-                {entry.title || 'Untitled Entry'}
+                Journal Entry
               </h1>
               <div className="flex items-center gap-3 text-muted-foreground">
                 <Calendar className="w-5 h-5" />
-                <span className="text-lg">{formatDate(entry.timestamp)}</span>
+                <span className="text-lg">{formatDate(entry.created_at)}</span>
               </div>
             </div>
 
