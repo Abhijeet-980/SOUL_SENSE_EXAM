@@ -272,6 +272,7 @@ export default function DashboardPage() {
         {data.insights.map((insight, idx) => (
           <SectionWrapper key={`insight-${idx}`} isLoading={loading} error={error} onRetry={fetchData}>
             <InsightCard
+<<<<<<< ai-generated-insights
               insight={{
                 title: insight.title,
                 content: insight.description,
@@ -285,6 +286,11 @@ export default function DashboardPage() {
                 }));
               }}
               onAction={(ins) => console.log('Action for:', ins.title)}
+=======
+              title={insight.title}
+              description={insight.description}
+              type={insight.type as any}
+>>>>>>> main
               className="md:col-span-1"
             />
           </SectionWrapper>
@@ -293,11 +299,17 @@ export default function DashboardPage() {
         {/* Additional Insight or Filler */}
         <SectionWrapper isLoading={loading} error={error} onRetry={fetchData}>
           <InsightCard
+<<<<<<< ai-generated-insights
             insight={{
               title: "Security & Privacy",
               content: "Your data is encrypted and only accessible by you. We prioritize your privacy.",
               type: "safety" as any, // safety is handled by the component or defaults
             }}
+=======
+            title="Security & Privacy"
+            description="Your data is encrypted and only accessible by you. We prioritize your privacy."
+            type="safety"
+>>>>>>> main
             className="md:col-span-1"
           />
         </SectionWrapper>
