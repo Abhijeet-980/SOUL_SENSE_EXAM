@@ -9,7 +9,7 @@ import { PRESET_TAGS } from '@/lib/constants/journal';
 interface TagSelectorProps {
     selected: string[];
     onChange: (tags: string[]) => void;
-    presets?: string[];
+    presets?: string[] | readonly string[];
     allowCustom?: boolean;
     maxTags?: number;
 }
