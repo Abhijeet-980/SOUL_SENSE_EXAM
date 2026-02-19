@@ -9,6 +9,7 @@ import {
   RecentActivity,
   InsightCard,
   DashboardSkeleton,
+  ActivityItem,
 } from '@/components/dashboard';
 import { SectionWrapper } from '@/components/dashboard/section-wrapper';
 import { apiClient } from '@/lib/api/client';
@@ -84,72 +85,148 @@ import { dashboardApi } from '@/lib/api/dashboard';
 import { ErrorDisplay, LoadingState, OfflineBanner, Skeleton } from '@/components/common';
 
 export default function DashboardPage() {
-  const isOnline = useOnlineStatus();
-  const {
-    data: summary,
-    loading,
-    error,
-    refetch,
-  } = useApi({
-    apiFn: () => dashboardApi.getSummary(),
-    deps: [],
+  const { user } = useAuth();
+  const [data, setData] = useState<DashboardData>({
+    profile: null,
+    exams: [],
+    journals: [],
+    mood: null,
+    insights: [],
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        {!isOnline && <OfflineBanner className="mb-4" />}
-        <div>
-          <Skeleton className="h-9 w-48 mb-2" />
-          <Skeleton className="h-5 w-96" />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="animate-pulse rounded-lg border bg-card p-6 space-y-3">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-10 w-20" />
-            </div>
-          ))}
-        </div>
-        <div className="rounded-lg border bg-card p-6">
-          <Skeleton className="h-6 w-48 mb-4" />
-          <Skeleton className="h-32 w-full" />
-        </div>
-      </div>
-    );
-  }
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [examsRes, journalsRes] = await Promise.all([
+        apiClient<any>('/exams/history?page=1&page_size=5').catch(() => ({ assessments: [] })),
+        apiClient<any>('/journal/?limit=5').catch(() => ({ entries: [] })),
+      ]);
 
-  if (error) {
+      setData({
+        profile: user,
+        exams: examsRes.assessments || [],
+        journals: journalsRes.entries || [],
+        mood: null,
+        insights: [
+          {
+            title: 'Sleep Pattern',
+            description: 'You tend to score higher on EQ assessments when you get 7+ hours of sleep.',
+            type: 'trend',
+          },
+          {
+            title: 'Mindfulness Tip',
+            description: 'Try a 5-minute breathing exercise before your next exam to reduce anxiety.',
+            type: 'tip',
+          },
+        ],
+      });
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [user]);
+
+  // Combine exams and journals into activities
+  const activities: ActivityItem[] = [
+    ...data.exams.map(e => ({
+      id: e.id,
+      type: 'assessment' as const,
+      title: `EQ Assessment - Score: ${e.total_score || e.score || 0}%`,
+      timestamp: e.timestamp || e.created_at,
+      href: `/results/${e.id}`
+    })),
+    ...data.journals.map(j => ({
+      id: j.id,
+      type: 'journal' as const,
+      title: j.content?.substring(0, 30) + (j.content?.length > 30 ? '...' : '') || 'Untitled Journal',
+      timestamp: j.created_at || j.timestamp,
+      href: `/journal/${j.id}`
+    }))
+  ];
+
+  if (loading && !data.profile) {
     return (
-      <div className="space-y-6">
-        {!isOnline && <OfflineBanner className="mb-4" />}
+      <div className="p-4 md:p-8 space-y-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground mt-2">
-            Welcome back! Here&apos;s your dashboard overview.
-          </p>
+          <p className="text-muted-foreground mt-2">Loading your overview...</p>
         </div>
-        <ErrorDisplay message={error} onRetry={refetch} />
+        <DashboardSkeleton />
       </div>
     );
-  }
-
-  if (!summary) {
-    return <LoadingState message="Loading dashboard..." />;
   }
 
   return (
-    <div className="space-y-6">
-      {!isOnline && <OfflineBanner className="mb-4" />}
-
-      {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-2">
-          Welcome back! Here&apos;s your dashboard overview.
-        </p>
+    <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            SoulSense Dashboard
+          </h1>
+          <p className="text-muted-foreground mt-2 text-lg">
+            Welcome back, {user?.name || 'User'}. Here&apos;s your mental wellbeing at a glance.
+          </p>
+        </div>
       </div>
 
+      <BentoGrid className="auto-rows-[20rem]">
+        {/* Row 1 */}
+        <SectionWrapper isLoading={loading} error={error} onRetry={fetchData}>
+          <WelcomeCard />
+        </SectionWrapper>
+
+        <SectionWrapper isLoading={loading} error={error} onRetry={fetchData}>
+          <QuickActions />
+        </SectionWrapper>
+
+        {/* Row 2 */}
+        <SectionWrapper isLoading={loading} error={error} onRetry={fetchData}>
+          <MoodWidget />
+        </SectionWrapper>
+
+        <SectionWrapper isLoading={loading} error={error} onRetry={fetchData}>
+          <RecentActivity activities={activities} />
+        </SectionWrapper>
+
+        {/* AI Insights - Multiple */}
+        {data.insights.map((insight, idx) => (
+          <SectionWrapper key={`insight-${idx}`} isLoading={loading} error={error} onRetry={fetchData}>
+            <InsightCard
+              insight={{
+                title: insight.title,
+                content: insight.description,
+                type: insight.type as any,
+                actionLabel: insight.type === 'tip' ? 'View Guide' : 'Analyze Pattern'
+              }}
+              onDismiss={() => {
+                setData(prev => ({
+                  ...prev,
+                  insights: prev.insights.filter((_, i) => i !== idx)
+                }));
+              }}
+              onAction={(ins) => console.log('Action for:', ins.title)}
+              className="md:col-span-1"
+            />
+          </SectionWrapper>
+        ))}
+
+        {/* Additional Insight or Filler */}
+        <SectionWrapper isLoading={loading} error={error} onRetry={fetchData}>
+          <InsightCard
+            insight={{
+              title: "Security & Privacy",
+              content: "Your data is encrypted and only accessible by you. We prioritize your privacy.",
+              type: "safety" as any,
+            }}
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="rounded-lg border bg-card p-6 hover:shadow-md transition-shadow">
