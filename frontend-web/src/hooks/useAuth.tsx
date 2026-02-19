@@ -3,89 +3,270 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-    UserSession,
-    getSession,
-    saveSession,
-    clearSession,
-    getExpiryTimestamp
+  UserSession,
+  getSession,
+  saveSession,
+  clearSession,
+  getExpiryTimestamp,
 } from '@/lib/utils/sessionStorage';
+import { authApi } from '@/lib/api/auth';
+import { Loader } from '@/components/ui';
+import { isValidCallbackUrl } from '@/lib/utils/url';
 
 interface AuthContextType {
-    user: UserSession['user'] | null;
-    isAuthenticated: boolean;
-    isLoading: boolean;
-    login: (email: string, rememberMe: boolean) => Promise<void>;
-    logout: () => void;
+  user: UserSession['user'] | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  isMockMode: boolean;
+  login: (
+    data: {
+      username: string;
+      password: string;
+      captcha_input?: string;
+      session_id?: string;
+    },
+    rememberMe: boolean,
+    shouldRedirect?: boolean,
+    redirectTo?: string,
+    stayLoadingOnSuccess?: boolean
+  ) => Promise<any>;
+  login2FA: (
+    data: { pre_auth_token: string; code: string },
+    rememberMe: boolean,
+    shouldRedirect?: boolean,
+    redirectTo?: string,
+    stayLoadingOnSuccess?: boolean
+  ) => Promise<any>;
+  logout: () => void;
+  setIsLoading: (loading: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-    const [user, setUser] = useState<UserSession['user'] | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const router = useRouter();
+  const [user, setUser] = useState<UserSession['user'] | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isMockMode, setIsMockMode] = useState(false);
+  const router = useRouter();
 
-    useEffect(() => {
-        // Check for existing session on mount
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const initAuth = async () => {
+      try {
+        // 1. Check if server has restarted
+        await checkServerInstance();
+
+        // 2. Check for existing session
         const session = getSession();
         if (session) {
-            setUser(session.user);
+          setUser(session.user);
         }
+
+        // 3. Check if backend is in mock mode
+        await checkMockMode();
+      } catch (e) {
+        console.warn('Auth initialization error:', e);
+      } finally {
+        // Small delay to ensure state propagates
+        const timer = setTimeout(() => setIsLoading(false), 50);
+        return () => clearTimeout(timer);
+      }
+    };
+
+    initAuth();
+  }, []);
+
+  const checkServerInstance = async () => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/api/v1/auth/server-id`, {
+        method: 'GET',
+      });
+
+      if (response.ok) {
+        const { server_id } = await response.json();
+        const storedId = localStorage.getItem('soul_sense_server_instance_id');
+
+        if (storedId && server_id && storedId !== server_id) {
+          console.log('🔄 Server restart detected. Clearing stale session.');
+          clearSession();
+          setUser(null);
+        }
+
+        if (server_id) {
+          localStorage.setItem('soul_sense_server_instance_id', server_id);
+        }
+      }
+    } catch (error) {
+      console.warn('Could not verify server instance:', error);
+    }
+  };
+
+  const checkMockMode = async () => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/health`, {
+        method: 'GET',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setIsMockMode(data.mock_auth_mode || false);
+      }
+    } catch (error) {
+      console.warn('Could not check mock mode status:', error);
+    }
+  };
+
+  const login = async (
+    loginData: {
+      username: string;
+      password: string;
+      captcha_input?: string;
+      session_id?: string;
+    },
+    rememberMe: boolean,
+    shouldRedirect = true,
+    redirectTo = '/',
+    stayLoadingOnSuccess = false
+  ) => {
+    setIsLoading(true);
+    try {
+      const result = await authApi.login(loginData);
+
+      if (result.pre_auth_token) {
+        return result; // 2FA Required
+      }
+
+      const session: UserSession = {
+        user: {
+          id: result.id?.toString() || 'current',
+          email: (result.email ||
+            (loginData.username.includes('@') ? loginData.username : '')) as string,
+          name: result.username || loginData.username.split('@')[0],
+          username: result.username,
+          created_at: result.created_at,
+        },
+        token: result.access_token,
+        expiresAt: getExpiryTimestamp(),
+      };
+
+      saveSession(session, rememberMe);
+      setUser(session.user);
+
+      if (shouldRedirect) {
+        const finalRedirect = isValidCallbackUrl(redirectTo) ? redirectTo : '/';
+        console.log(`useAuth: Navigation to ${finalRedirect} triggered`);
+        router.push(finalRedirect);
+      }
+
+      // If we are redirecting and want to stay loading, we don't clear it here
+      if (stayLoadingOnSuccess) return result;
+
+      setIsLoading(false);
+      return result;
+    } catch (error) {
+      setIsLoading(false);
+      console.error('Login failed:', error);
+      throw error;
+    }
+  };
+
+  const login2FA = async (
+    data: { pre_auth_token: string; code: string },
+    rememberMe: boolean,
+    shouldRedirect = true,
+    redirectTo = '/',
+    stayLoadingOnSuccess = false
+  ) => {
+    setIsLoading(true);
+    try {
+      const result = await authApi.login2FA(data);
+
+      const session: UserSession = {
+        user: {
+          id: result.id?.toString() || 'current',
+          email: (result.email || '') as string,
+          name: result.username || 'User',
+          username: result.username,
+          created_at: result.created_at,
+        },
+        token: result.access_token,
+        expiresAt: getExpiryTimestamp(),
+      };
+
+      saveSession(session, rememberMe);
+      setUser(session.user);
+
+      if (shouldRedirect) {
+        const finalRedirect = isValidCallbackUrl(redirectTo) ? redirectTo : '/';
+        router.push(finalRedirect);
+      }
+
+      if (stayLoadingOnSuccess) return result;
+
+      setIsLoading(false);
+      return result;
+    } catch (error) {
+      console.error('2FA verification failed:', error);
+      throw error;
+    } finally {
+      if (!stayLoadingOnSuccess) {
         setIsLoading(false);
-    }, []);
+      }
+    }
+  };
 
-    const login = async (email: string, rememberMe: boolean) => {
-        setIsLoading(true);
-        try {
-            // Simulate API call
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+  const logout = async () => {
+    // Integrate logout fetch from main
+    try {
+      const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(
+        /\/api\/v1\/?$/,
+        ''
+      );
+      await fetch(`${apiUrl}/api/v1/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
 
-            const mockUser = {
-                id: '1',
-                email,
-                name: email.split('@')[0],
-            };
+    clearSession();
+    setUser(null);
+    router.push('/login');
+  };
 
-            const session: UserSession = {
-                user: mockUser,
-                token: 'mock-jwt-token',
-                expiresAt: getExpiryTimestamp(),
-            };
+  // ... existing code ...
 
-            saveSession(session, rememberMe);
-            setUser(mockUser);
-            router.push('/dashboard');
-        } catch (error) {
-            console.error('Login failed:', error);
-            throw error;
-        } finally {
-            setIsLoading(false);
-        }
-    };
+  if (!mounted) {
+    return <Loader fullScreen text="Bootstrapping..." />;
+  }
 
-    const logout = () => {
-        clearSession();
-        setUser(null);
-        router.push('/login');
-    };
-
-    return (
-        <AuthContext.Provider value={{
-            user,
-            isAuthenticated: !!user,
-            isLoading,
-            login,
-            logout
-        }}>
-            {!isLoading && children}
-        </AuthContext.Provider>
-    );
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: !!user,
+        isLoading,
+        isMockMode,
+        login,
+        login2FA,
+        logout,
+        setIsLoading,
+      }}
+    >
+      {isLoading ? <Loader fullScreen text="Authenticating..." /> : children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => {
-    const context = useContext(AuthContext);
-    if (context === undefined) {
-        throw new Error('useAuth must be used within an AuthProvider');
-    }
-    return context;
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 };

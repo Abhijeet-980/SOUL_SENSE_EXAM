@@ -1,4 +1,8 @@
 from fastapi import FastAPI, Request
+import asyncio
+import logging
+import traceback
+import uuid
 from fastapi.responses import JSONResponse
 # Triggering reload for new community routes
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,27 +35,23 @@ def create_app() -> FastAPI:
     from .middleware.security import SecurityHeadersMiddleware
     app.add_middleware(SecurityHeadersMiddleware)
 
-    # CORS middleware
-    # If in production, ensure we are not allowing all origins blindly unless intended
-    origins = settings.cors_origins
-    
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-API-Version"],
-        max_age=3600, # Cache preflight requests for 1 hour
-    )
-    
-    # Version header middleware
-    app.add_middleware(VersionHeaderMiddleware)
-    
     # Register V1 API Router
     app.include_router(api_v1_router, prefix="/api/v1")
     
     # Register Health endpoints at root level for orchestration
     app.include_router(health_router, tags=["Health"])
+
+    # Version header middleware
+    app.add_middleware(VersionHeaderMiddleware)
+
+    # CORS middleware (Outer-most)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:3005", "http://localhost:3005", "tauri://localhost", "http://localhost:1420", "http://localhost:3000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     from .exceptions import APIException
     from .constants.errors import ErrorCode
@@ -65,8 +65,6 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
-        import traceback
-        import logging
         logger = logging.getLogger("api.main")
         logger.error(f"Global Exception: {exc}")
         traceback.print_exc()
@@ -98,11 +96,35 @@ def create_app() -> FastAPI:
     async def startup_event():
         app.state.settings = settings
         
+        # Generate a unique instance ID for this server session
+        # All JWTs will include this ID; tokens from previous instances are rejected
+        app.state.server_instance_id = str(uuid.uuid4())
+        print(f"[OK] Server instance ID: {app.state.server_instance_id}")
+        
         # Initialize database tables
         try:
-            from .services.db_service import Base, engine
+            from .services.db_service import Base, engine, SessionLocal
             Base.metadata.create_all(bind=engine)
             print("[OK] Database tables initialized/verified")
+            
+            # Start background task for soft-delete cleanup
+            async def purge_task_loop():
+                while True:
+                    try:
+                        print("[CLEANUP] Starting scheduled purge of expired accounts...")
+                        with SessionLocal() as db:
+                            from .services.user_service import UserService
+                            user_service = UserService(db)
+                            user_service.purge_deleted_users(settings.deletion_grace_period_days)
+                    except Exception as e:
+                        print(f"[ERROR] Soft-delete cleanup task failed: {e}")
+                    
+                    # Run once every 24 hours
+                    await asyncio.sleep(24 * 3600)
+            
+            asyncio.create_task(purge_task_loop())
+            print("[OK] Soft-delete cleanup task scheduled (runs every 24h)")
+            
         except Exception as e:
             print(f"[ERROR] Database initialization failed: {e}")
             

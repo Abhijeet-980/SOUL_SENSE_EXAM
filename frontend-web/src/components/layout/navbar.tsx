@@ -2,27 +2,80 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Menu, X, Rocket, Sun, Moon } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import {
+  Menu,
+  X,
+  Rocket,
+  Sun,
+  Moon,
+  LayoutDashboard,
+  Brain,
+  FileText,
+  Search,
+  Library,
+  User,
+  Settings,
+  LogOut,
+  ChevronDown,
+  Star,
+  Info,
+} from 'lucide-react';
 import { Button } from '@/components/ui';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const navigation = [
-  { name: 'Features', href: '#features' },
-  { name: 'Testimonials', href: '#testimonials' },
-  { name: 'About', href: '#about' },
+const guestNavigation = [
+  { name: 'Features', href: '/#features', icon: Rocket },
+  { name: 'Testimonials', href: '/#testimonials', icon: Star },
+  { name: 'About', href: '/#about', icon: Info },
+];
+
+const authenticatedNavigation = [
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Assessment', href: '/exam', icon: Brain },
+  { name: 'Journal', href: '/journal', icon: FileText },
+  { name: 'Deep Dive', href: '/assessments', icon: Search },
+  { name: 'History', href: '/history', icon: Library },
 ];
 
 import { useAuth } from '@/hooks/useAuth';
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const { setTheme, theme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, logout, user, isLoading } = useAuth();
+  const pathname = usePathname();
+  const userMenuRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => setMounted(true), []);
+
+  // Close user menu on click outside
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const navLinks = isAuthenticated ? authenticatedNavigation : guestNavigation;
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b bg-background/80 backdrop-blur-md">
@@ -62,15 +115,31 @@ export function Navbar() {
         </div>
 
         <div className="hidden lg:flex lg:gap-x-12">
-          {navigation.map((item) => (
-            <Link
-              key={item.name}
-              href={item.href}
-              className="text-sm font-semibold leading-6 text-foreground/70 hover:text-primary transition-colors"
-            >
-              {item.name}
-            </Link>
-          ))}
+          {!isLoading &&
+            navLinks.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    'group flex items-center gap-x-2 text-sm font-semibold leading-6 transition-colors',
+                    isActive ? 'text-primary' : 'text-foreground/70 hover:text-primary'
+                  )}
+                >
+                  {Icon && (
+                    <Icon
+                      className={cn(
+                        'h-4 w-4 transition-colors',
+                        isActive ? 'text-primary' : 'text-foreground/50 group-hover:text-primary'
+                      )}
+                    />
+                  )}
+                  {item.name}
+                </Link>
+              );
+            })}
         </div>
 
         <div className="hidden lg:flex lg:flex-1 lg:justify-end lg:items-center lg:gap-4">
@@ -84,29 +153,88 @@ export function Navbar() {
               {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
           )}
-          {isAuthenticated ? (
-            <Button
-              variant="ghost"
-              onClick={logout}
-              className="text-sm font-semibold leading-6 text-foreground hover:text-primary transition-colors"
-            >
-              Logout
-            </Button>
+
+          {!isLoading && isAuthenticated ? (
+            <div className="relative" ref={userMenuRef}>
+              <button
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className="flex items-center gap-2 p-1 pl-2 rounded-full border hover:bg-accent transition-colors"
+              >
+                <div className="flex flex-col items-end mr-1">
+                  <span className="text-sm font-semibold leading-none">{user?.name || 'User'}</span>
+                </div>
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                  {getInitials(user?.name || 'U')}
+                </div>
+                <ChevronDown
+                  className={cn(
+                    'h-4 w-4 text-muted-foreground transition-transform mr-1',
+                    userMenuOpen && 'transform rotate-180'
+                  )}
+                />
+              </button>
+
+              <AnimatePresence>
+                {userMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    transition={{ duration: 0.2 }}
+                    className="absolute right-0 top-full mt-2 w-56 rounded-xl border bg-popover p-1 shadow-lg text-popover-foreground outline-none"
+                  >
+                    <div className="px-2 py-1.5 text-sm font-semibold text-foreground/50 border-b mb-1">
+                      My Account
+                    </div>
+                    {/* Placeholder for Profile/Settings until implemented */}
+                    <Link
+                      href="/profile"
+                      className="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      <User className="mr-2 h-4 w-4" />
+                      <span>Profile</span>
+                    </Link>
+                    <Link
+                      href="/settings"
+                      className="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Settings</span>
+                    </Link>
+                    <div className="h-px bg-border my-1" />
+                    <button
+                      onClick={() => {
+                        logout();
+                        setUserMenuOpen(false);
+                      }}
+                      className="relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-destructive/10 hover:text-destructive data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Log out</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           ) : (
-            <>
-              <Link
-                href="/login"
-                className="text-sm font-semibold leading-6 text-foreground hover:text-primary transition-colors"
-              >
-                Log in
-              </Link>
-              <Button
-                asChild
-                className="rounded-full px-6 bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity"
-              >
-                <Link href="/register">Get Started</Link>
-              </Button>
-            </>
+            !isLoading && (
+              <>
+                <Link
+                  href="/login"
+                  className="text-sm font-semibold leading-6 text-foreground hover:text-primary transition-colors"
+                >
+                  Log in
+                </Link>
+                <Button
+                  asChild
+                  className="rounded-full px-6 bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity"
+                >
+                  <Link href="/register">Get Started</Link>
+                </Button>
+              </>
+            )
           )}
         </div>
       </nav>
@@ -142,29 +270,67 @@ export function Navbar() {
               <div className="mt-6 flow-root">
                 <div className="-my-6 divide-y divide-foreground/10">
                   <div className="space-y-2 py-6">
-                    {navigation.map((item) => (
-                      <Link
-                        key={item.name}
-                        href={item.href}
-                        className="-mx-3 block rounded-lg px-3 py-2 text-base font-semibold leading-7 text-foreground hover:bg-accent transition-all"
-                        onClick={() => setMobileMenuOpen(false)}
-                      >
-                        {item.name}
-                      </Link>
-                    ))}
+                    {navLinks.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = pathname === item.href;
+                      return (
+                        <Link
+                          key={item.name}
+                          href={item.href}
+                          className={cn(
+                            '-mx-3 flex items-center gap-3 rounded-lg px-3 py-2 text-base font-semibold leading-7 transition-all',
+                            isActive
+                              ? 'bg-primary/10 text-primary'
+                              : 'text-foreground hover:bg-accent'
+                          )}
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          {Icon && <Icon className="h-5 w-5" />}
+                          {item.name}
+                        </Link>
+                      );
+                    })}
                   </div>
                   <div className="py-6 flex flex-col gap-4">
                     {isAuthenticated ? (
-                      <Button
-                        variant="ghost"
-                        className="justify-start -mx-3 px-3 py-2.5 text-base font-semibold leading-7"
-                        onClick={() => {
-                          logout();
-                          setMobileMenuOpen(false);
-                        }}
-                      >
-                        Logout
-                      </Button>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3 px-3 py-2 border-b border-foreground/10 pb-4 mb-2">
+                          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
+                            {getInitials(user?.name || 'U')}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-semibold">{user?.name}</span>
+                            <span className="text-xs text-muted-foreground">Logged in</span>
+                          </div>
+                        </div>
+                        <Link
+                          href="/profile"
+                          className="-mx-3 flex items-center gap-3 rounded-lg px-3 py-2 text-base font-semibold leading-7 text-foreground hover:bg-accent"
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          <User className="h-5 w-5" />
+                          Profile
+                        </Link>
+                        <Link
+                          href="/settings"
+                          className="-mx-3 flex items-center gap-3 rounded-lg px-3 py-2 text-base font-semibold leading-7 text-foreground hover:bg-accent"
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          <Settings className="h-5 w-5" />
+                          Settings
+                        </Link>
+                        <Button
+                          variant="ghost"
+                          className="justify-start -mx-3 px-3 py-2.5 text-base font-semibold leading-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => {
+                            logout();
+                            setMobileMenuOpen(false);
+                          }}
+                        >
+                          <LogOut className="h-5 w-5 mr-3" />
+                          Logout
+                        </Button>
+                      </div>
                     ) : (
                       <>
                         <Link

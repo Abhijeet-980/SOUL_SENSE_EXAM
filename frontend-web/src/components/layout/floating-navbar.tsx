@@ -4,9 +4,23 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, LayoutDashboard, Zap, MessageSquare, User, Rocket, Sun, Moon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
+
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Home,
+  LayoutDashboard,
+  Zap,
+  MessageSquare,
+  User,
+  Rocket,
+  Sun,
+  Moon,
+  Settings,
+  LogOut,
+  ChevronDown,
+} from 'lucide-react';
 
 const navItems = [
   { name: 'Home', href: '/', icon: Home },
@@ -23,6 +37,31 @@ export function FloatingNavbar() {
   const [lastScrollY, setLastScrollY] = useState(0);
   const { setTheme, theme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const { isAuthenticated, logout, user, isLoading } = useAuth();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = React.useRef<HTMLDivElement>(null);
+
+  // Close user menu on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -138,7 +177,7 @@ export function FloatingNavbar() {
           })}
         </div>
 
-        {/* RIGHT: Sophisticated Controls & Sign In */}
+        {/* RIGHT: Sophisticated Controls & Sign In/User Menu */}
         <div className="flex items-center gap-2 px-1">
           {mounted && (
             <button
@@ -156,17 +195,83 @@ export function FloatingNavbar() {
 
           <div className="h-4 w-[1px] bg-slate-200 dark:bg-white/10 hidden md:block mx-1" />
 
-          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-            <Link
-              href="/login"
-              className={cn(
-                'px-6 py-2 text-[10px] font-bold uppercase tracking-[0.2em] rounded-full transition-all shadow-lg',
-                'bg-slate-950 dark:bg-white text-white dark:text-slate-900 hover:bg-sky-600 dark:hover:bg-sky-50 shadow-slate-900/10 dark:shadow-white/5'
-              )}
-            >
-              Sign In
-            </Link>
-          </motion.div>
+          {!isLoading && isAuthenticated ? (
+            <div className="relative" ref={userMenuRef}>
+              <button
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className="flex items-center gap-2 pr-1 pl-1 rounded-full border border-transparent hover:bg-accent hover:border-border transition-all"
+              >
+                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-sky-500 to-indigo-500 flex items-center justify-center text-white font-bold text-xs shadow-md">
+                  {getInitials(user?.name || 'U')}
+                </div>
+              </button>
+
+              <AnimatePresence>
+                {userMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.2 }}
+                    className="absolute right-0 top-full mt-3 w-56 rounded-2xl border bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-xl p-2 shadow-xl ring-1 ring-slate-900/5 dark:ring-white/10 text-popover-foreground outline-none origin-top-right z-50"
+                  >
+                    <div className="px-3 py-2 text-sm font-medium text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-white/10 mb-1">
+                      {user?.email}
+                    </div>
+
+                    <Link
+                      href="/dashboard"
+                      className="relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2 text-sm outline-none hover:bg-slate-200/50 dark:hover:bg-white/10 transition-colors"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      <LayoutDashboard className="mr-2 h-4 w-4" />
+                      <span>Dashboard</span>
+                    </Link>
+
+                    <Link
+                      href="/profile"
+                      className="relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2 text-sm outline-none hover:bg-slate-200/50 dark:hover:bg-white/10 transition-colors"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      <User className="mr-2 h-4 w-4" />
+                      <span>Profile</span>
+                    </Link>
+                    <Link
+                      href="/settings"
+                      className="relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2 text-sm outline-none hover:bg-slate-200/50 dark:hover:bg-white/10 transition-colors"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Settings</span>
+                    </Link>
+                    <div className="h-px bg-slate-200 dark:bg-white/10 my-1" />
+                    <button
+                      onClick={() => {
+                        logout();
+                        setUserMenuOpen(false);
+                      }}
+                      className="relative flex w-full cursor-pointer select-none items-center rounded-lg px-3 py-2 text-sm outline-none text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Log out</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ) : (
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Link
+                href="/register"
+                className={cn(
+                  'px-6 py-2 text-[10px] font-bold uppercase tracking-[0.2em] rounded-full transition-all shadow-lg',
+                  'bg-slate-950 dark:bg-white text-white dark:text-slate-900 hover:bg-sky-600 dark:hover:bg-sky-50 shadow-slate-900/10 dark:shadow-white/5'
+                )}
+              >
+                Sign Up
+              </Link>
+            </motion.div>
+          )}
         </div>
       </motion.nav>
     </div>

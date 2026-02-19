@@ -6,10 +6,10 @@ os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["APP_ENV"] = "development"
 
 from fastapi.testclient import TestClient
-from api.main import app
-from api.constants.errors import ErrorCode
-from api.root_models import Base, User, PersonalProfile
-from api.services.db_service import engine, SessionLocal
+from backend.fastapi.api.main import app
+from backend.fastapi.api.constants.errors import ErrorCode
+from backend.fastapi.api.root_models import Base, User, PersonalProfile
+from backend.fastapi.api.services.db_service import engine, SessionLocal
 
 # Force table creation
 Base.metadata.create_all(bind=engine)

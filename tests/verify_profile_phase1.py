@@ -5,7 +5,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.db import get_session, engine
-from app.models import User, MedicalProfile, PersonalProfile, Base
+from backend.fastapi.api.root_models import User, MedicalProfile, PersonalProfile, Base
 
 def verify():
     print("Verifying Phase 1 Profile Enhancements...")

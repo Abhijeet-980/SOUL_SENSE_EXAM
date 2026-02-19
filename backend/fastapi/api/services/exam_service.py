@@ -24,7 +24,7 @@ class ExamService:
     def start_exam(db: Session, user: User):
         """Standardizes session initiation and returns a new session_id."""
         session_id = str(uuid.uuid4())
-        logger.info(f"Exam session started for {user.username}: {session_id}")
+        logger.info(f"Exam session started for user_id={user.id}: {session_id}")
         return session_id
 
     @staticmethod
@@ -43,7 +43,7 @@ class ExamService:
             db.commit()
             return True
         except Exception as e:
-            logger.error(f"Failed to save response for {user.username}: {e}")
+            logger.error(f"Failed to save response for user_id={user.id}: {e}")
             db.rollback()
             raise e
 
@@ -83,17 +83,18 @@ class ExamService:
             db.commit()
             db.refresh(new_score)
             
-            logger.info(f"Exam saved for {user.username}. Score: {data.total_score}")
+            logger.info(f"Exam saved for user_id={user.id}. Score: {data.total_score}")
             return new_score
             
         except Exception as e:
-            logger.error(f"Failed to save exam score for {user.username}: {e}")
+            logger.error(f"Failed to save exam score for user_id={user.id}: {e}")
             db.rollback()
             raise e
 
     @staticmethod
     def get_history(db: Session, user: User, skip: int = 0, limit: int = 10) -> Tuple[List[Score], int]:
         """Retrieves paginated exam history for the specified user."""
+        limit = min(limit, 100)  # Guard: cap at 100 to prevent unbounded queries
         query = db.query(Score).filter(Score.user_id == user.id)
         total = query.count()
         results = query.order_by(Score.timestamp.desc()).offset(skip).limit(limit).all()

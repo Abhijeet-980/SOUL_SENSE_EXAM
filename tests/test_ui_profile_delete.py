@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from app.ui.profile import UserProfileView
-from app.models import User
+from backend.fastapi.api.root_models import User
 
 pytestmark = pytest.mark.serial
 

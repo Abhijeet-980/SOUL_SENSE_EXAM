@@ -30,6 +30,8 @@ class PasswordStrengthMeter(tk.Frame):
         self.label.pack(anchor="w")
 
     def update_strength(self, password):
+        from app.validation import is_weak_password
+        
         score = 0
         if len(password) >= 8: score += 1
         if any(c.isupper() for c in password): score += 1
@@ -37,12 +39,19 @@ class PasswordStrengthMeter(tk.Frame):
         if any(c.isdigit() for c in password): score += 1
         if any(not c.isalnum() for c in password): score += 1
         
+        # Override: if password is in the weak/common list, cap strength at 1
+        is_common = password and is_weak_password(password)
+        if is_common:
+            score = min(score, 1)
+        
         # Colors: Gray, Red, Orange, Gold, YellowGreen, Green
         strength_colors = ["#E0E0E0", "#EF4444", "#F59E0B", "#FBBF24", "#84CC16", "#10B981"]
         strength_texts = ["Too Weak", "Weak", "Fair", "Good", "Strong", "Very Strong"]
         
         color = strength_colors[score]
         text = strength_texts[score]
+        if is_common:
+            text = "Weak - Common Password"
         
         # Update segments
         for i in range(5):
@@ -79,6 +88,23 @@ class AppAuth:
 
     def show_login_screen(self):
         """Show login popup on startup"""
+        import requests
+        import uuid
+        
+        # Fetch CAPTCHA
+        captcha_code = ""
+        session_id = ""
+        try:
+            response = requests.get('http://localhost:8000/api/v1/auth/captcha', timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                captcha_code = data.get('captcha_code', '')
+                session_id = data.get('session_id', '')
+        except Exception as e:
+            self.logger.error(f"Failed to fetch CAPTCHA: {e}")
+            captcha_code = "ERROR"
+            session_id = str(uuid.uuid4())
+        
         login_win = tk.Toplevel(self.app.root)
         self.login_window = login_win # Store reference for other methods
         login_win.title("SoulSense Login")
@@ -124,11 +150,16 @@ class AppAuth:
         # Email validation error label for login (only shows for email-like input)
         login_email_error_label = tk.Label(entry_frame, text="", font=("Segoe UI", 8), 
                                            bg=self.app.colors["bg"], fg="#EF4444")
-        login_email_error_label.pack(anchor="w", pady=(0, 10))
+        login_email_error_label.pack(anchor="w", pady=(0, 2))
+        
+        # Email domain suggestion label (Issue #617)
+        login_email_suggestion_label = tk.Label(entry_frame, text="", font=("Segoe UI", 8, "italic"), 
+                                                bg=self.app.colors["bg"], fg="#3B82F6")
+        login_email_suggestion_label.pack(anchor="w", pady=(0, 5))
         
         # Real-time email validation for login (only if input looks like an email)
         def validate_login_email_realtime(event=None):
-            from app.validation import validate_email_strict
+            from app.validation import validate_email_strict, suggest_email_domain
             identifier = username_entry.get().strip()
             # Only validate if it looks like an email (contains @)
             if '@' in identifier:
@@ -137,11 +168,20 @@ class AppAuth:
                     login_email_error_label.config(text="")
                 else:
                     login_email_error_label.config(text=error_msg)
+                
+                # Check for domain suggestions (Issue #617)
+                suggestion = suggest_email_domain(identifier)
+                if suggestion:
+                    login_email_suggestion_label.config(text=f"💡 Did you mean {suggestion}?")
+                else:
+                    login_email_suggestion_label.config(text="")
             else:
                 login_email_error_label.config(text="")
+                login_email_suggestion_label.config(text="")
         
         username_entry.bind("<KeyRelease>", validate_login_email_realtime)
         username_entry.bind("<FocusOut>", validate_login_email_realtime)
+
 
         tk.Label(entry_frame, text="Password", font=("Segoe UI", 10, "bold"),
                  bg=self.app.colors["bg"], fg=self.app.colors["text_primary"]).pack(anchor="w")
@@ -208,6 +248,41 @@ class AppAuth:
         # --- APPLY SECURITY HARDENING (Login) ---
         self._secure_password_entry(password_entry)
 
+        # CAPTCHA Section
+        tk.Label(entry_frame, text="CAPTCHA Verification", font=("Segoe UI", 10, "bold"),
+                 bg=self.app.colors["bg"], fg=self.app.colors["text_primary"]).pack(anchor="w", pady=(10, 5))
+        
+        captcha_frame = tk.Frame(entry_frame, bg=self.app.colors["bg"])
+        captcha_frame.pack(fill="x", pady=(0, 5))
+        
+        captcha_display = tk.Label(captcha_frame, text=captcha_code, font=("Courier", 16, "bold"),
+                                  bg="#F3F4F6", fg="#1F2937", relief="solid", width=8)
+        captcha_display.pack(side="left", padx=(0, 5))
+        
+        def refresh_captcha():
+            nonlocal captcha_code, session_id
+            try:
+                response = requests.get('http://localhost:8000/api/v1/auth/captcha', timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    captcha_code = data.get('captcha_code', '')
+                    session_id = data.get('session_id', '')
+                    captcha_display.config(text=captcha_code)
+                    captcha_entry.delete(0, tk.END)
+            except Exception as e:
+                self.logger.error(f"Failed to refresh CAPTCHA: {e}")
+        
+        refresh_btn = tk.Button(captcha_frame, text="🔄", command=refresh_captcha,
+                               font=("Segoe UI", 10), bg=self.app.colors["bg"], fg=self.app.colors["text_primary"])
+        refresh_btn.pack(side="left")
+        
+        captcha_entry = tk.Entry(entry_frame, font=("Segoe UI", 12))
+        captcha_entry.pack(fill="x", pady=(5, 5))
+        
+        captcha_error_label = tk.Label(entry_frame, text="", font=("Segoe UI", 8), 
+                                      bg=self.app.colors["bg"], fg="#EF4444")
+        captcha_error_label.pack(anchor="w", pady=(0, 5))
+
         # Show Password checkbox
         show_password_var = tk.BooleanVar()
         def toggle_password_visibility():
@@ -249,10 +324,12 @@ class AppAuth:
         def do_login(event=None):
             user = username_entry.get().strip()
             pwd = password_entry.get().strip()
+            captcha_input = captcha_entry.get().strip()
             
             # Clear previous error messages
             login_email_error_label.config(text="")
             login_password_error_label.config(text="")
+            captcha_error_label.config(text="")
             
             # Field-specific validation with inline errors
             has_error = False
@@ -265,33 +342,71 @@ class AppAuth:
                 if not has_error:
                     password_entry.focus_set()
                 has_error = True
+            if not captcha_input:
+                captcha_error_label.config(text="CAPTCHA is required")
+                if not has_error:
+                    captcha_entry.focus_set()
+                has_error = True
             
             if has_error:
                 return
 
-            success, msg, err_code = self.auth_manager.login_user(user, pwd)
-            
-            if success:
-                self.app.username = user
-                # Save session if Remember Me is checked
-                session_storage.save_session(user, remember_me_var.get())
-                self._load_user_settings(user)
-                login_win.destroy()
-                self._post_login_init()
-            elif err_code == "AUTH_2FA_REQUIRED":
-                # 2FA Required
-                # Temporarily save session attempt?
-                self.show_2fa_login_dialog(user, login_win)
-            elif err_code == "AUTH002":
-                # Rate limit exceeded - show countdown (Issue #565)
-                remaining = self.auth_manager.get_lockout_remaining_seconds(user)
-                if remaining > 0:
-                    update_countdown(remaining, login_btn)
+            # Validate CAPTCHA and login via backend API
+            try:
+                response = requests.post('http://localhost:8000/api/v1/auth/login', 
+                                       json={
+                                           'identifier': user,
+                                           'password': pwd,
+                                           'captcha_input': captcha_input,
+                                           'session_id': session_id
+                                       }, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    # Store token for session management
+                    self.session_token = data.get('access_token')
+                    self.app.username = user
+                    # Save session if Remember Me is checked
+                    session_storage.save_session(user, remember_me_var.get())
+                    self._load_user_settings(user)
+                    login_win.destroy()
+                    self._post_login_init()
+                elif response.status_code == 401:
+                    error_data = response.json()
+                    code = error_data.get('detail', {}).get('code')
+                    if code == 'AUTH003':
+                        captcha_error_label.config(text="Invalid CAPTCHA. Please try again!")
+                        refresh_captcha()  # Regenerate CAPTCHA
+                    else:
+                        tmb.showerror("Login Failed", error_data.get('detail', {}).get('message', 'Invalid credentials'))
                 else:
-                    # Fallback: show error if can't determine remaining time
-                    rate_limit_label.config(text="⏳ Too many attempts. Please wait and try again.")
-            else:
-                tmb.showerror("Login Failed", msg)
+                    error_data = response.json()
+                    tmb.showerror("Login Failed", error_data.get('detail', {}).get('message', 'Login failed'))
+                    
+            except requests.exceptions.RequestException as e:
+                self.logger.error(f"Login request failed: {e}")
+                # Fallback to local auth if backend is unavailable
+                success, msg, err_code = self.auth_manager.login_user(user, pwd)
+                
+                if success:
+                    self.app.username = user
+                    # Save session if Remember Me is checked
+                    session_storage.save_session(user, remember_me_var.get())
+                    self._load_user_settings(user)
+                    login_win.destroy()
+                    self._post_login_init()
+                elif err_code == "AUTH_2FA_REQUIRED":
+                    # 2FA Required
+                    self.show_2fa_login_dialog(user, login_win)
+                elif err_code == "AUTH002":
+                    # Rate limit exceeded - show countdown
+                    remaining = self.auth_manager.get_lockout_remaining_seconds(user)
+                    if remaining > 0:
+                        update_countdown(remaining, login_btn)
+                    else:
+                        rate_limit_label.config(text="⏳ Too many attempts. Please wait and try again.")
+                else:
+                    tmb.showerror("Login Failed", msg)
 
         # Added this function for the Esc key
         def clear_fields(event=None):
@@ -383,15 +498,15 @@ class AppAuth:
         """Show OTP Verification Dialog"""
         otp_window = tk.Toplevel(self.app.root)
         otp_window.title("Verify Code")
-        otp_window.geometry("400x300")
+        otp_window.geometry("400x380")
         otp_window.configure(bg=self.app.colors["bg"])
         
         # Center
         screen_width = otp_window.winfo_screenwidth()
         screen_height = otp_window.winfo_screenheight()
         x = (screen_width - 400) // 2
-        y = (screen_height - 300) // 2
-        otp_window.geometry(f"400x300+{x}+{y}")
+        y = (screen_height - 380) // 2
+        otp_window.geometry(f"400x380+{x}+{y}")
         
         tk.Label(otp_window, text="Enter Verification Code", font=("Segoe UI", 14, "bold"), 
                 bg=self.app.colors["bg"], fg=self.app.colors["text_primary"]).pack(pady=20)
@@ -400,7 +515,39 @@ class AppAuth:
                 font=("Segoe UI", 9), bg=self.app.colors["bg"], fg=self.app.colors["text_secondary"]).pack(pady=(0, 20))
         
         code_var = tk.StringVar()
-        tk.Entry(otp_window, textvariable=code_var, font=("Segoe UI", 14), width=10, justify="center").pack(pady=10)
+        entry = tk.Entry(otp_window, textvariable=code_var, font=("Segoe UI", 14), width=10, justify="center")
+        entry.pack(pady=10)
+        
+        # Attempts counter label
+        attempts_label = tk.Label(otp_window, text="3 attempts remaining", font=("Segoe UI", 9),
+                                  bg=self.app.colors["bg"], fg=self.app.colors["text_secondary"])
+        attempts_label.pack(pady=(0, 5))
+        
+        def update_attempts_label():
+            """Update the attempts label based on remaining attempts."""
+            try:
+                from app.db import get_session
+                from app.models import User, PersonalProfile
+                from app.auth.otp_manager import OTPManager
+                session = get_session()
+                # Find user by email
+                profile = session.query(PersonalProfile).filter_by(email=email.lower().strip()).first()
+                if profile:
+                    user = session.query(User).filter_by(id=profile.user_id).first()
+                    if user:
+                        remaining = OTPManager.get_remaining_attempts(user.id, "RESET_PASSWORD", db_session=session)
+                        if remaining > 0:
+                            attempts_label.config(text=f"{remaining} attempt(s) remaining", fg="#F59E0B")
+                        else:
+                            attempts_label.config(text="Code locked - Please resend", fg="#EF4444")
+                            entry.config(state="disabled")
+                    else:
+                        pass
+                else:
+                    pass
+                session.close()
+            except Exception:
+                pass
         
         def on_verify():
             code = code_var.get().strip()
@@ -408,25 +555,95 @@ class AppAuth:
                 tmb.showerror("Error", "Code must be 6 numeric digits.")
                 return
             
-            # We don't verify against server just yet, we pass code to next step?
-            # Security: Best to verify here?
-            # The AuthManager.complete_password_reset verification happens in next step along with new password.
-            # But UX is better if we verify code first.
-            # To verify code without password, we need a new method verify_otp_only?
-            # Or we just pass it to next step.
-            # Let's pass to next step.
-            otp_window.destroy()
-            self.show_reset_password_dialog(email, code)
+            # Verify OTP before proceeding
+            try:
+                from app.db import get_session
+                from app.models import User, PersonalProfile
+                from app.auth.otp_manager import OTPManager
+                session = get_session()
+                # Find user by email
+                profile = session.query(PersonalProfile).filter_by(email=email.lower().strip()).first()
+                if not profile:
+                    tmb.showerror("Error", "Invalid request.", parent=otp_window)
+                    session.close()
+                    return
+                
+                user = session.query(User).filter_by(id=profile.user_id).first()
+                if not user:
+                    tmb.showerror("Error", "Invalid request.", parent=otp_window)
+                    session.close()
+                    return
+                
+                # Check if OTP is locked first
+                is_locked, lock_msg = OTPManager.is_otp_locked(user.id, "RESET_PASSWORD", db_session=session)
+                if is_locked:
+                    tmb.showerror("Code Locked", lock_msg, parent=otp_window)
+                    update_attempts_label()
+                    session.close()
+                    return
+                
+                # Verify the OTP
+                success, verify_msg = OTPManager.verify_otp(user.id, code, "RESET_PASSWORD", db_session=session)
+                session.close()
+                
+                if success:
+                    otp_window.destroy()
+                    self.show_reset_password_dialog(email, code)
+                else:
+                    tmb.showerror("Verification Failed", verify_msg, parent=otp_window)
+                    update_attempts_label()
+                    
+            except Exception as e:
+                tmb.showerror("Error", f"Verification error: {e}", parent=otp_window)
 
         tk.Button(otp_window, text="Verify", command=on_verify, 
                  bg=self.app.colors["primary"], fg="white", font=("Segoe UI", 10, "bold"), 
-                 padx=20, pady=5).pack(pady=(20, 10))
+                 padx=20, pady=5).pack(pady=(15, 5))
+
+        # --- Resend OTP with Cooldown ---
+        resend_frame = tk.Frame(otp_window, bg=self.app.colors["bg"])
+        resend_frame.pack(pady=(5, 5))
+
+        cooldown_label = tk.Label(resend_frame, text="", font=("Segoe UI", 9),
+                                  bg=self.app.colors["bg"], fg=self.app.colors["text_secondary"])
+        cooldown_label.pack()
+
+        resend_btn = tk.Button(resend_frame, text="Resend Code", font=("Segoe UI", 9, "bold"),
+                               bg=self.app.colors["bg"], fg=self.app.colors["primary"],
+                               relief="flat", cursor="hand2")
+        resend_btn.pack(pady=(2, 0))
+
+        _resend_timer_id = [None]
+
+        def start_cooldown(seconds):
+            """Disable resend button and show countdown."""
+            if seconds > 0:
+                resend_btn.config(state="disabled", fg="#9CA3AF", cursor="arrow")
+                cooldown_label.config(text=f"Resend available in {seconds}s")
+                _resend_timer_id[0] = otp_window.after(1000, lambda: start_cooldown(seconds - 1))
+            else:
+                resend_btn.config(state="normal", fg=self.app.colors["primary"], cursor="hand2")
+                cooldown_label.config(text="Didn't receive a code?")
+                _resend_timer_id[0] = None
+
+        def on_resend():
+            success, msg = self.auth_manager.initiate_password_reset(email)
+            if success:
+                tmb.showinfo("Code Sent", "A new verification code has been sent.", parent=otp_window)
+                start_cooldown(60)
+            else:
+                tmb.showerror("Error", msg, parent=otp_window)
+
+        resend_btn.config(command=on_resend)
+
+        # Start with cooldown active (OTP was just sent)
+        start_cooldown(60)
                  
         # Change Email option
         tk.Button(otp_window, text="Change Email", 
                  command=lambda: [otp_window.destroy(), self.show_forgot_password()],
                  bg=self.app.colors["bg"], fg=self.app.colors["primary"],
-                 font=("Segoe UI", 9), relief="flat", cursor="hand2").pack(pady=(0, 20))
+                 font=("Segoe UI", 9), relief="flat", cursor="hand2").pack(pady=(5, 10))
 
     def show_reset_password_dialog(self, email, code):
         """Show New Password Dialog"""
@@ -546,6 +763,11 @@ class AppAuth:
                  bg=self.app.colors.get("surface", "#FFFFFF"), fg=self.app.colors["text_primary"]).pack(anchor="w")
         first_name_entry = tk.Entry(fn_frame, font=("Segoe UI", 10), bg=self.app.colors.get("entry_bg", "#F8FAFC"), relief="flat", highlightthickness=1)
         first_name_entry.pack(fill="x", ipady=4)
+        
+        # First name error label
+        fn_error_label = tk.Label(fn_frame, text="", font=("Segoe UI", 8),
+                                  bg=self.app.colors.get("surface", "#FFFFFF"), fg="#EF4444")
+        fn_error_label.pack(anchor="w")
 
         ln_frame = tk.Frame(form_frame, bg=self.app.colors.get("surface", "#FFFFFF"))
         ln_frame.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=(0, 8))
@@ -553,6 +775,11 @@ class AppAuth:
                  bg=self.app.colors.get("surface", "#FFFFFF"), fg=self.app.colors["text_primary"]).pack(anchor="w")
         last_name_entry = tk.Entry(ln_frame, font=("Segoe UI", 10), bg=self.app.colors.get("entry_bg", "#F8FAFC"), relief="flat", highlightthickness=1)
         last_name_entry.pack(fill="x", ipady=4)
+        
+        # Last name error label
+        ln_error_label = tk.Label(ln_frame, text="", font=("Segoe UI", 8),
+                                  bg=self.app.colors.get("surface", "#FFFFFF"), fg="#EF4444")
+        ln_error_label.pack(anchor="w")
 
         # Row 1: Username & Email
         un_frame = tk.Frame(form_frame, bg=self.app.colors.get("surface", "#FFFFFF"))
@@ -561,6 +788,11 @@ class AppAuth:
                  bg=self.app.colors.get("surface", "#FFFFFF"), fg=self.app.colors["text_primary"]).pack(anchor="w")
         username_signup_entry = tk.Entry(un_frame, font=("Segoe UI", 10), bg=self.app.colors.get("entry_bg", "#F8FAFC"), relief="flat", highlightthickness=1)
         username_signup_entry.pack(fill="x", ipady=4)
+        
+        # Username error label
+        un_error_label = tk.Label(un_frame, text="", font=("Segoe UI", 8),
+                                  bg=self.app.colors.get("surface", "#FFFFFF"), fg="#EF4444")
+        un_error_label.pack(anchor="w")
 
         em_frame = tk.Frame(form_frame, bg=self.app.colors.get("surface", "#FFFFFF"))
         em_frame.grid(row=1, column=1, sticky="ew", padx=(5, 0), pady=(0, 8))
@@ -574,12 +806,18 @@ class AppAuth:
                                      bg=self.app.colors.get("surface", "#FFFFFF"), fg="#EF4444")
         email_error_label.pack(anchor="w")
         
+        # Email domain suggestion label (Issue #617)
+        email_suggestion_label = tk.Label(em_frame, text="", font=("Segoe UI", 8, "italic"), 
+                                          bg=self.app.colors.get("surface", "#FFFFFF"), fg="#3B82F6")
+        email_suggestion_label.pack(anchor="w")
+        
         # Real-time email validation function
         def validate_email_realtime(event=None):
-            from app.validation import validate_email_strict
+            from app.validation import validate_email_strict, suggest_email_domain
             email = email_entry.get().strip()
             if not email:
                 email_error_label.config(text="")
+                email_suggestion_label.config(text="")
                 email_entry.config(highlightbackground=self.app.colors.get("border", "#E2E8F0"), highlightcolor=self.app.colors.get("border", "#E2E8F0"))
                 return
             is_valid, error_msg = validate_email_strict(email)
@@ -589,10 +827,18 @@ class AppAuth:
             else:
                 email_error_label.config(text=error_msg)
                 email_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+            
+            # Check for domain suggestions (Issue #617)
+            suggestion = suggest_email_domain(email)
+            if suggestion:
+                email_suggestion_label.config(text=f"💡 Did you mean {suggestion}?")
+            else:
+                email_suggestion_label.config(text="")
         
         # Bind validation to key release and focus out events
         email_entry.bind("<KeyRelease>", validate_email_realtime)
         email_entry.bind("<FocusOut>", validate_email_realtime)
+
 
         # Row 2: Age & Gender
         ag_frame = tk.Frame(form_frame, bg=self.app.colors.get("surface", "#FFFFFF"))
@@ -601,6 +847,11 @@ class AppAuth:
                  bg=self.app.colors.get("surface", "#FFFFFF"), fg=self.app.colors["text_primary"]).pack(anchor="w")
         age_entry = tk.Entry(ag_frame, font=("Segoe UI", 10), bg=self.app.colors.get("entry_bg", "#F8FAFC"), relief="flat", highlightthickness=1)
         age_entry.pack(fill="x", ipady=4)
+        
+        # Age error label
+        ag_error_label = tk.Label(ag_frame, text="", font=("Segoe UI", 8),
+                                  bg=self.app.colors.get("surface", "#FFFFFF"), fg="#EF4444")
+        ag_error_label.pack(anchor="w")
 
         ge_frame = tk.Frame(form_frame, bg=self.app.colors.get("surface", "#FFFFFF"))
         ge_frame.grid(row=2, column=1, sticky="ew", padx=(5, 0), pady=(0, 8))
@@ -676,9 +927,16 @@ class AppAuth:
         terms_cb = tk.Checkbutton(form_frame, text="I accept the Terms and Conditions", variable=terms_var,
                                  font=("Segoe UI", 9), bg=self.app.colors.get("surface", "#FFFFFF"),
                                  fg=self.app.colors["text_secondary"], activebackground=self.app.colors.get("surface", "#FFFFFF"))
-        terms_cb.grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        terms_cb.grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 5))
+        
+        # Terms error label
+        terms_error_label = tk.Label(form_frame, text="", font=("Segoe UI", 8),
+                                     bg=self.app.colors.get("surface", "#FFFFFF"), fg="#EF4444")
+        terms_error_label.grid(row=5, column=0, columnspan=2, sticky="w", padx=(20, 0), pady=(0, 10))
 
         def do_signup():
+            from app.validation import validate_email_strict, is_weak_password
+            
             first_name = first_name_entry.get().strip()
             last_name = last_name_entry.get().strip()
             username = username_signup_entry.get().strip()
@@ -688,50 +946,149 @@ class AppAuth:
             password = password_entry.get()
             confirm_password = confirm_password_entry.get()
 
-            # Validations
+            # Clear all previous errors
+            fn_error_label.config(text="")
+            ln_error_label.config(text="")
+            un_error_label.config(text="")
+            email_error_label.config(text="")
+            ag_error_label.config(text="")
+            password_mismatch_label.config(text="")
+            terms_error_label.config(text="")
+            
+            # Reset field highlights to default
+            for entry_widget in [first_name_entry, last_name_entry, username_signup_entry, email_entry, age_entry, password_entry, confirm_password_entry]:
+                entry_widget.config(highlightbackground=self.app.colors.get("border", "#E2E8F0"), highlightcolor=self.app.colors.get("border", "#E2E8F0"))
+            
+            # Validate all fields and collect errors
+            has_error = False
+            first_field_with_error = None
+            
+            # Check terms - must be first check
             if not terms_var.get():
-                tk.messagebox.showerror("Error", "You must accept the Terms and Conditions")
-                return
+                terms_error_label.config(text="You must accept the Terms and Conditions")
+                if not first_field_with_error:
+                    first_field_with_error = terms_cb
+                has_error = True
+            
+            # Check first name
             if not first_name:
-                tk.messagebox.showerror("Error", "First name is required")
-                return
+                fn_error_label.config(text="First name is required")
+                first_name_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = first_name_entry
+                has_error = True
+            
+            # Check username
             if not username:
-                tk.messagebox.showerror("Error", "Username is required")
-                return
+                un_error_label.config(text="Username is required")
+                username_signup_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = username_signup_entry
+                has_error = True
+            
+            # Check email
             if not email:
-                tk.messagebox.showerror("Error", "Email is required")
-                email_entry.focus_set()
-                return
-            # Strict email validation
-            from app.validation import validate_email_strict
-            email_valid, email_error = validate_email_strict(email)
-            if not email_valid:
-                tk.messagebox.showerror("Error", email_error)
-                email_entry.focus_set()
-                return
+                email_error_label.config(text="Email is required")
+                email_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = email_entry
+                has_error = True
+            elif email:
+                # Strict email validation
+                email_valid, email_error = validate_email_strict(email)
+                if not email_valid:
+                    email_error_label.config(text=email_error)
+                    email_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                    if not first_field_with_error:
+                        first_field_with_error = email_entry
+                    has_error = True
+                else:
+                    email_error_label.config(text="")
+                    email_entry.config(highlightbackground="#10B981", highlightcolor="#10B981")
+            
+            # Check age
             if not age_str:
-                tmb.showerror("Error", "Age is required")
-                return
-            if not age_str.isdigit():
-                tmb.showerror("Error", "Age must be a number")
-                return
-            age = int(age_str)
-            if age < 13 or age > 120:
-                tmb.showerror("Error", "Age must be between 13 and 120")
-                return
+                ag_error_label.config(text="Age is required")
+                age_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = age_entry
+                has_error = True
+            elif not age_str.isdigit():
+                ag_error_label.config(text="Age must be a number")
+                age_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = age_entry
+                has_error = True
+            else:
+                age = int(age_str)
+                if age < 13 or age > 120:
+                    ag_error_label.config(text="Age must be between 13 and 120")
+                    age_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                    if not first_field_with_error:
+                        first_field_with_error = age_entry
+                    has_error = True
+            
+            # Check password
             if not password:
-                tmb.showerror("Error", "Password is required")
-                return
-            if password != confirm_password:
-                tmb.showerror("Error", "Passwords do not match")
-                return
+                password_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                password_mismatch_label.config(text="Password is required")
+                if not first_field_with_error:
+                    first_field_with_error = password_entry
+                has_error = True
+            elif is_weak_password(password):
+                password_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                password_mismatch_label.config(text="This password is too common. Please choose a stronger password.")
+                if not first_field_with_error:
+                    first_field_with_error = password_entry
+                has_error = True
+            else:
+                # Perform comprehensive password security validation
+                try:
+                    from app.validation import validate_password_security
+                except ImportError:
+                    validate_password_security = None
 
-            # Register user
+                if validate_password_security is not None:
+                    is_secure, error_message = validate_password_security(password)
+                    if not is_secure:
+                        password_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                        password_mismatch_label.config(
+                            text=error_message or "Password does not meet security requirements."
+                        )
+                        if not first_field_with_error:
+                            first_field_with_error = password_entry
+                        has_error = True
+            # Check confirm password
+            if password and confirm_password and password != confirm_password:
+                password_mismatch_label.config(text="Passwords do not match")
+                confirm_password_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = confirm_password_entry
+                has_error = True
+            elif password and not confirm_password:
+                password_mismatch_label.config(text="Please confirm your password")
+                confirm_password_entry.config(highlightbackground="#EF4444", highlightcolor="#EF4444")
+                if not first_field_with_error:
+                    first_field_with_error = confirm_password_entry
+                has_error = True
+            
+            # If there are errors, focus the first field with error and return (data is preserved)
+            if has_error:
+                if first_field_with_error:
+                    try:
+                        first_field_with_error.focus_set()
+                    except Exception:
+                        pass  # Some widgets may not support focus_set()
+                return
+            
+            # All validations passed - proceed with registration
+            age = int(age_str)
             success, msg, _ = self.auth_manager.register_user(username, email, first_name, last_name, age, gender, password)
             if success:
                 tmb.showinfo("Success", "Account created successfully! You can now login.")
                 signup_win.destroy()
             else:
+                # Registration failed - show error but keep form open with data preserved
                 tmb.showerror("Registration Failed", msg)
 
         # Buttons with modern styling
@@ -851,7 +1208,7 @@ class AppAuth:
 
         dialog = tk.Toplevel(self.app.root)
         dialog.title("2FA Verification")
-        dialog.geometry("350x250")
+        dialog.geometry("350x340")
         dialog.transient(self.app.root)
         dialog.grab_set()
         
@@ -859,7 +1216,7 @@ class AppAuth:
         screen_width = dialog.winfo_screenwidth()
         screen_height = dialog.winfo_screenheight()
         x = (screen_width - 350) // 2
-        y = (screen_height - 250) // 2
+        y = (screen_height - 340) // 2
         dialog.geometry(f"+{x}+{y}")
         
         tk.Label(dialog, text="Two-Factor Authentication", font=("Segoe UI", 12, "bold"), pady=15).pack()
@@ -871,6 +1228,29 @@ class AppAuth:
         entry.pack(pady=5)
         entry.focus()
         
+        # Attempts counter label
+        attempts_label = tk.Label(dialog, text="3 attempts remaining", font=("Segoe UI", 9), fg="#666")
+        attempts_label.pack(pady=(0, 5))
+        
+        def update_attempts_label():
+            """Update the attempts label based on remaining attempts."""
+            try:
+                from app.db import get_session
+                from app.models import User
+                session = get_session()
+                user = session.query(User).filter_by(username=username).first()
+                if user:
+                    from app.auth.otp_manager import OTPManager
+                    remaining = OTPManager.get_remaining_attempts(user.id, "LOGIN_CHALLENGE", db_session=session)
+                    if remaining > 0:
+                        attempts_label.config(text=f"{remaining} attempt(s) remaining", fg="#F59E0B")
+                    else:
+                        attempts_label.config(text="Code locked - Please resend", fg="#EF4444")
+                        entry.config(state="disabled")
+                session.close()
+            except Exception:
+                pass
+        
         def on_verify(event=None):
             code = code_var.get().strip()
             if len(code) != 6 or not code.isdigit():
@@ -881,11 +1261,6 @@ class AppAuth:
             
             if success:
                 self.app.username = username
-                # Note: Session storage needs update if we want to remember 2FA status?
-                # For now just proceed.
-                # If "Remember Me" was checked in previous screen? 
-                # We lost that state. Ideally pass it or save it before hiding.
-                # Assuming session was saved loosely or not at all if we didn't complete login.
                 self.auth_manager.current_user = username
                 self._load_user_settings(username)
                 
@@ -897,6 +1272,7 @@ class AppAuth:
                 self._post_login_init()
             else:
                 tmb.showerror("Verification Failed", msg, parent=dialog)
+                update_attempts_label()
                 
         def on_cancel():
             dialog.destroy()
@@ -907,9 +1283,48 @@ class AppAuth:
 
         tk.Button(dialog, text="Verify", command=on_verify, 
                  bg=self.app.colors["primary"], fg="white", font=("Segoe UI", 10, "bold"), 
-                 padx=20, pady=5).pack(pady=15)
+                 padx=20, pady=5).pack(pady=(10, 5))
+
+        # --- Resend OTP with Cooldown ---
+        resend_frame = tk.Frame(dialog, bg=dialog.cget("bg"))
+        resend_frame.pack(pady=(5, 5))
+
+        cooldown_label = tk.Label(resend_frame, text="", font=("Segoe UI", 9), fg="#666",
+                                  bg=dialog.cget("bg"))
+        cooldown_label.pack()
+
+        resend_btn = tk.Button(resend_frame, text="Resend Code", font=("Segoe UI", 9, "bold"),
+                               bg=dialog.cget("bg"), fg=self.app.colors["primary"],
+                               relief="flat", cursor="hand2")
+        resend_btn.pack(pady=(2, 0))
+
+        _resend_timer_id = [None]
+
+        def start_cooldown(seconds):
+            """Disable resend button and show countdown."""
+            if seconds > 0:
+                resend_btn.config(state="disabled", fg="#9CA3AF", cursor="arrow")
+                cooldown_label.config(text=f"Resend available in {seconds}s")
+                _resend_timer_id[0] = dialog.after(1000, lambda: start_cooldown(seconds - 1))
+            else:
+                resend_btn.config(state="normal", fg=self.app.colors["primary"], cursor="hand2")
+                cooldown_label.config(text="Didn't receive a code?")
+                _resend_timer_id[0] = None
+
+        def on_resend():
+            success, msg = self.auth_manager.resend_2fa_login_otp(username)
+            if success:
+                tmb.showinfo("Code Sent", msg, parent=dialog)
+                start_cooldown(60)
+            else:
+                tmb.showerror("Error", msg, parent=dialog)
+
+        resend_btn.config(command=on_resend)
+
+        # Start with cooldown active (OTP was just sent during login)
+        start_cooldown(60)
                  
-        tk.Button(dialog, text="Cancel", command=on_cancel, relief="flat", fg="#666").pack()
+        tk.Button(dialog, text="Cancel", command=on_cancel, relief="flat", fg="#666").pack(pady=(5, 0))
         
         dialog.bind("<Return>", on_verify)
         dialog.protocol("WM_DELETE_WINDOW", on_cancel)

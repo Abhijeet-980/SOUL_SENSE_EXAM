@@ -32,7 +32,7 @@ import sys
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from app.models import Base
+from backend.fastapi.api.root_models import Base
 import backend.fastapi.api.root_models as backend_models
 
 import tkinter as tk
@@ -165,6 +165,7 @@ def mock_tk_variables(monkeypatch):
     class MockWidget(MagicMock):
         def __init__(self, master=None, **kwargs):
             super().__init__()
+            self.master = master  # Explicitly set to prevent infinite mock chain
             self._config = {}
             self.master = master  # Explicitly set master to prevent infinite traversal
             # Add missing methods that are called during window operations

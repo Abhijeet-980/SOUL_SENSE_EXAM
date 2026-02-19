@@ -38,7 +38,7 @@ You can check the current API version in several ways:
    ```json
    {
      "status": "healthy",
-     "timestamp": "2023-01-15T12:00:00Z",
+     "timestamp": "2026-02-15T12:00:00Z",
      "version": "1.0.0"
    }
    ```

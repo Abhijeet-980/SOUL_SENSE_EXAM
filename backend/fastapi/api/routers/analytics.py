@@ -1,5 +1,5 @@
 """Analytics API router - Aggregated, non-sensitive data only."""
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from ..services.db_service import get_db
@@ -8,11 +8,31 @@ from ..schemas import (
     AnalyticsSummary,
     TrendAnalytics,
     BenchmarkComparison,
-    PopulationInsights
+    PopulationInsights,
+    AnalyticsEventCreate
 )
 from ..middleware.rate_limiter import rate_limit_analytics
 
 router = APIRouter()
+
+
+@router.post("/events", status_code=201, dependencies=[Depends(rate_limit_analytics)])
+async def track_event(
+    event: AnalyticsEventCreate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Log a tracking event (signup drop-off, etc).
+    
+    **Rate Limited**: 30 requests per minute per IP
+    
+    **Data Privacy**:
+    - No PII is logged (enforced by schema).
+    - IP address is stored for security auditing.
+    """
+    AnalyticsService.log_event(db, event.dict(), ip_address=request.client.host)
+    return {"status": "ok"}
 
 
 @router.get("/summary", response_model=AnalyticsSummary, dependencies=[Depends(rate_limit_analytics)])
