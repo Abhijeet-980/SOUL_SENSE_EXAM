@@ -10,6 +10,13 @@ export interface PersonalProfile {
   email?: string;
   occupation?: string;
   education_level?: string;
+  bio?: string;
+  avatar_url?: string;
+  member_since?: string;
+  eq_stats?: {
+    last_score?: number;
+    total_assessments?: number;
+  };
 }
 
 export interface MedicalProfile {

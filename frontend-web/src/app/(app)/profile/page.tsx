@@ -91,7 +91,13 @@ export default function ProfilePage() {
                     exit={{ opacity: 0, y: -20 }}
                     transition={{ duration: 0.3 }}
                   >
-                    <ProfileCard profile={profile} user={user} />
+                    <ProfileCard 
+                      profile={profile} 
+                      user={user} 
+                      variant="full"
+                      editable={true}
+                      onEdit={handleEditToggle}
+                    />
                   </motion.div>
                 ) : (
                   <motion.div
