@@ -3,9 +3,11 @@ import asyncio
 import logging
 import traceback
 import uuid
+import time
 from fastapi.responses import JSONResponse
 # Triggering reload for new community routes
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from .config import get_settings_instance
 from .api.v1.router import api_router as api_v1_router
@@ -22,6 +24,41 @@ class VersionHeaderMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware to track API response times and performance metrics.
+    Logs slow requests and adds performance headers.
+    """
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+
+        # Process request
+        response = await call_next(request)
+
+        # Calculate duration
+        process_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+
+        # Add performance header
+        response.headers["X-Process-Time"] = f"{process_time:.2f}"
+
+        # Log slow requests (> 500ms)
+        if process_time > 500:
+            logger = logging.getLogger("api.performance")
+            logger.warning(
+                f"Slow request: {request.method} {request.url.path} took {process_time:.2f}ms"
+            )
+
+        # Log all requests in debug mode
+        settings = get_settings_instance()
+        if settings.debug:
+            logger = logging.getLogger("api.requests")
+            logger.info(
+                f"{request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.2f}ms"
+            )
+
+        return response
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="SoulSense API",
@@ -31,13 +68,19 @@ def create_app() -> FastAPI:
         redoc_url="/redoc"
     )
 
+    # Performance Monitoring Middleware (inner-most for accurate timing)
+    app.add_middleware(PerformanceMonitoringMiddleware)
+
+    # GZip compression middleware for response optimization
+    app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
+
     # Security Headers Middleware
     from .middleware.security import SecurityHeadersMiddleware
     app.add_middleware(SecurityHeadersMiddleware)
 
     # Register V1 API Router
     app.include_router(api_v1_router, prefix="/api/v1")
-    
+
     # Register Health endpoints at root level for orchestration
     app.include_router(health_router, tags=["Health"])
 
