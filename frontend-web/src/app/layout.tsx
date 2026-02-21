@@ -1,10 +1,11 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import '@/styles/globals.css';
 import { ThemeProvider, NavbarController } from '@/components/layout';
 import { ToastProvider } from '@/components/ui';
 import { NetworkErrorBanner } from '@/components/common';
 import { AuthProvider } from '@/hooks/useAuth';
+import { SkipLinks } from '@/components/accessibility';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
@@ -19,6 +20,26 @@ export const metadata: Metadata = {
     'Self-Awareness',
     'Professional Growth',
   ],
+  authors: [{ name: 'Soul Sense' }],
+  creator: 'Soul Sense',
+  publisher: 'Soul Sense',
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
+  ],
+  colorScheme: 'light dark',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -31,11 +52,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange
         >
+          <SkipLinks />
           <ToastProvider>
             <AuthProvider>
               <NetworkErrorBanner />
               <NavbarController />
-              {children}
+              <div id="main-content" role="main" tabIndex={-1}>
+                {children}
+              </div>
             </AuthProvider>
           </ToastProvider>
         </ThemeProvider>

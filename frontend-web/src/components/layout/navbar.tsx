@@ -80,13 +80,19 @@ export function Navbar() {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b bg-background/80 backdrop-blur-md">
       <nav
+        id="navigation"
         className="container mx-auto flex items-center justify-between p-4 lg:px-8"
-        aria-label="Global"
+        aria-label="Main navigation"
+        role="navigation"
       >
         <div className="flex lg:flex-1">
-          <Link href="/" className="-m-1.5 p-1.5 flex items-center gap-2 group">
+          <Link
+            href="/"
+            className="-m-1.5 p-1.5 flex items-center gap-2 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Soul Sense Home"
+          >
             <div className="bg-primary/10 p-2 rounded-xl group-hover:bg-primary/20 transition-colors">
-              <Rocket className="h-6 w-6 text-primary" />
+              <Rocket className="h-6 w-6 text-primary" aria-hidden="true" />
             </div>
             <span className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
               SOUL SENSE
@@ -100,21 +106,24 @@ export function Navbar() {
               variant="ghost"
               size="icon"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
             >
               {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
           )}
           <button
             type="button"
-            className="-m-2.5 inline-flex items-center justify-center rounded-md p-2.5 text-foreground"
+            className="-m-2.5 inline-flex items-center justify-center rounded-md p-2.5 text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => setMobileMenuOpen(true)}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-menu"
           >
             <span className="sr-only">Open main menu</span>
             <Menu className="h-6 w-6" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="hidden lg:flex lg:gap-x-12">
+        <div className="hidden lg:flex lg:gap-x-12" role="menubar">
           {!isLoading &&
             navLinks.map((item) => {
               const Icon = item.icon;
@@ -124,9 +133,11 @@ export function Navbar() {
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    'group flex items-center gap-x-2 text-sm font-semibold leading-6 transition-colors',
-                    isActive ? 'text-primary' : 'text-foreground/70 hover:text-primary'
+                    'group flex items-center gap-x-2 text-sm font-semibold leading-6 transition-colors rounded-md px-2 py-1',
+                    isActive ? 'text-primary bg-primary/10' : 'text-foreground/70 hover:text-primary hover:bg-accent'
                   )}
+                  aria-current={isActive ? 'page' : undefined}
+                  role="menuitem"
                 >
                   {Icon && (
                     <Icon
@@ -134,9 +145,10 @@ export function Navbar() {
                         'h-4 w-4 transition-colors',
                         isActive ? 'text-primary' : 'text-foreground/50 group-hover:text-primary'
                       )}
+                      aria-hidden="true"
                     />
                   )}
-                  {item.name}
+                  <span>{item.name}</span>
                 </Link>
               );
             })}
@@ -149,6 +161,7 @@ export function Navbar() {
               size="icon"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               className="rounded-full"
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
             >
               {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
@@ -158,12 +171,18 @@ export function Navbar() {
             <div className="relative" ref={userMenuRef}>
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-2 p-1 pl-2 rounded-full border hover:bg-accent transition-colors"
+                className="flex items-center gap-2 p-1 pl-2 rounded-full border hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-expanded={userMenuOpen}
+                aria-haspopup="menu"
+                id="user-menu-button"
               >
-                <div className="flex flex-col items-end mr-1">
+                <div className="flex flex-col items-end mr-1" aria-hidden="true">
                   <span className="text-sm font-semibold leading-none">{user?.name || 'User'}</span>
                 </div>
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                <div
+                  className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs"
+                  aria-hidden="true"
+                >
                   {getInitials(user?.name || 'U')}
                 </div>
                 <ChevronDown
@@ -171,7 +190,9 @@ export function Navbar() {
                     'h-4 w-4 text-muted-foreground transition-transform mr-1',
                     userMenuOpen && 'transform rotate-180'
                   )}
+                  aria-hidden="true"
                 />
+                <span className="sr-only">User menu</span>
               </button>
 
               <AnimatePresence>
@@ -182,36 +203,44 @@ export function Navbar() {
                     exit={{ opacity: 0, y: 10 }}
                     transition={{ duration: 0.2 }}
                     className="absolute right-0 top-full mt-2 w-56 rounded-xl border bg-popover p-1 shadow-lg text-popover-foreground outline-none"
+                    role="menu"
+                    aria-labelledby="user-menu-button"
+                    aria-orientation="vertical"
                   >
-                    <div className="px-2 py-1.5 text-sm font-semibold text-foreground/50 border-b mb-1">
+                    <div className="px-2 py-1.5 text-sm font-semibold text-foreground/50 border-b mb-1" role="none">
                       My Account
                     </div>
-                    {/* Placeholder for Profile/Settings until implemented */}
                     <Link
                       href="/profile"
                       className="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
                       onClick={() => setUserMenuOpen(false)}
+                      role="menuitem"
+                      tabIndex={0}
                     >
-                      <User className="mr-2 h-4 w-4" />
+                      <User className="mr-2 h-4 w-4" aria-hidden="true" />
                       <span>Profile</span>
                     </Link>
                     <Link
                       href="/settings"
                       className="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
                       onClick={() => setUserMenuOpen(false)}
+                      role="menuitem"
+                      tabIndex={0}
                     >
-                      <Settings className="mr-2 h-4 w-4" />
+                      <Settings className="mr-2 h-4 w-4" aria-hidden="true" />
                       <span>Settings</span>
                     </Link>
-                    <div className="h-px bg-border my-1" />
+                    <div className="h-px bg-border my-1" role="none" />
                     <button
                       onClick={() => {
                         logout();
                         setUserMenuOpen(false);
                       }}
                       className="relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-destructive/10 hover:text-destructive data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                      role="menuitem"
+                      tabIndex={0}
                     >
-                      <LogOut className="mr-2 h-4 w-4" />
+                      <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />
                       <span>Log out</span>
                     </button>
                   </motion.div>
@@ -251,25 +280,39 @@ export function Navbar() {
             <div
               className="fixed inset-0 bg-background/80 backdrop-blur-sm"
               onClick={() => setMobileMenuOpen(false)}
+              aria-hidden="true"
             />
-            <div className="fixed inset-y-0 right-0 z-50 w-full overflow-y-auto bg-background px-6 py-6 sm:max-w-sm sm:ring-1 sm:ring-foreground/10 shadow-2xl">
+            <div
+              id="mobile-menu"
+              className="fixed inset-y-0 right-0 z-50 w-full overflow-y-auto bg-background px-6 py-6 sm:max-w-sm sm:ring-1 sm:ring-foreground/10 shadow-2xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="mobile-menu-title"
+            >
               <div className="flex items-center justify-between">
-                <Link href="/" className="-m-1.5 p-1.5 flex items-center gap-2">
-                  <Rocket className="h-8 w-8 text-primary" />
-                  <span className="text-xl font-bold">SOUL SENSE</span>
+                <Link
+                  href="/"
+                  className="-m-1.5 p-1.5 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Soul Sense Home"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Rocket className="h-8 w-8 text-primary" aria-hidden="true" />
+                  <span className="text-xl font-bold" id="mobile-menu-title">
+                    SOUL SENSE
+                  </span>
                 </Link>
                 <button
                   type="button"
-                  className="-m-2.5 rounded-md p-2.5 text-foreground hover:bg-accent transition-colors"
+                  className="-m-2.5 rounded-md p-2.5 text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => setMobileMenuOpen(false)}
+                  aria-label="Close menu"
                 >
-                  <span className="sr-only">Close menu</span>
                   <X className="h-6 w-6" aria-hidden="true" />
                 </button>
               </div>
               <div className="mt-6 flow-root">
-                <div className="-my-6 divide-y divide-foreground/10">
-                  <div className="space-y-2 py-6">
+                <div className="-my-6 divide-y divide-foreground/10" role="none">
+                  <div className="space-y-2 py-6" role="menu">
                     {navLinks.map((item) => {
                       const Icon = item.icon;
                       const isActive = pathname === item.href;
@@ -284,9 +327,11 @@ export function Navbar() {
                               : 'text-foreground hover:bg-accent'
                           )}
                           onClick={() => setMobileMenuOpen(false)}
+                          role="menuitem"
+                          aria-current={isActive ? 'page' : undefined}
                         >
-                          {Icon && <Icon className="h-5 w-5" />}
-                          {item.name}
+                          {Icon && <Icon className="h-5 w-5" aria-hidden="true" />}
+                          <span>{item.name}</span>
                         </Link>
                       );
                     })}
