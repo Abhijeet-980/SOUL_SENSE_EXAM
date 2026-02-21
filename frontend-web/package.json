@@ -8,7 +8,12 @@
     "start": "next start -p 3005",
     "lint": "next lint .",
     "format": "prettier --write .",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:install": "playwright install --with-deps"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.2",
@@ -36,6 +41,7 @@
     "zustand": "5.0.11"
   },
   "devDependencies": {
+    "@playwright/test": "1.58.2",
     "@tailwindcss/forms": "^0.5.11",
     "@tailwindcss/typography": "^0.5.19",
     "@tauri-apps/api": "2.10.1",
