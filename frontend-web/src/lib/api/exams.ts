@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { ExamResult } from '@/types/results';
+import { DetailedExamResult, AssessmentResponse } from '@/types/results';
 
 export interface ExamAnswer {
   question_id: number;
@@ -31,13 +31,13 @@ export const examsApi = {
     });
   },
 
-  async getExamResult(id: number): Promise<ExamResult> {
+  async getExamResult(id: number): Promise<DetailedExamResult> {
     return apiClient(`/exams/${id}`, {
       method: 'GET',
     });
   },
 
-  async getExamResults(): Promise<ExamResult[]> {
+  async getExamResults(): Promise<AssessmentResponse[]> {
     return apiClient('/exams', {
       method: 'GET',
     });

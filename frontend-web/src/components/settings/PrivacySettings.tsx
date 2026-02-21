@@ -5,7 +5,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui';
 import { Button } from '@/components/ui';
 import { useDebounce } from '@/hooks/useDebounce';
-import { AlertTriangle, Download, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Download,
+  Trash2,
+  Shield,
+  Activity,
+  Database,
+  Eye,
+  ShieldCheck,
+  Lock,
+} from 'lucide-react';
 
 interface PrivacySettingsProps {
   settings: UserSettings;
@@ -43,110 +53,151 @@ export function PrivacySettings({ settings, onChange }: PrivacySettingsProps) {
   };
 
   const handleExportData = () => {
-    // TODO: Implement data export functionality
     console.log('Exporting user data...');
   };
 
   const handleDeleteAccount = () => {
-    // TODO: Implement account deletion with confirmation
     console.log('Deleting account...');
   };
 
   return (
-    <div className="space-y-6">
-      {/* Data Collection */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium">Data Collection</h3>
+    <div className="space-y-12">
+      {/* Data Stewardship */}
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 text-muted-foreground/60">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          <h3 className="text-[10px] uppercase tracking-widest font-black">Data Stewardship</h3>
+        </div>
 
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">Analytics</p>
-            <p className="text-xs text-muted-foreground">Help improve the app by sharing usage data</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex items-center justify-between p-5 bg-muted/10 border border-border/40 rounded-2xl group hover:border-border transition-all">
+            <div className="flex items-center gap-4">
+              <div className="p-2 rounded-xl bg-background border border-border/40 text-muted-foreground">
+                <Activity className="h-5 w-5" />
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-sm font-bold">Analytics Sharing</p>
+                <p className="text-[10px] text-muted-foreground font-medium">
+                  Help improve Soul Sense with usage data
+                </p>
+              </div>
+            </div>
+            <Checkbox
+              checked={settings.privacy.analytics}
+              onChange={(e) => handlePrivacyChange('analytics', e.target.checked)}
+              className="h-6 w-6 rounded-lg border-2 border-border/60"
+            />
           </div>
-          <Checkbox
-            checked={settings.privacy.analytics}
-            onChange={(e) => handlePrivacyChange('analytics', e.target.checked)}
-          />
-        </div>
 
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">Data Collection</p>
-            <p className="text-xs text-muted-foreground">Allow collection of personal data for personalization</p>
+          <div className="flex items-center justify-between p-5 bg-muted/10 border border-border/40 rounded-2xl group hover:border-border transition-all">
+            <div className="flex items-center gap-4">
+              <div className="p-2 rounded-xl bg-background border border-border/40 text-muted-foreground">
+                <Database className="h-5 w-5" />
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-sm font-bold">Collection Protocols</p>
+                <p className="text-[10px] text-muted-foreground font-medium">
+                  Allow personalization through data capture
+                </p>
+              </div>
+            </div>
+            <Checkbox
+              checked={settings.privacy.data_collection}
+              onChange={(e) => handlePrivacyChange('data_collection', e.target.checked)}
+              className="h-6 w-6 rounded-lg border-2 border-border/60"
+            />
           </div>
-          <Checkbox
-            checked={settings.privacy.data_collection}
-            onChange={(e) => handlePrivacyChange('data_collection', e.target.checked)}
-          />
         </div>
       </div>
 
-      {/* Data Retention */}
-      <div className="space-y-3">
-        <div>
-          <h3 className="text-sm font-medium">Data Retention</h3>
-          <p className="text-xs text-muted-foreground">How long to keep your data</p>
+      {/* Retention & Visibility */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-muted-foreground/60">
+            <Clock className="h-3.5 w-3.5" />
+            <h3 className="text-[10px] uppercase tracking-widest font-black">Lifecycle Policy</h3>
+          </div>
+          <Select
+            value={settings.privacy.data_retention_days.toString()}
+            onValueChange={(value) => handleRetentionChange(parseInt(value))}
+          >
+            <SelectTrigger className="w-full h-11 rounded-xl bg-muted/10 border-border/40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-border/40">
+              <SelectItem value="30">30 Day Probation</SelectItem>
+              <SelectItem value="90">90 Day Cycle</SelectItem>
+              <SelectItem value="365">1 Year Archive</SelectItem>
+              <SelectItem value="1825">Perpetual Storage (5y)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={settings.privacy.data_retention_days.toString()} onValueChange={(value) => handleRetentionChange(parseInt(value))}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="30">30 days</SelectItem>
-            <SelectItem value="90">90 days</SelectItem>
-            <SelectItem value="365">1 year</SelectItem>
-            <SelectItem value="730">2 years</SelectItem>
-            <SelectItem value="1825">5 years</SelectItem>
-          </SelectContent>
-        </Select>
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-muted-foreground/60">
+            <Eye className="h-3.5 w-3.5" />
+            <h3 className="text-[10px] uppercase tracking-widest font-black">Public Exposure</h3>
+          </div>
+          <Select
+            value={settings.privacy.profile_visibility}
+            onValueChange={handleVisibilityChange}
+          >
+            <SelectTrigger className="w-full h-11 rounded-xl bg-muted/10 border-border/40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border-border/40">
+              <SelectItem value="private">Restricted (Private)</SelectItem>
+              <SelectItem value="friends">Extended Network (Friends)</SelectItem>
+              <SelectItem value="public">Global (Public)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      {/* Profile Visibility */}
-      <div className="space-y-3">
-        <div>
-          <h3 className="text-sm font-medium">Profile Visibility</h3>
-          <p className="text-xs text-muted-foreground">Control who can see your profile</p>
+      {/* Utilities */}
+      <div className="space-y-6 pt-4">
+        <div className="flex items-center gap-2 text-muted-foreground/60">
+          <Download className="h-3.5 w-3.5" />
+          <h3 className="text-[10px] uppercase tracking-widest font-black">Data Portability</h3>
         </div>
-        <Select value={settings.privacy.profile_visibility} onValueChange={handleVisibilityChange}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="private">Private</SelectItem>
-            <SelectItem value="friends">Friends Only</SelectItem>
-            <SelectItem value="public">Public</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
 
-      {/* Data Management */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium">Data Management</h3>
-
-        <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={handleExportData} className="flex items-center gap-2">
-            <Download className="h-4 w-4" />
-            Export Data
+        <div className="flex flex-col sm:flex-row items-center justify-between p-5 bg-muted/10 border border-border/40 rounded-2xl gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-2.5 rounded-xl bg-background border border-border/40 text-muted-foreground">
+              <Download className="h-4 w-4" />
+            </div>
+            <p className="text-xs font-bold">Request Comprehensive Data Export</p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={handleExportData}
+            className="w-full sm:w-auto font-black uppercase tracking-widest text-[10px] h-9 rounded-full px-8 border-border/60 hover:bg-primary/5 hover:text-primary transition-colors"
+          >
+            Initiate Transfer
           </Button>
-          <p className="text-xs text-muted-foreground">Download a copy of all your data</p>
         </div>
       </div>
 
-      {/* Danger Zone */}
-      <div className="space-y-4 p-4 border border-destructive/20 rounded-lg bg-destructive/5">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-destructive" />
-          <h3 className="text-sm font-medium text-destructive">Danger Zone</h3>
+      {/* Irreversible Actions */}
+      <div className="space-y-6 pt-10 border-t border-destructive/20">
+        <div className="flex items-center gap-2 text-destructive/60">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          <h3 className="text-[10px] uppercase tracking-widest font-black">Critical Actions</h3>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">Delete Account</p>
-            <p className="text-xs text-muted-foreground">Permanently delete your account and all data</p>
+        <div className="flex flex-col sm:flex-row items-center justify-between p-6 bg-destructive/5 border border-destructive/10 rounded-2xl gap-6">
+          <div className="space-y-1 text-center sm:text-left">
+            <p className="text-sm font-black text-destructive">Deactivate Personal Identity</p>
+            <p className="text-[10px] text-destructive/60 font-medium">
+              Permanently purge all assessment results, journals, and credentials.
+            </p>
           </div>
-          <Button variant="destructive" onClick={handleDeleteAccount} className="flex items-center gap-2">
-            <Trash2 className="h-4 w-4" />
-            Delete
+          <Button
+            variant="destructive"
+            onClick={handleDeleteAccount}
+            className="w-full sm:w-auto font-black uppercase tracking-widest text-[10px] h-10 rounded-full px-10 shadow-lg shadow-destructive/20"
+          >
+            Final Deletion
           </Button>
         </div>
       </div>

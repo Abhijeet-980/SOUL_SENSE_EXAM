@@ -89,9 +89,9 @@ export default function ResultsPage() {
     const normalized = normalizeResults(
       apiResults.map((item) => ({
         id: item.id,
-        completed_at: item.completed_at,
-        overall_score: item.overall_score,
-        duration_seconds: item.duration_seconds,
+        completed_at: item.timestamp,
+        overall_score: item.total_score,
+        duration_seconds: 0,
       }))
     );
     setResults(normalized);

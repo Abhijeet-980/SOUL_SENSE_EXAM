@@ -14,14 +14,24 @@ import {
   AboutSettings,
 } from '@/components/settings';
 import { cn } from '@/lib/utils';
-import { CheckCircle, AlertCircle, Settings as SettingsIcon } from 'lucide-react';
+import {
+  CheckCircle,
+  AlertCircle,
+  Settings as SettingsIcon,
+  Palette,
+  Bell,
+  Shield,
+  User as UserIcon,
+  Info,
+  RefreshCw,
+} from 'lucide-react';
 
 const tabs = [
-  { id: 'appearance', label: 'Appearance', icon: '🎨' },
-  { id: 'notifications', label: 'Notifications', icon: '🔔' },
-  { id: 'privacy', label: 'Privacy & Data', icon: '🔒' },
-  { id: 'account', label: 'Account', icon: '👤' },
-  { id: 'about', label: 'About', icon: 'ℹ️' },
+  { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'privacy', label: 'Privacy & Data', icon: Shield },
+  { id: 'account', label: 'Account', icon: UserIcon },
+  { id: 'about', label: 'About', icon: Info },
 ];
 
 export default function SettingsPage() {
@@ -46,7 +56,7 @@ export default function SettingsPage() {
   // Check if mobile
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
+      setIsMobile(window.innerWidth < 1024);
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
@@ -75,18 +85,11 @@ export default function SettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
-        <div className="flex items-center gap-3 mb-8">
-          <SettingsIcon className="h-8 w-8" />
-          <h1 className="text-3xl font-bold">Settings</h1>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <Skeleton className="h-96 lg:col-span-1" />
-          <div className="lg:col-span-3 space-y-6">
-            <Skeleton className="h-64" />
-            <Skeleton className="h-64" />
-            <Skeleton className="h-64" />
-          </div>
+      <div className="max-w-6xl mx-auto py-12 px-6 space-y-12">
+        <Skeleton className="h-12 w-48" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+          <Skeleton className="lg:col-span-3 h-[400px] rounded-2xl" />
+          <Skeleton className="lg:col-span-9 h-[600px] rounded-2xl" />
         </div>
       </div>
     );
@@ -94,154 +97,191 @@ export default function SettingsPage() {
 
   if (error) {
     return (
-      <div className="max-w-7xl mx-auto p-6">
-        <Card className="border-red-200">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-3 text-red-600">
-              <AlertCircle className="h-5 w-5" />
-              <p className="font-medium">Error loading settings</p>
-            </div>
-            <p className="text-red-500 mt-2">{error}</p>
-            <Button onClick={() => window.location.reload()} className="mt-4" variant="outline">
-              Try Again
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (!settings) {
-    return (
-      <div className="max-w-7xl mx-auto p-6">
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-muted-foreground">No settings available</p>
-          </CardContent>
-        </Card>
+      <div className="max-w-6xl mx-auto py-12 px-6">
+        <div className="text-center bg-destructive/5 p-12 rounded-3xl border border-destructive/10">
+          <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-6" />
+          <p className="text-destructive font-black mb-6 text-xl">System Error: {error}</p>
+          <Button
+            onClick={() => window.location.reload()}
+            variant="outline"
+            className="font-bold rounded-full px-8"
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Try Again
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
+    <div className="max-w-6xl mx-auto py-12 px-6 space-y-12">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <SettingsIcon className="h-8 w-8" />
-          <h1 className="text-3xl font-bold">Settings</h1>
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-6 border-b border-border/40 pb-8">
+        <div className="space-y-1">
+          <h1 className="text-4xl font-black tracking-tight text-foreground flex items-center gap-4">
+            Settings
+          </h1>
+          <p className="text-muted-foreground font-medium opacity-70">
+            Configure your experience and manage your data.
+          </p>
         </div>
 
-        {/* Save Status */}
-        <div className="flex items-center gap-4">
-          {saveStatus === 'saving' && (
-            <div className="flex items-center gap-2 text-blue-600">
-              <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
-              <span className="text-sm">Saving...</span>
-            </div>
-          )}
-          {saveStatus === 'saved' && (
-            <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle className="h-4 w-4" />
-              <span className="text-sm">Saved</span>
-            </div>
-          )}
-          {saveStatus === 'error' && (
-            <div className="flex items-center gap-2 text-red-600">
-              <AlertCircle className="h-4 w-4" />
-              <span className="text-sm">Save failed</span>
-            </div>
-          )}
-
-          <Button onClick={handleSync} variant="outline" size="sm">
-            Sync Settings
+        {/* Action Bar */}
+        <div className="flex items-center gap-4 bg-muted/20 p-2 rounded-2xl border border-border/40">
+          <div className="px-4">
+            {saveStatus === 'saving' && (
+              <div className="flex items-center gap-2 text-primary">
+                <div className="animate-spin h-3 w-3 border-2 border-primary border-t-transparent rounded-full" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Saving</span>
+              </div>
+            )}
+            {saveStatus === 'saved' && (
+              <div className="flex items-center gap-2 text-emerald-600">
+                <CheckCircle className="h-3 w-3" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Saved</span>
+              </div>
+            )}
+            {saveStatus === 'error' && (
+              <div className="flex items-center gap-2 text-destructive">
+                <AlertCircle className="h-3 w-3" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Failed</span>
+              </div>
+            )}
+            {saveStatus === 'idle' && (
+              <div className="flex items-center gap-2 text-muted-foreground/40">
+                <CheckCircle className="h-3 w-3" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Stable</span>
+              </div>
+            )}
+          </div>
+          <div className="w-[1px] h-6 bg-border/40" />
+          <Button
+            onClick={handleSync}
+            variant="ghost"
+            size="sm"
+            className="font-extrabold text-[10px] uppercase tracking-widest hover:bg-background rounded-xl"
+          >
+            <RefreshCw className="mr-2 h-3 w-3" />
+            Sync Cloud
           </Button>
         </div>
       </div>
 
-      {/* Settings Content */}
-      <div className={cn('grid gap-6', isMobile ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-4')}>
+      {/* Main Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
           orientation={isMobile ? 'horizontal' : 'vertical'}
-          className={cn('w-full', isMobile ? '' : 'lg:col-span-1')}
+          className="lg:col-span-12 grid grid-cols-1 lg:grid-cols-12 gap-10"
         >
-          <TabsList
-            className={cn(
-              'grid w-full',
-              isMobile
-                ? 'grid-cols-5 h-auto p-1'
-                : 'grid-cols-1 h-auto p-2 space-y-1 bg-transparent'
-            )}
-          >
-            {tabs.map((tab) => (
-              <TabsTrigger
-                key={tab.id}
-                value={tab.id}
-                className={cn(
-                  'flex items-center gap-3 justify-start p-3 h-auto',
-                  isMobile ? 'flex-col text-xs' : 'text-left',
-                  activeTab === tab.id && 'bg-primary text-primary-foreground'
-                )}
-              >
-                <span className="text-lg">{tab.icon}</span>
-                <span className={cn(isMobile ? 'text-xs' : 'text-sm')}>{tab.label}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          {/* Sidebar Navigation */}
+          <div className="lg:col-span-3">
+            <TabsList
+              className={cn(
+                'flex lg:flex-col bg-transparent h-auto gap-1 p-0',
+                isMobile ? 'overflow-x-auto no-scrollbar pb-2' : 'sticky top-24'
+              )}
+            >
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <TabsTrigger
+                    key={tab.id}
+                    value={tab.id}
+                    className={cn(
+                      'flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 transition-all',
+                      'data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20',
+                      'data-[state=inactive]:hover:bg-muted/30 data-[state=inactive]:text-muted-foreground',
+                      isMobile ? 'flex-1 min-w-[120px] justify-center' : 'justify-start w-full'
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="font-bold text-sm">{tab.label}</span>
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </div>
 
-          <div className={cn('lg:col-span-3', isMobile ? 'mt-6' : '')}>
-            <TabsContent value="appearance" className="mt-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">🎨 Appearance</CardTitle>
+          {/* Content Area */}
+          <div className="lg:col-span-9 space-y-6">
+            <TabsContent value="appearance" className="mt-0 focus-visible:outline-none">
+              <Card className="rounded-3xl border border-border/40 bg-background/60 backdrop-blur-md shadow-sm">
+                <CardHeader className="p-8 border-b border-border/40">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-primary/5 text-primary">
+                      <Palette className="h-5 w-5" />
+                    </div>
+                    <CardTitle className="text-xl font-black">Appearance</CardTitle>
+                  </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-8">
                   <ThemeToggle settings={settings} onChange={handleSettingChange} />
                 </CardContent>
               </Card>
             </TabsContent>
 
-            <TabsContent value="notifications" className="mt-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">🔔 Notifications</CardTitle>
+            <TabsContent value="notifications" className="mt-0 focus-visible:outline-none">
+              <Card className="rounded-3xl border border-border/40 bg-background/60 backdrop-blur-md shadow-sm">
+                <CardHeader className="p-8 border-b border-border/40">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-orange-500/5 text-orange-600">
+                      <Bell className="h-5 w-5" />
+                    </div>
+                    <CardTitle className="text-xl font-black">Notifications</CardTitle>
+                  </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-8">
                   <NotificationSettings settings={settings} onChange={handleSettingChange} />
                 </CardContent>
               </Card>
             </TabsContent>
 
-            <TabsContent value="privacy" className="mt-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">🔒 Privacy & Data</CardTitle>
+            <TabsContent value="privacy" className="mt-0 focus-visible:outline-none">
+              <Card className="rounded-3xl border border-border/40 bg-background/60 backdrop-blur-md shadow-sm">
+                <CardHeader className="p-8 border-b border-border/40">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-emerald-500/5 text-emerald-600">
+                      <Shield className="h-5 w-5" />
+                    </div>
+                    <CardTitle className="text-xl font-black">Privacy & Data</CardTitle>
+                  </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-8">
                   <PrivacySettings settings={settings} onChange={handleSettingChange} />
                 </CardContent>
               </Card>
             </TabsContent>
 
-            <TabsContent value="account" className="mt-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">👤 Account</CardTitle>
+            <TabsContent value="account" className="mt-0 focus-visible:outline-none">
+              <Card className="rounded-3xl border border-border/40 bg-background/60 backdrop-blur-md shadow-sm">
+                <CardHeader className="p-8 border-b border-border/40">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-blue-500/5 text-blue-600">
+                      <UserIcon className="h-5 w-5" />
+                    </div>
+                    <CardTitle className="text-xl font-black">Account</CardTitle>
+                  </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-8">
                   <AccountSettings settings={settings} onChange={handleSettingChange} />
                 </CardContent>
               </Card>
             </TabsContent>
 
-            <TabsContent value="about" className="mt-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">ℹ️ About</CardTitle>
+            <TabsContent value="about" className="mt-0 focus-visible:outline-none">
+              <Card className="rounded-3xl border border-border/40 bg-background/60 backdrop-blur-md shadow-sm">
+                <CardHeader className="p-8 border-b border-border/40">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-muted text-muted-foreground">
+                      <Info className="h-5 w-5" />
+                    </div>
+                    <CardTitle className="text-xl font-black">About</CardTitle>
+                  </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-8">
                   <AboutSettings />
                 </CardContent>
               </Card>

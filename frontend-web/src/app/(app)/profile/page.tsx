@@ -12,9 +12,11 @@ import { useApi } from '@/hooks/useApi';
 import { resultsApi } from '@/lib/api/results';
 import { journalApi } from '@/lib/api/journal';
 
+import { Calendar, Target, BookOpen, Trophy, User as UserIcon, Settings } from 'lucide-react';
+
 export default function ProfilePage() {
   const { user } = useAuth();
-  const { profile, loading, error, updateProfile, refetch } = useProfile();
+  const { profile, isLoading: loading, error, updateProfile, refetch } = useProfile();
   const [isEditing, setIsEditing] = useState(false);
 
   const { data: examHistory } = useApi({
@@ -42,11 +44,11 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto py-8 px-4 space-y-8">
-        <Skeleton className="h-48 w-full rounded-3xl" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Skeleton className="h-64 rounded-3xl" />
-          <Skeleton className="h-64 md:col-span-2 rounded-3xl" />
+      <div className="max-w-5xl mx-auto py-12 px-6 space-y-10">
+        <Skeleton className="h-48 w-full rounded-2xl" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <Skeleton className="h-64 rounded-2xl" />
+          <Skeleton className="h-64 md:col-span-2 rounded-2xl" />
         </div>
       </div>
     );
@@ -54,42 +56,41 @@ export default function ProfilePage() {
 
   if (error) {
     return (
-      <div className="max-w-4xl mx-auto py-8 px-4">
-        <div className="text-center">
-          <p className="text-red-500 mb-4">Failed to load profile: {error}</p>
-          <Button onClick={refetch}>Try Again</Button>
+      <div className="max-w-5xl mx-auto py-12 px-6">
+        <div className="text-center bg-destructive/5 p-12 rounded-2xl border border-destructive/10">
+          <p className="text-destructive font-bold mb-6 text-lg">Failed to load profile: {error}</p>
+          <Button onClick={refetch} variant="outline" className="font-bold">
+            Try Again
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4 space-y-8">
+    <div className="max-w-5xl mx-auto py-12 px-6 space-y-12">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Profile</h1>
-          <p className="text-muted-foreground">
-            Manage your personal information and view your progress
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+        <div className="space-y-1">
+          <h1 className="text-4xl font-black tracking-tight text-foreground">Profile</h1>
+          <p className="text-muted-foreground font-medium opacity-70">
+            Manage your personal identity and track your growth journey.
           </p>
         </div>
-        <Button onClick={handleEditToggle} variant={isEditing ? 'outline' : 'default'}>
-          ✏️ {isEditing ? 'Cancel Edit' : 'Edit Profile'}
-        </Button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         {/* Profile Section */}
-        <div className="lg:col-span-2">
-          <Card className="rounded-3xl border-none bg-background/60 backdrop-blur-xl shadow-xl">
-            <CardContent className="p-8">
+        <div className="lg:col-span-8">
+          <Card className="rounded-3xl border border-border/40 bg-background/60 backdrop-blur-md shadow-sm overflow-hidden h-full">
+            <CardContent className="p-8 md:p-10">
               <AnimatePresence mode="wait">
                 {!isEditing ? (
                   <motion.div
                     key="view"
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
+                    exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.3 }}
                   >
                     <ProfileCard
@@ -103,21 +104,33 @@ export default function ProfilePage() {
                 ) : (
                   <motion.div
                     key="edit"
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
+                    exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.3 }}
                   >
-                    <div className="space-y-6">
-                      <div>
-                        <h2 className="text-2xl font-bold mb-2">Edit Profile</h2>
-                        <p className="text-muted-foreground">Update your personal information</p>
+                    <div className="space-y-8">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <h2 className="text-2xl font-black">Edit Profile</h2>
+                          <p className="text-sm text-muted-foreground font-medium">
+                            Update your profile settings
+                          </p>
+                        </div>
+                        <Button
+                          onClick={handleCancel}
+                          variant="ghost"
+                          size="sm"
+                          className="font-bold text-muted-foreground"
+                        >
+                          Cancel
+                        </Button>
                       </div>
                       <ProfileForm
-                        profile={profile}
-                        onSave={handleSave}
+                        profile={(profile as any) || undefined}
+                        onSubmit={handleSave}
                         onCancel={handleCancel}
-                        loading={loading}
+                        isSubmitting={loading}
                       />
                     </div>
                   </motion.div>
@@ -128,60 +141,63 @@ export default function ProfilePage() {
         </div>
 
         {/* Stats Section */}
-        <div className="space-y-6">
+        <div className="lg:col-span-4 space-y-8">
           {/* Member Since Card */}
-          <Card className="rounded-3xl border-none bg-gradient-to-br from-primary to-indigo-600 text-white shadow-xl">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                📅
-                <h3 className="text-lg font-bold">Member Since</h3>
+          <Card className="rounded-3xl border-none bg-primary text-primary-foreground shadow-lg overflow-hidden relative group">
+            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
+            <CardContent className="p-8 relative">
+              <div className="flex items-center gap-3 mb-6 opacity-80 uppercase tracking-widest font-black text-[10px]">
+                <Calendar className="h-4 w-4" />
+                <span>Member Since</span>
               </div>
-              <p className="text-2xl font-black">
+              <p className="text-3xl font-black">
                 {user?.created_at
                   ? new Date(user.created_at).toLocaleDateString('en-US', {
                       month: 'short',
                       year: 'numeric',
                     })
-                  : '2026'}
+                  : 'February 2026'}
               </p>
             </CardContent>
           </Card>
 
-          {/* Stats Cards */}
+          {/* Stats Cards Grid */}
           <div className="grid grid-cols-1 gap-4">
-            <Card className="rounded-3xl border-none shadow-lg hover:scale-105 transition-transform">
-              <CardContent className="p-6 text-center">
-                <div className="mx-auto p-3 rounded-2xl bg-blue-500/10 w-fit mb-3">🎯</div>
-                <p className="text-3xl font-black text-foreground">{examHistory?.total || 0}</p>
-                <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">
-                  Total Exams
+            <div className="flex items-center gap-4 p-5 rounded-2xl bg-background/60 backdrop-blur-md border border-border/40 hover:border-primary/20 transition-all group">
+              <div className="p-3 rounded-xl bg-primary/5 text-primary">
+                <Target className="h-5 w-5" strokeWidth={2.5} />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/60 mb-0.5">
+                  Total Assessments
                 </p>
-              </CardContent>
-            </Card>
+                <p className="text-xl font-black">{examHistory?.total || 0}</p>
+              </div>
+            </div>
 
-            <Card className="rounded-3xl border-none shadow-lg hover:scale-105 transition-transform">
-              <CardContent className="p-6 text-center">
-                <div className="mx-auto p-3 rounded-2xl bg-green-500/10 w-fit mb-3">📖</div>
-                <p className="text-3xl font-black text-foreground">
-                  {journalAnalytics?.total_entries || 0}
+            <div className="flex items-center gap-4 p-5 rounded-2xl bg-background/60 backdrop-blur-md border border-border/40 hover:border-primary/20 transition-all group">
+              <div className="p-3 rounded-xl bg-emerald-500/5 text-emerald-600">
+                <BookOpen className="h-5 w-5" strokeWidth={2.5} />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/60 mb-0.5">
+                  Journal Reflections
                 </p>
-                <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">
-                  Journal Entries
-                </p>
-              </CardContent>
-            </Card>
+                <p className="text-xl font-black">{journalAnalytics?.total_entries || 0}</p>
+              </div>
+            </div>
 
-            <Card className="rounded-3xl border-none shadow-lg hover:scale-105 transition-transform">
-              <CardContent className="p-6 text-center">
-                <div className="mx-auto p-3 rounded-2xl bg-orange-500/10 w-fit mb-3">🏆</div>
-                <p className="text-3xl font-black text-foreground">
-                  {journalAnalytics?.streak_days || 0}
+            <div className="flex items-center gap-4 p-5 rounded-2xl bg-background/60 backdrop-blur-md border border-border/40 hover:border-primary/20 transition-all group">
+              <div className="p-3 rounded-xl bg-amber-500/5 text-amber-600">
+                <Trophy className="h-5 w-5" strokeWidth={2.5} />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/60 mb-0.5">
+                  Current Streak
                 </p>
-                <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">
-                  Streak Days
-                </p>
-              </CardContent>
-            </Card>
+                <p className="text-xl font-black">{journalAnalytics?.streak_days || 0} Days</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

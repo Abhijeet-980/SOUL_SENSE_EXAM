@@ -168,14 +168,6 @@ export default function ResultDetailPage() {
             <Calendar className="h-4 w-4" />
             <span>{formatDate(detailedResult.timestamp)}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            <span>
-              {detailedResult.duration_seconds
-                ? formatDuration(detailedResult.duration_seconds)
-                : 'N/A'}
-            </span>
-          </div>
         </div>
       </div>
 

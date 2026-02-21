@@ -2,6 +2,7 @@
 
 import { PersonalProfile } from '@/lib/api/profile';
 import { Avatar, AvatarFallback } from '@/components/ui';
+import { Mail, Calendar, User as UserIcon, Briefcase, GraduationCap, Edit2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ProfileCardProps {
@@ -41,89 +42,119 @@ export function ProfileCard({
   };
 
   return (
-    <div className={cn('space-y-6', className)}>
+    <div className={cn('space-y-8', className)}>
       {/* Avatar and Name Section */}
-      <div className="flex flex-col sm:flex-row items-center gap-6">
-        <Avatar className="h-24 w-24 border-4 border-background shadow-lg">
-          <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-white text-xl font-bold">
-            {getInitials()}
-          </AvatarFallback>
-        </Avatar>
+      <div className="flex flex-col sm:flex-row items-center gap-8 border-b border-border/40 pb-8">
+        <div className="relative group">
+          <Avatar className="h-28 w-28 border-4 border-background shadow-xl group-hover:shadow-2xl transition-all duration-300">
+            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/60 text-white text-2xl font-black">
+              {getInitials()}
+            </AvatarFallback>
+          </Avatar>
+        </div>
 
-        <div className="text-center sm:text-left flex-1 items-center flex justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">
+        <div className="text-center sm:text-left flex-1 flex flex-col sm:flex-row justify-between items-center sm:items-start gap-4">
+          <div className="space-y-1">
+            <h2 className="text-3xl font-black tracking-tight text-foreground">
               {profile?.first_name || profile?.firstName
                 ? `${profile.first_name || profile.firstName} ${profile.last_name || profile.lastName || ''}`
                 : user?.name || user?.username || 'User'}
             </h2>
-            <p className="text-muted-foreground">@{user?.username}</p>
+            <p className="text-lg text-muted-foreground font-medium opacity-70">
+              @{user?.username}
+            </p>
           </div>
           {editable && onEdit && (
-            <button onClick={onEdit} className="text-primary hover:underline text-sm font-medium">
-              Edit
+            <button
+              onClick={onEdit}
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/5 text-primary hover:bg-primary/10 transition-colors text-sm font-bold border border-primary/10"
+            >
+              <Edit2 className="h-3.5 w-3.5" />
+              <span>Edit Details</span>
             </button>
           )}
         </div>
       </div>
 
       {/* Profile Details */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-4">
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-            <span className="text-muted-foreground">📧</span>
+          <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40 group hover:border-primary/20 transition-colors">
+            <div className="p-2.5 rounded-xl bg-background border border-border/40 text-muted-foreground group-hover:text-primary transition-colors">
+              <Mail className="h-4 w-4" />
+            </div>
             <div>
-              <p className="text-sm text-muted-foreground">Email</p>
-              <p className="font-medium">{user?.email || 'Not provided'}</p>
+              <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/60 mb-0.5">
+                Email Address
+              </p>
+              <p className="font-semibold text-sm">{user?.email || 'Not provided'}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-            <span className="text-muted-foreground">📅</span>
+          <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40 group hover:border-primary/20 transition-colors">
+            <div className="p-2.5 rounded-xl bg-background border border-border/40 text-muted-foreground group-hover:text-primary transition-colors">
+              <Calendar className="h-4 w-4" />
+            </div>
             <div>
-              <p className="text-sm text-muted-foreground">Member since</p>
-              <p className="font-medium">
+              <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/60 mb-0.5">
+                Member Since
+              </p>
+              <p className="font-semibold text-sm">
                 {user?.created_at
                   ? new Date(user.created_at).toLocaleDateString('en-US', {
                       month: 'long',
                       year: 'numeric',
                     })
-                  : 'Unknown'}
+                  : 'February 2026'}
               </p>
             </div>
           </div>
         </div>
 
         <div className="space-y-4">
-          {profile?.age && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <span className="text-muted-foreground">👤</span>
-              <div>
-                <p className="text-sm text-muted-foreground">Age</p>
-                <p className="font-medium">{profile.age} years old</p>
+          <div className="grid grid-cols-1 gap-4">
+            {profile?.age && (
+              <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40 group hover:border-primary/20 transition-colors">
+                <div className="p-2.5 rounded-xl bg-background border border-border/40 text-muted-foreground group-hover:text-primary transition-colors">
+                  <UserIcon className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/60 mb-0.5">
+                    Age
+                  </p>
+                  <p className="font-semibold text-sm">{profile.age} years old</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {profile?.occupation && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <span className="text-muted-foreground">💼</span>
-              <div>
-                <p className="text-sm text-muted-foreground">Occupation</p>
-                <p className="font-medium">{profile.occupation}</p>
+            {profile?.occupation && (
+              <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40 group hover:border-primary/20 transition-colors">
+                <div className="p-2.5 rounded-xl bg-background border border-border/40 text-muted-foreground group-hover:text-primary transition-colors">
+                  <Briefcase className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/60 mb-0.5">
+                    Occupation
+                  </p>
+                  <p className="font-semibold text-sm">{profile.occupation}</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {profile?.education_level && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <span className="text-muted-foreground">🎓</span>
-              <div>
-                <p className="text-sm text-muted-foreground">Education</p>
-                <p className="font-medium">{profile.education_level}</p>
+            {profile?.education_level && (
+              <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40 group hover:border-primary/20 transition-colors">
+                <div className="p-2.5 rounded-xl bg-background border border-border/40 text-muted-foreground group-hover:text-primary transition-colors">
+                  <GraduationCap className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/60 mb-0.5">
+                    Education
+                  </p>
+                  <p className="font-semibold text-sm">{profile.education_level}</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

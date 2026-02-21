@@ -34,8 +34,7 @@ export interface UserSettings {
 export const settingsApi = {
   async getSettings(): Promise<UserSettings> {
     try {
-      const response = await apiClient.get('/api/v1/settings');
-      return response.data;
+      return await apiClient<UserSettings>('/settings', { method: 'GET' });
     } catch (error) {
       // Return default settings if API fails
       return {
@@ -73,8 +72,10 @@ export const settingsApi = {
 
   async updateSettings(updates: Partial<UserSettings>): Promise<UserSettings> {
     try {
-      const response = await apiClient.put('/api/v1/settings', updates);
-      return response.data;
+      return await apiClient<UserSettings>('/settings', {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      });
     } catch (error) {
       throw new Error('Failed to update settings');
     }
@@ -82,8 +83,7 @@ export const settingsApi = {
 
   async syncSettings(): Promise<UserSettings> {
     try {
-      const response = await apiClient.post('/api/v1/settings/sync');
-      return response.data;
+      return await apiClient<UserSettings>('/settings/sync', { method: 'POST' });
     } catch (error) {
       throw new Error('Failed to sync settings');
     }

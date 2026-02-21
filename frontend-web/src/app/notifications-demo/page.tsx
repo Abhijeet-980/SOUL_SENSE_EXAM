@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { NotificationSettings, NotificationSettingsObject } from '@/components/settings';
+import { PremiumNotificationSettings, NotificationSettingsObject } from '@/components/settings';
 
 export default function NotificationsDemoPage() {
   const [settings, setSettings] = useState<NotificationSettingsObject>({
@@ -30,7 +30,7 @@ export default function NotificationsDemoPage() {
         </div>
 
         <div className="bg-card p-6 rounded-3xl border shadow-2xl">
-          <NotificationSettings settings={settings} onChange={handleSettingsChange} />
+          <PremiumNotificationSettings settings={settings} onChange={handleSettingsChange} />
         </div>
 
         <div className="bg-muted p-6 rounded-2xl border">

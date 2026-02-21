@@ -117,12 +117,10 @@ export default function ResultDetailPage() {
   }
 
   // Transform categories data for CategoryBreakdown component
-  const categoryScores = result.categories.map((cat) => {
-    const maxScore = typeof cat.max_score === 'number' && cat.max_score > 0 ? cat.max_score : null;
-    const scorePercentage = maxScore ? (cat.score / maxScore) * 100 : 0;
+  const categoryScores = result.category_breakdown.map((cat) => {
     return {
-      name: cat.name,
-      score: scorePercentage,
+      name: cat.category_name,
+      score: cat.percentage,
     };
   });
 
@@ -153,15 +151,7 @@ export default function ResultDetailPage() {
         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            <span>
-              {result.completed_at || result.timestamp
-                ? formatDate(result.completed_at || result.timestamp)
-                : 'N/A'}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            <span>{formatDuration(result.duration_seconds)}</span>
+            <span>{result.timestamp ? formatDate(result.timestamp) : 'N/A'}</span>
           </div>
         </div>
       </div>
@@ -174,7 +164,7 @@ export default function ResultDetailPage() {
         </CardHeader>
         <CardContent className="pt-8 pb-8 flex justify-center">
           <ScoreGauge
-            score={result.overall_score || result.total_score || 0}
+            score={result.overall_percentage || result.total_score || 0}
             size="lg"
             label="Overall Score"
             animated
@@ -183,7 +173,7 @@ export default function ResultDetailPage() {
       </Card>
 
       {/* Category Breakdown */}
-      {result.categories && result.categories.length > 0 && (
+      {result.category_breakdown && result.category_breakdown.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Category Breakdown</CardTitle>
@@ -208,17 +198,14 @@ export default function ResultDetailPage() {
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             {result.recommendations.map((recommendation, index) => (
-              <RecommendationCard
-                key={`${recommendation.id}-${index}`}
-                recommendation={recommendation}
-              />
+              <RecommendationCard key={`rec-${index}`} recommendation={recommendation} />
             ))}
           </div>
         </div>
       )}
 
       {/* Reflection Section */}
-      {result.reflection && (
+      {(result as any).reflection && (
         <Card>
           <CardHeader>
             <CardTitle>Your Reflection</CardTitle>
@@ -226,7 +213,7 @@ export default function ResultDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="prose dark:prose-invert max-w-none">
-              <p className="whitespace-pre-wrap">{result.reflection}</p>
+              <p className="whitespace-pre-wrap">{(result as any).reflection}</p>
             </div>
           </CardContent>
         </Card>

@@ -218,10 +218,6 @@ export const profileApi = {
     return apiClient('/profiles/me/avatar', {
       method: 'POST',
       body: formData,
-      headers: {
-        // Let the browser set the Content-Type for FormData
-        'Content-Type': undefined,
-      },
     });
   },
 

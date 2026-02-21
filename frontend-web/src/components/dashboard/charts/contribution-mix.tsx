@@ -11,16 +11,21 @@ export function ContributionMixChart({ data }: { data: any[] }) {
           {
             name: 'Core Logic',
             value: 45,
-            color: '#3B82F6',
+            color: 'hsl(var(--primary))',
             description: 'Functional code commits',
           },
-          { name: 'Docs', value: 25, color: '#10B981', description: 'README & Wiki updates' },
-          { name: 'Triage', value: 20, color: '#F59E0B', description: 'Issues & Support' },
-          { name: 'Reviews', value: 10, color: '#8B5CF6', description: 'Code Quality checks' },
+          {
+            name: 'Docs',
+            value: 25,
+            color: 'hsl(var(--secondary))',
+            description: 'README & Wiki updates',
+          },
+          { name: 'Triage', value: 20, color: '#3b82f6', description: 'Issues & Support' },
+          { name: 'Reviews', value: 10, color: '#8b5cf6', description: 'Code Quality checks' },
         ];
 
   return (
-    <Card className="col-span-full md:col-span-1 lg:col-span-3 backdrop-blur-xl bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all rounded-2xl overflow-hidden relative group">
+    <Card className="col-span-full md:col-span-1 lg:col-span-3 backdrop-blur-md lg:backdrop-blur-2xl bg-background/60 border border-border/40 shadow-sm hover:shadow-md transition-all rounded-3xl overflow-hidden relative group">
       <CardHeader className="pb-0 flex flex-row items-start justify-between">
         <div>
           <CardTitle className="text-lg font-bold text-slate-900 dark:text-white leading-none">

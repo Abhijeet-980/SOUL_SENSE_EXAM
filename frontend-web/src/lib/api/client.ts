@@ -57,13 +57,14 @@ export async function apiClient<T>(endpoint: string, options: RequestOptions = {
 
   // Inject authentication token
   const token = skipAuth ? null : getAuthToken();
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...fetchOptions.headers,
-  };
+  const headers = new Headers(fetchOptions.headers);
+
+  if (!headers.has('Content-Type') && !(fetchOptions.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
 
   if (token && !skipAuth) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+    headers.set('Authorization', `Bearer ${token}`);
   }
 
   const makeRequest = async (): Promise<T> => {

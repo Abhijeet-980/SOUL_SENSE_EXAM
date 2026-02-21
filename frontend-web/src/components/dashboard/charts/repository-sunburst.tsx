@@ -19,8 +19,8 @@ export function RepositorySunburst({ data }: { data: SunburstData[] }) {
     const level1: any[] = [];
     const level2: any[] = [];
 
-    // Theme-aligned palette: Blue, Indigo, Purple, Pink
-    const colors = ['#3B82F6', '#6366F1', '#8B5CF6', '#EC4899'];
+    // Theme-aligned palette
+    const colors = ['hsl(var(--primary))', 'hsl(var(--secondary))', '#3b82f6', '#8b5cf6'];
 
     data.forEach((child, i) => {
       const color = colors[i % colors.length];
@@ -70,7 +70,7 @@ export function RepositorySunburst({ data }: { data: SunburstData[] }) {
   };
 
   return (
-    <Card className="col-span-full lg:col-span-2 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border-slate-200 dark:border-white/5 shadow-xl rounded-3xl overflow-hidden group transition-all duration-300">
+    <Card className="col-span-full lg:col-span-2 bg-background/60 backdrop-blur-md lg:backdrop-blur-2xl border border-border/40 shadow-xl rounded-3xl overflow-hidden group transition-all duration-300">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg font-black tracking-tighter flex items-center gap-2 text-slate-900 dark:text-white">
           <FolderTree className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />

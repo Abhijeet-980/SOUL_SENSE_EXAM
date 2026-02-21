@@ -19,7 +19,10 @@ export default function SettingsTestPage() {
     }
   };
 
-  const handleNotificationToggle = async (key: keyof UserSettings['notifications'], checked: boolean) => {
+  const handleNotificationToggle = async (
+    key: keyof UserSettings['notifications'],
+    checked: boolean
+  ) => {
     if (!settings) return;
     try {
       await updateSettings({
@@ -115,13 +118,6 @@ export default function SettingsTestPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">Enabled</label>
-              <Checkbox
-                checked={settings.notifications.enabled}
-                onChange={(e) => handleNotificationToggle('enabled', e.target.checked)}
-              />
-            </div>
-            <div className="flex items-center justify-between">
               <label className="text-sm font-medium">Email</label>
               <Checkbox
                 checked={settings.notifications.email}
@@ -147,10 +143,10 @@ export default function SettingsTestPage() {
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium">Share Analytics</label>
               <Checkbox
-                checked={settings.privacy.share_analytics}
+                checked={settings.privacy.analytics}
                 onChange={(e) =>
                   updateSettings({
-                    privacy: { ...settings.privacy, share_analytics: e.target.checked },
+                    privacy: { ...settings.privacy, analytics: e.target.checked },
                   })
                 }
               />
@@ -195,26 +191,6 @@ export default function SettingsTestPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Sync Status */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Sync Status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <p className="text-sm">
-              <span className="font-medium">Enabled:</span> {settings.sync.enabled ? 'Yes' : 'No'}
-            </p>
-            <p className="text-sm">
-              <span className="font-medium">Last Synced:</span>{' '}
-              {settings.sync.last_synced
-                ? new Date(settings.sync.last_synced).toLocaleString()
-                : 'Never'}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

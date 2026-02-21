@@ -97,9 +97,9 @@ export function FloatingNavbar() {
           scale: isScrolled ? 0.95 : 1,
         }}
         transition={{
-          type: 'spring',
-          stiffness: 260,
-          damping: 20,
+          type: 'tween',
+          ease: 'easeOut',
+          duration: 0.3,
           opacity: { duration: 0.2 },
         }}
         className={cn(
@@ -151,7 +151,7 @@ export function FloatingNavbar() {
                           : 'bg-slate-200/50 dark:bg-white/5'
                       )}
                       transition={{
-                        layout: { type: 'spring', bounce: 0.1, duration: 0.4 },
+                        layout: { type: 'tween', ease: 'easeOut', duration: 0.3 },
                         opacity: { duration: 0.2 },
                       }}
                     />

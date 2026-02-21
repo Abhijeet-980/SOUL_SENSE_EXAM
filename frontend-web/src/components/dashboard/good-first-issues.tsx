@@ -81,7 +81,6 @@ export function GoodFirstIssues({ data }: GoodFirstIssuesProps) {
 
   return (
     <div className="col-span-full relative bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200 dark:border-white/5 rounded-2xl p-6 overflow-hidden min-h-[160px] group transition-all duration-500 shadow-sm hover:shadow-md">
-      
       <div className="relative z-10 flex flex-col h-full">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-6">
@@ -102,7 +101,7 @@ export function GoodFirstIssues({ data }: GoodFirstIssuesProps) {
           </div>
 
           <div className="flex items-center gap-2 self-end md:self-auto">
-             <div className="px-3 py-1 bg-slate-100 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/5 text-[10px] font-bold text-slate-500 dark:text-slate-400 tabular-nums">
+            <div className="px-3 py-1 bg-slate-100 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/5 text-[10px] font-bold text-slate-500 dark:text-slate-400 tabular-nums">
               {currentIndex + 1} / {issues.length}
             </div>
             <div className="flex gap-1">
@@ -133,7 +132,7 @@ export function GoodFirstIssues({ data }: GoodFirstIssuesProps) {
               animate="center"
               exit="exit"
               transition={{
-                x: { type: 'spring', stiffness: 300, damping: 30 },
+                x: { type: 'tween', ease: 'easeOut', duration: 0.3 },
                 opacity: { duration: 0.2 },
                 scale: { duration: 0.4 },
               }}
@@ -147,10 +146,10 @@ export function GoodFirstIssues({ data }: GoodFirstIssuesProps) {
                         {currentIssue.title}
                       </h4>
                       <div className="flex items-center gap-3">
-                         <span className="text-xs font-mono font-medium text-slate-500">
-                           #{currentIssue.number}
-                         </span>
-                         {currentIssue.assignee ? (
+                        <span className="text-xs font-mono font-medium text-slate-500">
+                          #{currentIssue.number}
+                        </span>
+                        {currentIssue.assignee ? (
                           <div className="flex items-center gap-2 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-full border border-indigo-100 dark:border-indigo-500/20">
                             <Avatar className="h-4 w-4">
                               <AvatarImage src={currentIssue.assignee_avatar_url} />
@@ -225,7 +224,7 @@ export function GoodFirstIssues({ data }: GoodFirstIssuesProps) {
               animate={{
                 x: currentIndex * 14, // 6px (w-1.5) + 8px (gap-2) = 14px per step
               }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              transition={{ type: 'tween', ease: 'easeOut', duration: 0.3 }}
             />
           </div>
         </div>

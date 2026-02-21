@@ -74,8 +74,8 @@ export const Header = React.forwardRef<HTMLElement, HeaderProps>(
         className={cn(
           'sticky top-0 z-50 w-full transition-all duration-300',
           isScrolled
-            ? 'h-14 bg-background/80 backdrop-blur-md border-b shadow-sm'
-            : 'h-16 bg-background border-b border-transparent',
+            ? 'h-14 bg-background/40 backdrop-blur-2xl border-b border-border/40 shadow-sm'
+            : 'h-16 bg-background/0 border-b border-transparent',
           className
         )}
       >
@@ -158,8 +158,8 @@ export const Header = React.forwardRef<HTMLElement, HeaderProps>(
                   >
                     {/* User Profile Summary */}
                     <div className="bg-muted/30 px-5 py-4 flex items-center gap-3">
-                      <Avatar className="h-10 w-10 border-2 border-primary/20">
-                        <AvatarFallback className="bg-primary/10 text-primary font-bold">
+                      <Avatar className="h-10 w-10 border border-primary/20">
+                        <AvatarFallback className="bg-primary/5 text-primary tracking-wider font-semibold">
                           {getUserInitials(user?.name)}
                         </AvatarFallback>
                       </Avatar>
@@ -167,7 +167,7 @@ export const Header = React.forwardRef<HTMLElement, HeaderProps>(
                         <p className="text-sm font-bold text-foreground truncate">
                           {user?.name || 'User'}
                         </p>
-                        <p className="text-[10px] text-muted-foreground truncate font-medium">
+                        <p className="text-[10px] text-muted-foreground truncate font-medium tracking-wide">
                           {user?.email}
                         </p>
                       </div>

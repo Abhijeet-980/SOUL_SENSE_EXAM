@@ -241,16 +241,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // ... existing code ...
 
-  if (!mounted) {
-    return <Loader fullScreen text="Bootstrapping..." />;
-  }
-
   return (
     <AuthContext.Provider
       value={{
         user,
         isAuthenticated: !!user,
-        isLoading,
+        isLoading: !mounted || isLoading,
         isMockMode,
         login,
         login2FA,
@@ -258,7 +254,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setIsLoading,
       }}
     >
-      {isLoading ? <Loader fullScreen text="Authenticating..." /> : children}
+      {/* Always render children for Next.js router hydration, overlay loader if needed */}
+      {(!mounted || isLoading) && (
+        <Loader fullScreen text={!mounted ? 'Bootstrapping...' : 'Authenticating...'} />
+      )}
+      <div style={{ display: !mounted || isLoading ? 'none' : 'block', height: '100%' }}>
+        {children}
+      </div>
     </AuthContext.Provider>
   );
 };

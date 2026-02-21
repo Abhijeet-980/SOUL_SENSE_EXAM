@@ -74,6 +74,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   // Combine exams and journals into activities
@@ -116,13 +117,13 @@ export default function DashboardPage() {
   const userName = user?.name?.split(' ')[0];
 
   return (
-    <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
+    <div className="p-4 md:p-10 space-y-10 max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            SoulSense Dashboard
+        <div className="space-y-1">
+          <h1 className="text-4xl font-black tracking-tight bg-gradient-to-r from-primary to-primary/50 bg-clip-text text-transparent">
+            Dashboard
           </h1>
-          <p className="text-muted-foreground mt-2 text-lg">
+          <p className="text-muted-foreground text-lg font-medium opacity-80">
             Welcome back, {userName || 'User'}. Here&apos;s your mental wellbeing at a glance.
           </p>
         </div>

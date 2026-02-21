@@ -127,7 +127,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                     <motion.div
                       layoutId="active-bg"
                       className="absolute inset-0 rounded-xl bg-indigo-600 -z-10"
-                      transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+                      transition={{ type: 'tween', ease: 'easeOut', duration: 0.4 }}
                     />
                   )}
                 </button>

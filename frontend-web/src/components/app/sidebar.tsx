@@ -114,7 +114,7 @@ export function Sidebar() {
     <TooltipProvider>
       <aside
         className={cn(
-          'flex flex-col h-screen border-r bg-background/60 backdrop-blur-xl transition-all duration-500 ease-in-out relative z-40',
+          'flex flex-col h-screen border-r border-border/40 bg-background/40 backdrop-blur-2xl shadow-sm transition-all duration-500 ease-in-out relative z-40',
           isCollapsed ? 'w-16 md:w-20' : 'w-64'
         )}
       >
@@ -168,7 +168,7 @@ export function Sidebar() {
 
             return (
               <div key={item.href}>
-                <Tooltip delayDuration={isCollapsed ? 0 : 700}>
+                <Tooltip>
                   <TooltipTrigger asChild>
                     <Link href={item.href}>
                       <motion.div
@@ -181,16 +181,16 @@ export function Sidebar() {
                             'w-full transition-all duration-300 relative group overflow-hidden',
                             isCollapsed ? 'justify-center px-0' : 'justify-start gap-4 px-4',
                             active
-                              ? 'bg-primary/10 text-primary font-semibold hover:bg-primary/15'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                              ? 'bg-primary/5 text-primary font-medium'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
                           )}
                         >
                           {/* Active Indicator Line */}
                           {active && (
                             <motion.div
                               layoutId="activeTab"
-                              className="absolute left-0 w-1 h-6 bg-primary rounded-r-full"
-                              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                              className="absolute left-0 w-[3px] h-5 bg-primary rounded-r-full"
+                              transition={{ type: 'tween', ease: 'easeOut', duration: 0.3 }}
                             />
                           )}
 
@@ -218,11 +218,7 @@ export function Sidebar() {
                       </motion.div>
                     </Link>
                   </TooltipTrigger>
-                  {isCollapsed && (
-                    <TooltipContent side="right" sideOffset={10}>
-                      {item.label}
-                    </TooltipContent>
-                  )}
+                  {isCollapsed && <TooltipContent>{item.label}</TooltipContent>}
                 </Tooltip>
               </div>
             );

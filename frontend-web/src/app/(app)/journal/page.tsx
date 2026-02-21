@@ -57,7 +57,7 @@ export default function JournalPage() {
   const {
     entries,
     total,
-    loading,
+    isLoading: loading,
     error,
     page,
     totalPages,
@@ -67,7 +67,7 @@ export default function JournalPage() {
     setFilters: setJournalFilters,
     refetch,
     loadMore,
-  } = useJournal({ filters });
+  } = useJournal(filters);
 
   const handleSubmit = useCallback(async () => {
     if (!newEntry.content.trim()) return;

@@ -41,6 +41,7 @@ export type ProfileFormValues = z.infer<typeof profileSchema>;
 interface ProfileFormProps {
   profile?: Partial<ProfileFormValues>;
   onSubmit: (data: ProfileFormValues & { avatarFile?: File }) => void;
+  onCancel?: () => void;
   isSubmitting?: boolean;
 }
 
@@ -54,7 +55,7 @@ interface ProfileFormProps {
  * - Responsive layout with Framer Motion animations
  * - Character count for bio
  */
-export function ProfileForm({ profile, onSubmit, isSubmitting }: ProfileFormProps) {
+export function ProfileForm({ profile, onSubmit, onCancel, isSubmitting }: ProfileFormProps) {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(profile?.avatarUrl || null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,38 +94,31 @@ export function ProfileForm({ profile, onSubmit, isSubmitting }: ProfileFormProp
   };
 
   return (
-    <Card className="max-w-3xl mx-auto shadow-xl border-opacity-50 backdrop-blur-sm bg-background/80 overflow-hidden">
+    <Card className="max-w-3xl mx-auto border border-border/40 backdrop-blur-md bg-background/60 overflow-hidden shadow-sm">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
       >
         <form onSubmit={form.handleSubmit(onFormSubmit)}>
-          <CardHeader className="text-center border-b border-border/50 bg-muted/20 pb-8">
-            <CardTitle className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
-              Edit Profile
-            </CardTitle>
-            <CardDescription className="text-muted-foreground mt-2">
-              Update your personal information and professional aspirations
+          <CardHeader className="text-center border-b border-border/40 bg-muted/10 pb-10">
+            <CardTitle className="text-3xl font-black tracking-tight">Edit Profile</CardTitle>
+            <CardDescription className="text-muted-foreground mt-2 font-medium">
+              Update your personal identity and professional aspirations.
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="space-y-8 pt-8">
+          <CardContent className="space-y-10 pt-10 px-8">
             {/* Avatar Section */}
-            <div className="flex flex-col items-center justify-center space-y-4">
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="relative group cursor-pointer"
-                onClick={handleAvatarClick}
-              >
-                <Avatar className="h-32 w-32 border-4 border-primary/20 transition-all duration-300 group-hover:border-primary/50 shadow-2xl">
+            <div className="flex flex-col items-center justify-center space-y-6">
+              <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
+                <Avatar className="h-32 w-32 border-4 border-background transition-all duration-300 group-hover:border-primary/30 shadow-xl overflow-hidden">
                   <AvatarImage src={avatarPreview || undefined} className="object-cover" />
-                  <AvatarFallback className="bg-secondary">
-                    <User className="h-16 w-16 text-muted-foreground" />
+                  <AvatarFallback className="bg-muted">
+                    <User className="h-14 w-14 text-muted-foreground/50" />
                   </AvatarFallback>
                 </Avatar>
-                <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <Camera className="text-white h-8 w-8" />
                 </div>
                 <input
@@ -134,13 +128,13 @@ export function ProfileForm({ profile, onSubmit, isSubmitting }: ProfileFormProp
                   className="hidden"
                   accept="image/*"
                 />
-              </motion.div>
+              </div>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={handleAvatarClick}
-                className="text-xs font-medium"
+                className="text-[10px] font-black uppercase tracking-widest px-6 h-9 rounded-full border-border/60 hover:bg-primary/5 hover:text-primary transition-colors"
               >
                 Change Avatar
               </Button>
@@ -240,7 +234,19 @@ export function ProfileForm({ profile, onSubmit, isSubmitting }: ProfileFormProp
             </div>
           </CardContent>
 
-          <CardFooter className="pt-6 pb-8 flex justify-end bg-muted/10 border-t border-border/50">
+          <CardFooter className="pt-6 pb-8 flex justify-end gap-3 bg-muted/10 border-t border-border/50">
+            {onCancel && (
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                onClick={onCancel}
+                disabled={isSubmitting}
+                className="px-6 font-semibold"
+              >
+                Cancel
+              </Button>
+            )}
             <Button
               type="submit"
               size="lg"

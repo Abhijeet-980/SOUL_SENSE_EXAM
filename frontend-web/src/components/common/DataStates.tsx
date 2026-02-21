@@ -132,7 +132,7 @@ export function OfflineBanner({ className = '' }: OfflineBannerProps) {
         <div>
           <p className="font-medium text-amber-800 dark:text-amber-200">You are offline</p>
           <p className="text-sm text-amber-700 dark:text-amber-300">
-            Some features may be unavailable. Changes will sync when you're back online.
+            Some features may be unavailable. Changes will sync when you&apos;re back online.
           </p>
         </div>
       </div>
