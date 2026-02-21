@@ -126,7 +126,7 @@ class AuthService:
             
         to_encode.update({"exp": expire})
         # Use correct settings attributes as seen in router
-        encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+        encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.jwt_algorithm)
         return encoded_jwt
 
     def create_pre_auth_token(self, user_id: int) -> str:
@@ -142,7 +142,7 @@ class AuthService:
             "scope": "pre_auth",
             "type": "2fa_challenge"
         }
-        return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+        return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.jwt_algorithm)
 
     def initiate_2fa_login(self, user: User) -> str:
         """
@@ -183,7 +183,7 @@ class AuthService:
         
         try:
             # 1. Verify Token
-            payload = jwt.decode(pre_auth_token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+            payload = jwt.decode(pre_auth_token, settings.SECRET_KEY, algorithms=[settings.jwt_algorithm])
             user_id = payload.get("sub")
             scope = payload.get("scope")
             
