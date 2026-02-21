@@ -80,7 +80,7 @@ def create_app() -> FastAPI:
 
     # CORS middleware
     # If in production, ensure we are not allowing all origins blindly unless intended
-    origins = settings.cors_origins
+    origins = settings.BACKEND_CORS_ORIGINS
     
     app.add_middleware(
         CORSMiddleware,
@@ -100,9 +100,6 @@ def create_app() -> FastAPI:
  
     # Register Health endpoints at root level for orchestration
     app.include_router(health_router, tags=["Health"])
- 
-    # Version header middleware
-    app.add_middleware(VersionHeaderMiddleware)
 
     from .exceptions import APIException
     from .constants.errors import ErrorCode

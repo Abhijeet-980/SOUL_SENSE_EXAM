@@ -2,7 +2,7 @@ from pathlib import Path
 import os
 import sys
 import secrets
-from typing import Optional
+from typing import Optional, Any
 
 from dotenv import load_dotenv
 from pydantic import Field, field_validator, ValidationError
@@ -55,32 +55,32 @@ class BaseAppSettings(BaseSettings):
     github_repo_name: str = Field(default="SOUL_SENSE_EXAM", description="GitHub Repository Name")
 
     # CORS Configuration
-    allowed_origins: str = Field(
-        default='["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:3005", "http://127.0.0.1:3005", "tauri://localhost", "http://localhost:1420"]',
-        description="Allowed origins for CORS"
-    )
-
     # Cookie Security Settings
     cookie_secure: bool = Field(default=False, description="Use Secure flag for cookies (Requires HTTPS)")
     cookie_samesite: str = Field(default="lax", description="SameSite attribute for cookies (lax, strict, none)")
     cookie_domain: Optional[str] = Field(default=None, description="Domain attribute for cookies")
     access_token_expire_minutes: int = Field(default=30, description="Access token expiration in minutes")
 
-    @property
-    def cors_origins(self) -> list[str]:
-        """Parse allowed_origins JSON string."""
-        import json
-        import logging
-        
-        logger = logging.getLogger("app.config")
-        
-        try:
-            return json.loads(self.allowed_origins)
-        except json.JSONDecodeError as e:
-            logger.warning(
-                f"Failed to parse allowed_origins JSON: '{self.allowed_origins}'. Error: {e}"
-            )
-            return []
+    # CORS Configuration
+    BACKEND_CORS_ORIGINS: Any = Field(
+        default=["http://localhost:3000", "http://localhost:3005", "tauri://localhost"],
+        description="Allowed origins for CORS"
+    )
+
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",")]
+        elif isinstance(v, (list, str)):
+            if isinstance(v, str):
+                import json
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    return [v]
+            return v
+        raise ValueError(v)
 
     model_config = SettingsConfigDict(
         env_file=str(ENV_FILE),
