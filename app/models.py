@@ -614,6 +614,25 @@ def get_user_scores_optimized(session: Session, username: str, limit: int = 50) 
         Score.timestamp.desc()
     ).limit(limit).all()
 
+class ExportRecord(Base):
+    """Track user data exports for audit and GDPR compliance."""
+    __tablename__ = 'export_records'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    export_id = Column(String, unique=True, nullable=False, index=True)
+    format = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    date_range_start = Column(DateTime, nullable=True)
+    date_range_end = Column(DateTime, nullable=True)
+    data_types = Column(Text, nullable=True)
+    is_encrypted = Column(Boolean, default=False, nullable=False)
+    status = Column(String, default='completed', nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=True)
+
+    user = relationship("User")
+
 # Initialize logger
 logging.basicConfig(level=logging.INFO)
 # End of models
