@@ -1,7 +1,7 @@
 import logging
 from unittest.mock import MagicMock, patch
 from datetime import datetime
-from app.models import JournalEntry
+from backend.fastapi.api.root_models import JournalEntry
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

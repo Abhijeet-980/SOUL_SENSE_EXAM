@@ -12,7 +12,7 @@ import pytest
 import json
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.models import Base, User, UserEmotionalPatterns
+from backend.fastapi.api.root_models import Base, User, UserEmotionalPatterns
 
 
 @pytest.fixture

@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "username": "int_user",
+    "user_id": 1,
+    "exported_at": "2026-02-15T00:53:10.543490",
+    "record_count": 1,
+    "version": "1.0"
+  },
+  "data": [
+    {
+      "timestamp": "2026-02-14T19:23:10.486065+00:00",
+      "total_score": 80,
+      "sentiment_score": 0.5,
+      "reflection_text": "gAAAAABpkMuexhUE8yuZ03R-m_ajgjAGvdJKxqlRlehQy7frWwwk1MnYpQ3PcCw8q4JbgURaqNc7gzt8vcT__7nJzmienswKM1QmnVaPWiLUkJL2NS6Fd_g=",
+      "is_rushed": false,
+      "is_inconsistent": false,
+      "age_group_snapshot": "25-29"
+    }
+  ]
+}

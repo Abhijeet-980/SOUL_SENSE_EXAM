@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 # Import models from root_models module (handles namespace collision)
-from api.root_models import (
+from ..root_models import (
     User,
     UserSettings,
     MedicalProfile,
@@ -49,7 +49,17 @@ class ProfileService:
     def get_user_settings(self, user_id: int) -> Optional[UserSettings]:
         """Get user settings."""
         self._verify_user_exists(user_id)
-        return self.db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+        settings = self.db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+        if not settings:
+            # Lazy creation
+            settings = UserSettings(
+                user_id=user_id,
+                updated_at=datetime.utcnow().isoformat()
+            )
+            self.db.add(settings)
+            self.db.commit()
+            self.db.refresh(settings)
+        return settings
 
     def create_user_settings(self, user_id: int, settings_data: Dict[str, Any]) -> UserSettings:
         """Create user settings."""
@@ -113,7 +123,17 @@ class ProfileService:
     def get_medical_profile(self, user_id: int) -> Optional[MedicalProfile]:
         """Get medical profile."""
         self._verify_user_exists(user_id)
-        return self.db.query(MedicalProfile).filter(MedicalProfile.user_id == user_id).first()
+        profile = self.db.query(MedicalProfile).filter(MedicalProfile.user_id == user_id).first()
+        if not profile:
+            # Lazy creation
+            profile = MedicalProfile(
+                user_id=user_id,
+                last_updated=datetime.utcnow().isoformat()
+            )
+            self.db.add(profile)
+            self.db.commit()
+            self.db.refresh(profile)
+        return profile
 
     def create_medical_profile(self, user_id: int, profile_data: Dict[str, Any]) -> MedicalProfile:
         """Create medical profile."""
@@ -177,7 +197,17 @@ class ProfileService:
     def get_personal_profile(self, user_id: int) -> Optional[PersonalProfile]:
         """Get personal profile."""
         self._verify_user_exists(user_id)
-        return self.db.query(PersonalProfile).filter(PersonalProfile.user_id == user_id).first()
+        profile = self.db.query(PersonalProfile).filter(PersonalProfile.user_id == user_id).first()
+        if not profile:
+            # Lazy creation
+            profile = PersonalProfile(
+                user_id=user_id,
+                last_updated=datetime.utcnow().isoformat()
+            )
+            self.db.add(profile)
+            self.db.commit()
+            self.db.refresh(profile)
+        return profile
 
     def create_personal_profile(self, user_id: int, profile_data: Dict[str, Any]) -> PersonalProfile:
         """Create personal profile."""
@@ -241,7 +271,21 @@ class ProfileService:
     def get_user_strengths(self, user_id: int) -> Optional[UserStrengths]:
         """Get user strengths."""
         self._verify_user_exists(user_id)
-        return self.db.query(UserStrengths).filter(UserStrengths.user_id == user_id).first()
+        strengths = self.db.query(UserStrengths).filter(UserStrengths.user_id == user_id).first()
+        if not strengths:
+            # Lazy creation
+            strengths = UserStrengths(
+                user_id=user_id,
+                top_strengths="[]",
+                areas_for_improvement="[]",
+                current_challenges="[]",
+                sharing_boundaries="[]",
+                last_updated=datetime.utcnow().isoformat()
+            )
+            self.db.add(strengths)
+            self.db.commit()
+            self.db.refresh(strengths)
+        return strengths
 
     def create_user_strengths(self, user_id: int, strengths_data: Dict[str, Any]) -> UserStrengths:
         """Create user strengths."""
@@ -305,7 +349,18 @@ class ProfileService:
     def get_emotional_patterns(self, user_id: int) -> Optional[UserEmotionalPatterns]:
         """Get emotional patterns."""
         self._verify_user_exists(user_id)
-        return self.db.query(UserEmotionalPatterns).filter(UserEmotionalPatterns.user_id == user_id).first()
+        patterns = self.db.query(UserEmotionalPatterns).filter(UserEmotionalPatterns.user_id == user_id).first()
+        if not patterns:
+             # Lazy creation
+            patterns = UserEmotionalPatterns(
+                user_id=user_id,
+                common_emotions="[]",
+                last_updated=datetime.utcnow().isoformat()
+            )
+            self.db.add(patterns)
+            self.db.commit()
+            self.db.refresh(patterns)
+        return patterns
 
     def create_emotional_patterns(self, user_id: int, patterns_data: Dict[str, Any]) -> UserEmotionalPatterns:
         """Create emotional patterns."""

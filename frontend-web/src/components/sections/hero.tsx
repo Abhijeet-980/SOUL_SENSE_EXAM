@@ -6,8 +6,11 @@ import Link from 'next/link';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { Section } from '@/components/layout';
 import { analytics } from '@/lib/utils/analytics';
+import { useAuth } from '@/hooks/useAuth';
 
 export function Hero() {
+  const { isAuthenticated } = useAuth();
+
   return (
     <Section className="pt-32 lg:pt-48 overflow-hidden relative">
       {/* Background Decorative Elements */}
@@ -68,7 +71,7 @@ export function Hero() {
               })
             }
           >
-            <Link href="/register">
+            <Link href={isAuthenticated ? '/dashboard' : '/register'}>
               Start Free EQ Test
               <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Link>

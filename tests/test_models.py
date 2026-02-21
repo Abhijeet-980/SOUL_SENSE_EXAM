@@ -1,4 +1,4 @@
-from app.models import Base
+from backend.fastapi.api.root_models import Base
 from sqlalchemy import inspect
 from app.db import get_engine
 

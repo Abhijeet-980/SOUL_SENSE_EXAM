@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 from app.services.audit_service import AuditService
-from app.models import AuditLog
+from backend.fastapi.api.root_models import AuditLog
 
 class TestAuditService(unittest.TestCase):
 

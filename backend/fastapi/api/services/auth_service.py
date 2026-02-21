@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import time
 import logging
 import secrets
 import hashlib
@@ -27,6 +28,37 @@ class AuthService:
     def __init__(self, db: Session = Depends(get_db)):
         self.db = db
 
+    
+
+    def check_username_available(self, username: str) -> tuple[bool, str]:
+        """
+        Check if a username is available for registration.
+        Includes normalization, regex validation, reserved list check, and DB lookup.
+        """
+        import re
+        username_norm = username.strip().lower()
+        
+        # 1. Length check
+        if len(username_norm) < 3:
+            return False, "Username must be at least 3 characters"
+        if len(username_norm) > 20:
+            return False, "Username must not exceed 20 characters"
+            
+        # 2. Regex check
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', username_norm):
+            return False, "Username must start with a letter and contain only alphanumeric characters and underscores"
+            
+        # 3. Reserved Words
+        reserved = {'admin', 'root', 'support', 'soulsense', 'system', 'official'}
+        if username_norm in reserved:
+            return False, "This username is reserved"
+            
+        # 4. DB Lookup
+        if self.db.query(User).filter(User.username == username_norm).first():
+            return False, "Username is already taken"
+            
+        return True, "Username is available"
+
     def hash_password(self, password: str) -> str:
         """Hash a password for storing."""
         salt = bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
@@ -51,41 +83,62 @@ class AuthService:
         Security Features:
         - Constant-time password verification (via bcrypt)
         - Identifier normalization (lowercase)
-        - Persistent lockout check (TODO: future phase integration)
+        - Persistent lockout check with exponential backoff
         - Generic error responses via the caller
         - Failed/Successful login auditing
         """
         # 1. Normalize identifier
         identifier_lower = identifier.lower().strip()
 
-        # 2. Try fetching by username first
+        # 2. Check for Lockout (Pre-Auth)
+        # Check if account is locked due to too many failed attempts
+        is_locked, lockdown_msg, wait_seconds = self._is_account_locked(identifier_lower)
+        if is_locked:
+            # Timing mitigation: even if locked, we want to simulate some work
+            # to match the time taken by bcrypt roughly (though bcrypt is way slower)
+            # Actually, the best way is to return immediately but with a consistent message.
+            raise AuthException(
+                code=ErrorCode.AUTH_ACCOUNT_LOCKED,
+                message=lockdown_msg,
+                details={"wait_seconds": wait_seconds} if wait_seconds else None
+            )
+
+        # 3. Try fetching by username first
         user = self.db.query(User).filter(User.username == identifier_lower).first()
         
-        # 3. If not found, try fetching by email (via PersonalProfile)
+        # 4. If not found, try fetching by email (via PersonalProfile)
         if not user:
             profile = self.db.query(PersonalProfile).filter(PersonalProfile.email == identifier_lower).first()
             if profile:
                 user = self.db.query(User).filter(User.id == profile.user_id).first()
         
-        # 4. Timing attack protection: Always hash something even if user not found
+        # 5. Timing attack protection: Always hash something even if user not found
         if not user:
             # Dummy verify to consume time
             self.verify_password("dummy", "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW")
-            self._record_login_attempt(identifier_lower, False, ip_address)
+            self._record_login_attempt(identifier_lower, False, ip_address, reason="User not found")
             raise AuthException(
                 code=ErrorCode.AUTH_INVALID_CREDENTIALS,
                 message="Incorrect username or password"
             )
 
-        # 5. Verify password
+        # 6. Verify password
         if not self.verify_password(password, user.password_hash):
-            self._record_login_attempt(identifier_lower, False, ip_address)
+            self._record_login_attempt(identifier_lower, False, ip_address, reason="Invalid password")
             raise AuthException(
                 code=ErrorCode.AUTH_INVALID_CREDENTIALS,
                 message="Incorrect username or password"
             )
         
-        # 6. Success - Update last login & Audit
+        # 6.5 Reactivate account if soft-deleted
+        if getattr(user, "is_deleted", False):
+            logger.info(f"♻️ Reactivating soft-deleted account: {user.username}")
+            user.is_deleted = False
+            user.deleted_at = None
+            user.is_active = True
+            # Database will be committed below in update_last_login or explicitly
+        
+        # 7. Success - Update last login & Audit
         self._record_login_attempt(identifier_lower, True, ip_address)
         self.update_last_login(user.id)
         
@@ -100,7 +153,6 @@ class AuthService:
             db_session=self.db
         )
 
-        
         return user
 
     def create_access_token(self, data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -122,7 +174,7 @@ class AuthService:
         if expires_delta:
             expire = datetime.now(timezone.utc) + expires_delta
         else:
-            expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+            expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
             
         to_encode.update({"exp": expire})
         # Use correct settings attributes as seen in router
@@ -275,13 +327,59 @@ class AuthService:
             self.db.rollback()
             logger.error(f"Failed to update last_login: {e}")
 
-    def _record_login_attempt(self, username: str, success: bool, ip_address: str):
+    def _is_account_locked(self, username: str) -> Tuple[bool, Optional[str], int]:
+        """
+        Check if an account is locked based on recent failed attempts.
+        Implements progressive lockout with increasing durations:
+        - 3-4 failed attempts: 30 seconds lockout
+        - 5-6 failed attempts: 120 seconds lockout
+        - 7+ failed attempts: 300 seconds lockout
+        """
+        # Check failed attempts within the last 30 minutes
+        thirty_mins_ago = datetime.now(timezone.utc) - timedelta(minutes=30)
+
+        # Count failed attempts since thirty_mins_ago
+        failed_attempts = self.db.query(LoginAttempt).filter(
+            LoginAttempt.username == username,
+            LoginAttempt.is_successful == False,
+            LoginAttempt.timestamp >= thirty_mins_ago
+        ).order_by(LoginAttempt.timestamp.desc()).all()
+
+        count = len(failed_attempts)
+
+        # Determine lockout duration based on attempt count
+        lockout_duration = 0
+        if count >= 7:
+            lockout_duration = 300  # 5 minutes
+        elif count >= 5:
+            lockout_duration = 120  # 2 minutes
+        elif count >= 3:
+            lockout_duration = 30   # 30 seconds
+
+        if lockout_duration > 0:
+            # Find when the last attempt happened to calculate remaining lockout
+            last_attempt = failed_attempts[0].timestamp
+            # Ensure it has timezone info if it came from DB as naive
+            if last_attempt.tzinfo is None:
+                last_attempt = last_attempt.replace(tzinfo=timezone.utc)
+
+            elapsed = datetime.now(timezone.utc) - last_attempt
+            remaining = int(lockout_duration - elapsed.total_seconds())
+
+            if remaining > 0:
+                logger.warning(f"Account locked: {username} ({count} failed attempts, {remaining}s remaining)")
+                return True, "Too many failed attempts. Try again later.", remaining
+
+        return False, None, 0
+
+    def _record_login_attempt(self, username: str, success: bool, ip_address: str, reason: Optional[str] = None):
         """Record the login attempt audit log."""
         try:
             attempt = LoginAttempt(
                 username=username,
                 ip_address=ip_address,
                 is_successful=success,
+                failure_reason=reason,
                 timestamp=datetime.now(timezone.utc)
             )
             self.db.add(attempt)
@@ -291,31 +389,44 @@ class AuthService:
             self.db.rollback()
             logger.error(f"Failed to record login attempt: {e}")
 
-    def register_user(self, user_data: 'UserCreate') -> User:
+    def register_user(self, user_data: 'UserCreate') -> Tuple[bool, Optional[User], str]:
         """
         Register a new user and their personal profile.
         Standardizes identifiers and validates uniqueness.
+        
+        Security: 
+        - Generic status return to prevent enumeration.
+        - Timing jitter to prevent response-time analysis.
         """
+        import time
+        import random
         from ..exceptions import APIException
         from ..constants.errors import ErrorCode
+
+        # Timing Jitter: Artificial delay baseline (100-300ms)
+        # This masks the difference between a DB hit (fast) and a bcrypt hash (slowish)
+        # Though bcrypt is ~100ms+, so we just add a bit of noise.
+        time.sleep(random.uniform(0.1, 0.3))
 
         username_lower = user_data.username.lower().strip()
         email_lower = user_data.email.lower().strip()
 
-        # Check uniqueness
-        if self.db.query(User).filter(User.username == username_lower).first():
-            raise APIException(
-                code=ErrorCode.REG_USERNAME_EXISTS,
-                message="Username already taken",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
+        # 1. Validation (Does NOT leak existence if we return generic later)
+        # But we still do it for integrity.
+        existing_username = self.db.query(User).filter(User.username == username_lower).first()
+        existing_email = self.db.query(PersonalProfile).filter(PersonalProfile.email == email_lower).first()
 
-        if self.db.query(PersonalProfile).filter(PersonalProfile.email == email_lower).first():
-            raise APIException(
-                code=ErrorCode.REG_EMAIL_EXISTS,
-                message="Email already registered",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
+        if existing_username or existing_email:
+            # ENUMERATION PROTECTION:
+            # We don't raise an error. We return "Success" but don't create.
+            # In a real app, we would send an "Already registered" email here.
+            logger.info(f"Registration attempt for existing identity: {username_lower} / {email_lower}")
+            return True, None, "Account creation initiated. Please check your email for verification link."
+
+        # 2. Disposable Email Check (This remains an error as it's a policy failure, not enumeration)
+        from .security_service import SecurityService
+        if SecurityService.is_disposable_email(email_lower):
+            return False, None, "Registration with disposable email domains is not allowed"
 
         try:
             hashed_pw = self.hash_password(user_data.password)
@@ -338,15 +449,19 @@ class AuthService:
             
             self.db.commit()
             self.db.refresh(new_user)
-            return new_user
+            
+            # In a real app, send "Welcome/Verify" email here
+            return True, new_user, "Registration successful. Please verify your email."
+        except AttributeError as e:
+            self.db.rollback()
+            logger.error(f"Registration Model Mismatch: {e}")
+            return False, None, "A configuration error occurred on the server."
         except Exception as e:
             self.db.rollback()
-            logger.error(f"Registration failed: {e}")
-            raise APIException(
-                code=ErrorCode.REG_INVALID_DATA,
-                message="Could not complete registration",
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            import traceback
+            logger.error(f"Registration failed error: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False, None, "An internal error occurred. Please try again later."
 
     def create_refresh_token(self, user_id: int) -> str:
         """
@@ -366,6 +481,16 @@ class AuthService:
         self.db.commit()
         
         return token
+    
+
+    def has_multiple_active_sessions(self, user_id: int) -> bool:
+        active_sessions = self.db.query(RefreshToken).filter(
+            RefreshToken.user_id == user_id,
+            RefreshToken.is_revoked == False,
+            RefreshToken.expires_at > datetime.now(timezone.utc)
+        ).count()
+
+        return active_sessions > 1
 
     def refresh_access_token(self, refresh_token: str) -> Tuple[str, str]:
         """
@@ -413,6 +538,10 @@ class AuthService:
             db_token.is_revoked = True
             self.db.commit()
             logger.info(f"Revoked refresh token for user_id={db_token.user_id}")
+    
+
+
+
 
     def initiate_password_reset(self, email: str) -> tuple[bool, str]:
         """
@@ -435,6 +564,8 @@ class AuthService:
             
             # Privacy: If user not found, return success-like message
             if not user:
+                # Add random jitter to simulate OTP generation/lookup time (100ms - 300ms)
+                time.sleep(secrets.SystemRandom().uniform(0.1, 0.3))
                 logger.info(f"Password reset requested for unknown email: {email_lower}")
                 return True, "If an account exists with this email, a reset code has been sent."
 
@@ -462,6 +593,11 @@ class AuthService:
         2. Update Password.
         """
         from app.auth.otp_manager import OTPManager
+        from ..utils.weak_passwords import WEAK_PASSWORDS
+        
+        # Block weak/common passwords
+        if new_password.lower() in WEAK_PASSWORDS:
+            return False, "This password is too common. Please choose a stronger password."
         
         try:
             email_lower = email.lower().strip()
@@ -497,3 +633,5 @@ class AuthService:
             self.db.rollback()
             logger.error(f"Error in complete_password_reset: {e}")
             return False, f"Internal error: {str(e)}"
+
+

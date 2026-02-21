@@ -1,11 +1,15 @@
 """API router for exam write operations."""
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from ..services.db_service import get_db
 from ..services.exam_service import ExamService
-from ..schemas import ExamResponseCreate, ExamResultCreate, AssessmentResponse, AssessmentListResponse
+from ..services.results_service import AssessmentResultsService
+from ..schemas import ExamResponseCreate, ExamResultCreate, AssessmentResponse, AssessmentListResponse, DetailedExamResult
 from .auth import get_current_user
 from ..root_models import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -74,3 +78,23 @@ async def get_exam_history(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{id}/results", response_model=DetailedExamResult)
+async def get_detailed_results(
+    id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed breakdown for a specific assessment.
+    """
+    try:
+        result = AssessmentResultsService.get_detailed_results(db, id, current_user.id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Assessment not found or access denied")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching detailed results for assessment {id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")

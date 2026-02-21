@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from pydantic import Field, field_validator, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 BACKEND_DIR = ROOT_DIR / "backend"
 FASTAPI_DIR = BACKEND_DIR / "fastapi"
 ENV_FILE = ROOT_DIR / ".env"
@@ -33,10 +33,16 @@ class BaseAppSettings(BaseSettings):
     port: int = Field(default=8000, ge=1, le=65535, description="Server port")
     debug: bool = Field(default=True, description="Debug mode")
     welcome_message: str = Field(default="Welcome to Soul Sense!", description="Welcome message")
+    
+    # Mock Authentication Mode (for testing/development)
+    mock_auth_mode: bool = Field(default=False, description="Enable mock authentication for testing")
 
     # Database configuration
     database_type: str = Field(default="sqlite", description="Database type")
     database_url: str = Field(default="sqlite:///../../data/soulsense.db", description="Database URL")
+
+    # Deletion Grace Period
+    deletion_grace_period_days: int = Field(default=30, ge=0, description="Grace period for account deletion in days")
 
     # JWT configuration
     SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(32), description="JWT secret key")
@@ -50,9 +56,15 @@ class BaseAppSettings(BaseSettings):
 
     # CORS Configuration
     allowed_origins: str = Field(
-        default='["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:3005"]',
+        default='["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:3005", "http://127.0.0.1:3005", "tauri://localhost", "http://localhost:1420"]',
         description="Allowed origins for CORS"
     )
+
+    # Cookie Security Settings
+    cookie_secure: bool = Field(default=False, description="Use Secure flag for cookies (Requires HTTPS)")
+    cookie_samesite: str = Field(default="lax", description="SameSite attribute for cookies (lax, strict, none)")
+    cookie_domain: Optional[str] = Field(default=None, description="Domain attribute for cookies")
+    access_token_expire_minutes: int = Field(default=30, description="Access token expiration in minutes")
 
     @property
     def cors_origins(self) -> list[str]:
@@ -112,6 +124,8 @@ class DevelopmentSettings(BaseAppSettings):
 
     debug: bool = True
     SECRET_KEY: str = Field(default="dev_jwt_secret_key_for_development_only_not_secure", description="Development JWT key")
+    mock_auth_mode: bool = True
+    jwt_secret_key: str = Field(default="dev_jwt_secret_key_for_development_only_not_secure", description="Development JWT key")
 
 
 class StagingSettings(BaseAppSettings):
@@ -140,6 +154,10 @@ class ProductionSettings(BaseAppSettings):
 
     app_env: str = "production"
     debug: bool = False
+
+    # Enforce secure cookies in production
+    cookie_secure: bool = True
+    cookie_samesite: str = "lax"  # Or 'strict' if API and FE are on same domain
 
     # Required production database settings
     database_host: str = Field(..., description="Database host")

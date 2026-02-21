@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
+  // Optimize images
   images: {
     unoptimized: true,
     remotePatterns: [
@@ -17,28 +17,63 @@ const nextConfig = {
         hostname: 'github.com',
       },
     ],
+    formats: ['image/webp', 'image/avif'],
   },
+
+  // Enable SWC minification for faster builds
+  swcMinify: true,
+
+  // Optimize production builds
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production',
+  },
+
+  // Performance optimizations
+  experimental: {
+    optimizeCss: true,
+  },
+
+  // Headers for better caching and security
   async headers() {
     return [
       {
-        source: '/(.*)',
+        source: '/:all*(svg|jpg|jpeg|png|ico|webp)',
+        locale: false,
         headers: [
           {
-            key: 'X-Frame-Options',
-            value: 'DENY',
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
           },
+        ],
+      },
+      {
+        source: '/static/:path*',
+        headers: [
           {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'origin-when-cross-origin',
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
           },
         ],
       },
     ];
   },
+
+  // Bundle analyzer (run with ANALYZE=true)
+  ...(process.env.ANALYZE === 'true' && {
+    webpack: (config, { isServer }) => {
+      if (!isServer) {
+        const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
+        config.plugins.push(
+          new BundleAnalyzerPlugin({
+            analyzerMode: 'static',
+            reportFilename: './analyze/client.html',
+            openAnalyzer: false,
+          })
+        );
+      }
+      return config;
+    },
+  }),
 };
 
 module.exports = nextConfig;

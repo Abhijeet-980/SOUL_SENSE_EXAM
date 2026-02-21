@@ -29,12 +29,14 @@ export const BentoGridItem = ({
   description,
   header,
   icon,
+  children,
 }: {
   className?: string;
   title?: string | React.ReactNode;
   description?: string | React.ReactNode;
   header?: React.ReactNode;
   icon?: React.ReactNode;
+  children?: React.ReactNode;
 }) => {
   return (
     <motion.div
@@ -53,7 +55,7 @@ export const BentoGridItem = ({
       <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-purple-600 rounded-3xl blur opacity-0 group-hover:opacity-10 transition duration-500"></div>
 
       <div className="relative z-10 h-full flex flex-col justify-between">
-        {header}
+        {header || children}
         <div className="group-hover/bento:translate-x-2 transition duration-200 mt-4">
           <div className="flex items-center gap-2 mb-2">
             <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">{icon}</div>

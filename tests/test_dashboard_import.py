@@ -85,6 +85,10 @@ class MockTkinterParent:
     def __radd__(self, other):
         """Handle reverse string concatenation"""
         return str(other) + str(self._w)
+    
+    def bind(self, sequence, func, add=None):
+        """Mock bind method for event bindings"""
+        pass
 
 
 @pytest.mark.serial

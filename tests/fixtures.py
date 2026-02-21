@@ -28,7 +28,7 @@ from unittest.mock import Mock, MagicMock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.models import (
+from backend.fastapi.api.root_models import (
     Base, User, UserSettings, MedicalProfile, PersonalProfile,
     UserStrengths, UserEmotionalPatterns, Score, Response,
     Question, QuestionCategory, JournalEntry, SatisfactionRecord,
@@ -209,6 +209,7 @@ class ScoreFactory:
         is_inconsistent: bool = False,
         reflection_text: Optional[str] = None,
         timestamp: Optional[str] = None,
+        session_id: Optional[str] = None,
         commit: bool = True
     ) -> Score:
         """Create a test score record.
@@ -240,7 +241,8 @@ class ScoreFactory:
             is_rushed=is_rushed,
             is_inconsistent=is_inconsistent,
             reflection_text=reflection_text or "Test reflection text.",
-            timestamp=timestamp or datetime.utcnow().isoformat()
+            timestamp=timestamp or datetime.utcnow().isoformat(),
+            session_id=session_id
         )
         
         if session:

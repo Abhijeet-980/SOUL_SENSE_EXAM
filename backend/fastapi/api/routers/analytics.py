@@ -1,18 +1,41 @@
 """Analytics API router - Aggregated, non-sensitive data only."""
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
+from pydantic import BaseModel
+import logging
 from ..services.db_service import get_db
 from ..services.analytics_service import AnalyticsService
 from ..schemas import (
     AnalyticsSummary,
     TrendAnalytics,
     BenchmarkComparison,
-    PopulationInsights
+    PopulationInsights,
+    AnalyticsEventCreate
 )
 from ..middleware.rate_limiter import rate_limit_analytics
 
+logger = logging.getLogger("api.analytics")
 router = APIRouter()
+
+
+@router.post("/events", status_code=201, dependencies=[Depends(rate_limit_analytics)])
+async def track_event(
+    event: AnalyticsEventCreate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Log a tracking event (signup drop-off, etc).
+    
+    **Rate Limited**: 30 requests per minute per IP
+    
+    **Data Privacy**:
+    - No PII is logged (enforced by schema).
+    - IP address is stored for security auditing.
+    """
+    AnalyticsService.log_event(db, event.dict(), ip_address=request.client.host)
+    return {"status": "ok"}
 
 
 @router.get("/summary", response_model=AnalyticsSummary, dependencies=[Depends(rate_limit_analytics)])
@@ -190,3 +213,87 @@ async def get_user_analytics_trends(
         eq_scores=eq_scores,
         wellbeing=wellbeing
     )
+
+
+# ============================================================================
+# Performance Monitoring Endpoints
+# ============================================================================
+
+class WebVitalsMetric(BaseModel):
+    """Web Vitals metric model."""
+    name: str
+    value: float
+    rating: str
+    timestamp: int
+    url: str
+    user_agent: Optional[str] = None
+
+
+class PerformanceSummary(BaseModel):
+    """Performance summary for analytics."""
+    url: str
+    metrics: dict
+    user_agent: Optional[str] = None
+
+
+@router.post("/web-vitals", status_code=201)
+async def track_web_vitals(
+    metric: WebVitalsMetric,
+    request: Request
+):
+    """
+    Track Web Vitals metrics from the frontend.
+
+    Args:
+        metric: Web Vitals metric data
+
+    Returns:
+        Confirmation message
+
+    Logs performance metrics without storing PII.
+    In production, integrate with analytics service.
+    """
+    try:
+        logger.info(
+            f"Web Vitals - {metric.name}: {metric.value:.2f}ms "
+            f"({metric.rating}) - {metric.url}"
+        )
+
+        return {
+            "status": "success",
+            "message": "Metric recorded",
+            "metric": metric.name,
+            "value": metric.value,
+            "rating": metric.rating,
+        }
+
+    except Exception as e:
+        logger.error(f"Error tracking Web Vitals: {e}")
+        raise HTTPException(status_code=500, detail="Failed to track metric")
+
+
+@router.post("/performance-summary", status_code=201)
+async def track_performance_summary(
+    summary: PerformanceSummary
+):
+    """
+    Track performance summary from the frontend.
+
+    Args:
+        summary: Performance summary data
+
+    Returns:
+        Confirmation message
+    """
+    try:
+        logger.info(f"Performance Summary for {summary.url}")
+        logger.debug(f"Metrics: {summary.metrics}")
+
+        return {
+            "status": "success",
+            "message": "Performance summary recorded",
+        }
+
+    except Exception as e:
+        logger.error(f"Error tracking performance summary: {e}")
+        raise HTTPException(status_code=500, detail="Failed to track summary")

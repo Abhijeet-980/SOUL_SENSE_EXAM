@@ -122,6 +122,7 @@ User Input → GUI Events → Business Logic → Data Validation → Database �
 - 🔄 **Database Migrations**: Alembic-powered schema evolution
 - 🐳 **Container Ready**: Docker support for consistent environments
 - 📖 **API Documentation**: OpenAPI/Swagger documentation
+- 🎭 **Mock Authentication**: Simplified auth for testing and development ([Quick Start](docs/MOCK_AUTH_QUICKSTART.md))
 
 ---
 

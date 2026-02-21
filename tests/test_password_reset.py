@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from app.auth.auth import AuthManager
 from app.auth.otp_manager import OTPManager
-from app.models import User, PersonalProfile, OTP
+from backend.fastapi.api.root_models import User, PersonalProfile, OTP
 from datetime import datetime, timedelta
 
 @pytest.fixture

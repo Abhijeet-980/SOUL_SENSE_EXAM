@@ -1,0 +1,42 @@
+{
+  "name": "Soul Sense EQ Test",
+  "short_name": "Soul Sense",
+  "description": "AI-Powered Emotional Intelligence Test with offline support",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#8b5cf6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["health", "education", "productivity"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Take EQ Test",
+      "short_name": "Test",
+      "description": "Take a new emotional intelligence assessment",
+      "url": "/exam",
+      "icons": [{ "src": "/icon.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Journal",
+      "short_name": "Write",
+      "description": "Write a new journal entry",
+      "url": "/journal/new",
+      "icons": [{ "src": "/icon.png", "sizes": "192x192" }]
+    }
+  ]
+}

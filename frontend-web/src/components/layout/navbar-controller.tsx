@@ -12,7 +12,7 @@ import { FloatingNavbar } from './floating-navbar';
 export function NavbarController() {
   const pathname = usePathname();
 
-  const hideOnRoutes = new Set(['/login', '/register', '/forgot-password']);
+  const hideOnRoutes = new Set(['/forgot-password']);
   if (hideOnRoutes.has(pathname)) {
     return null;
   }
