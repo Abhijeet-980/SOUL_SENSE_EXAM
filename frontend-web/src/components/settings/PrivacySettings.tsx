@@ -1,6 +1,6 @@
 'use client';
 
-import { UserSettings } from '@/lib/api/settings';
+import { UserSettings } from '../../lib/api/settings';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
 import { Checkbox } from '@/components/ui';
 import { Button } from '@/components/ui';
@@ -87,7 +87,7 @@ export function PrivacySettings({ settings, onChange }: PrivacySettingsProps) {
           <h3 className="text-sm font-medium">Data Retention</h3>
           <p className="text-xs text-muted-foreground">How long to keep your data</p>
         </div>
-        <Select value={settings.privacy.data_retention_days.toString()} onValueChange={(value) => handleRetentionChange(parseInt(value))}>
+        <Select value={settings.privacy.data_retention_days.toString()} onValueChange={(value: string) => handleRetentionChange(parseInt(value))}>
           <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>

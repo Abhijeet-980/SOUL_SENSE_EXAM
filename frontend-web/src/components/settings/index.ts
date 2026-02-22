@@ -1,7 +1,11 @@
-export * from './ThemeToggle';
-export * from './NotificationSettings';
-export * from './notification-settings';
-export * from './PrivacySettings';
-export * from './privacy-settings';
+export { AppearanceSettings } from './AppearanceSettings';
+export * from './theme-toggle';
+
+export { NotificationSettings } from './NotificationSettings';
+export { NotificationSettings as NotificationSettingsPremium } from './notification-settings';
+
+export { PrivacySettings } from './PrivacySettings';
+export { PrivacySettings as PrivacySettingsPremium } from './privacy-settings';
+
 export * from './AccountSettings';
 export * from './AboutSettings';

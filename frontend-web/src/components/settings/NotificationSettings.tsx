@@ -1,6 +1,6 @@
 'use client';
 
-import { UserSettings } from '@/lib/api/settings';
+import { UserSettings } from '../../lib/api/settings';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
 import { Checkbox } from '@/components/ui';
 import { useDebounce } from '@/hooks/useDebounce';

@@ -1,6 +1,6 @@
 'use client';
 
-import { UserSettings } from '@/lib/api/settings';
+import { UserSettings } from '../../lib/api/settings';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
 import { Button } from '@/components/ui';
 import { Input } from '@/components/ui';
@@ -63,7 +63,7 @@ export function AccountSettings({ settings, onChange }: AccountSettingsProps) {
         <div className="space-y-3">
           <div>
             <Label htmlFor="language">Language</Label>
-            <Select value={settings.account.language} onValueChange={(value) => handleAccountChange('language', value)}>
+            <Select value={settings.account.language} onValueChange={(value: string) => handleAccountChange('language', value)}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -84,7 +84,7 @@ export function AccountSettings({ settings, onChange }: AccountSettingsProps) {
 
           <div>
             <Label htmlFor="timezone">Timezone</Label>
-            <Select value={settings.account.timezone} onValueChange={(value) => handleAccountChange('timezone', value)}>
+            <Select value={settings.account.timezone} onValueChange={(value: string) => handleAccountChange('timezone', value)}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -106,7 +106,7 @@ export function AccountSettings({ settings, onChange }: AccountSettingsProps) {
 
           <div>
             <Label htmlFor="date-format">Date Format</Label>
-            <Select value={settings.account.date_format} onValueChange={(value) => handleAccountChange('date_format', value)}>
+            <Select value={settings.account.date_format} onValueChange={(value: string) => handleAccountChange('date_format', value)}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>

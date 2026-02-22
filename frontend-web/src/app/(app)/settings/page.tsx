@@ -7,7 +7,7 @@ import { Button } from '@/components/ui';
 import { Skeleton } from '@/components/ui';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui';
 import {
-  ThemeToggle,
+  AppearanceSettings,
   NotificationSettings,
   PrivacySettings,
   AccountSettings,
@@ -198,7 +198,7 @@ export default function SettingsPage() {
                   <CardTitle className="flex items-center gap-2">🎨 Appearance</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ThemeToggle settings={settings} onChange={handleSettingChange} />
+                  <AppearanceSettings settings={settings} onChange={handleSettingChange} />
                 </CardContent>
               </Card>
             </TabsContent>

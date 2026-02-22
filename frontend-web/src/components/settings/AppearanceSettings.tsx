@@ -1,16 +1,17 @@
 'use client';
 
-import { UserSettings } from '@/lib/api/settings';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
-import { Checkbox } from '@/components/ui';
-import { useDebounce } from '@/hooks/useDebounce';
+import { UserSettings } from '../../lib/api/settings';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui';
+import { Checkbox } from '../ui';
+import { useDebounce } from '../../hooks/useDebounce';
+import { ThemeToggle } from './theme-toggle';
 
-interface ThemeToggleProps {
+interface AppearanceSettingsProps {
   settings: UserSettings;
   onChange: (updates: Partial<UserSettings>) => void;
 }
 
-export function ThemeToggle({ settings, onChange }: ThemeToggleProps) {
+export function AppearanceSettings({ settings, onChange }: AppearanceSettingsProps) {
   const debouncedOnChange = useDebounce(onChange, 500);
 
   const handleThemeChange = (theme: 'light' | 'dark' | 'system') => {
@@ -38,22 +39,10 @@ export function ThemeToggle({ settings, onChange }: ThemeToggleProps) {
   return (
     <div className="space-y-6">
       {/* Theme Selection */}
-      <div className="space-y-3">
-        <div>
-          <h3 className="text-sm font-medium">Theme</h3>
-          <p className="text-xs text-muted-foreground">Choose your preferred color scheme</p>
-        </div>
-        <Select value={settings.theme} onValueChange={handleThemeChange}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="system">System</SelectItem>
-            <SelectItem value="light">Light</SelectItem>
-            <SelectItem value="dark">Dark</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <ThemeToggle
+        value={settings.theme as 'light' | 'dark' | 'system'}
+        onChange={handleThemeChange}
+      />
 
       {/* Font Size */}
       <div className="space-y-3">
