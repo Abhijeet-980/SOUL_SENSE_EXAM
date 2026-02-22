@@ -80,6 +80,28 @@ Tokens expire after a configurable period (default: 24 hours).
 
 ## API Endpoints
 
+### Root Endpoint
+
+**Endpoint:** `GET /`
+
+**Description:** Returns API metadata including available versions and documentation path.
+
+**Response:**
+```json
+{
+  "name": "SoulSense API",
+  "versions": [
+    {
+      "version": "v1",
+      "status": "current",
+      "path": "/api/v1"
+    }
+  ],
+  "documentation": "/docs"
+}
+
+
+
 ### Authentication
 
 #### Register User
