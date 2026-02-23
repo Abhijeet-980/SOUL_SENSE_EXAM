@@ -171,7 +171,7 @@ class Token(BaseModel):
     username: Optional[str] = None
     email: Optional[str] = None
     id: Optional[int] = None
-    created_at: Optional[str] = None
+    created_at: Optional[datetime] = None
     warnings: Optional[List[Dict[str, str]]] = None
 
 
