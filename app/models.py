@@ -105,7 +105,8 @@ class OTP(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     code_hash = Column(String, nullable=False)
-    purpose = Column(String, nullable=False) # e.g. 'PASSWORD_RESET', '2FA'
+    purpose = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=False)
     is_used = Column(Boolean, default=False)
     attempts = Column(Integer, default=0)
