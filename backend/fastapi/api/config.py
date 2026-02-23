@@ -29,6 +29,7 @@ class BaseAppSettings(BaseSettings):
 
     # Application settings
     app_env: str = Field(default="development", description="Application environment")
+    ENVIRONMENT: str = Field(default="development", description="Environment alias")
     host: str = Field(default="127.0.0.1", description="Server host")
     port: int = Field(default=8000, ge=1, le=65535, description="Server port")
     debug: bool = Field(default=True, description="Debug mode")
@@ -99,17 +100,25 @@ class BaseAppSettings(BaseSettings):
     )
 
     @property
-    def is_production(self) -> bool:
-        """Check if environment is production."""
-        return self.app_env.lower() == "production"
+    def ENVIRONMENT(self) -> str:
+        """Alias for app_env to match issue requirements."""
+        return self.app_env
 
     @field_validator('app_env')
     @classmethod
     def validate_app_env(cls, v: str) -> str:
-        allowed_envs = {'development', 'staging', 'production'}
+        allowed_envs = {'development', 'staging', 'production', 'testing'}
         if v.lower() not in allowed_envs:
             raise ValueError(f'app_env must be one of {allowed_envs}, got {v}')
         return v.lower()
+
+    @field_validator('mock_auth_mode')
+    @classmethod
+    def validate_mock_auth_mode(cls, v: bool, info) -> bool:
+        # Forcibly ignore mock auth in production
+        if info.data.get('app_env') == 'production':
+            return False
+        return v
 
     @field_validator('database_url')
     @classmethod
@@ -132,6 +141,7 @@ class BaseAppSettings(BaseSettings):
 class DevelopmentSettings(BaseAppSettings):
     """Settings for development environment."""
 
+    ENVIRONMENT: str = "development"
     debug: bool = True
     SECRET_KEY: str = Field(default="dev_jwt_secret_key_for_development_only_not_secure", description="Development JWT key")
     mock_auth_mode: bool = True
@@ -142,6 +152,7 @@ class StagingSettings(BaseAppSettings):
     """Settings for staging environment."""
 
     app_env: str = "staging"
+    ENVIRONMENT: str = "staging"
     debug: bool = False
 
     # Required staging database settings
@@ -163,6 +174,7 @@ class ProductionSettings(BaseAppSettings):
     """Settings for production environment."""
 
     app_env: str = "production"
+    ENVIRONMENT: str = "production"
     debug: bool = False
 
     # Enforce secure cookies in production

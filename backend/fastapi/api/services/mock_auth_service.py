@@ -23,6 +23,11 @@ from ..root_models import User
 from sqlalchemy.orm import Session
 
 settings = get_settings()
+
+# CRITICAL SECURITY GUARD: Prevent MockAuthService from loading in production
+if settings.ENVIRONMENT == "production":
+    raise RuntimeError("CRITICAL SECURITY VIOLATION: MockAuthService cannot be loaded in a production environment!")
+
 logger = logging.getLogger(__name__)
 
 # Mock users for testing
