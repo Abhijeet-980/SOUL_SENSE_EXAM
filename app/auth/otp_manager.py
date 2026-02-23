@@ -46,7 +46,7 @@ class OTPManager:
             # 1. Rate Limiting Check
             last_otp = session.query(OTP).filter(
                 OTP.user_id == user_id,
-                OTP.type == purpose
+                OTP.purpose == purpose
             ).order_by(OTP.created_at.desc()).first()
             
             if last_otp:
@@ -63,7 +63,7 @@ class OTPManager:
             new_otp = OTP(
                 user_id=user_id,
                 code_hash=code_hash,
-                type=purpose,
+                purpose=purpose,
                 created_at=datetime.utcnow(),
                 expires_at=datetime.utcnow() + timedelta(minutes=cls.OTP_EXPIRY_MINUTES),
                 is_used=False,
@@ -101,7 +101,7 @@ class OTPManager:
         try:
             otp = session.query(OTP).filter(
                 OTP.user_id == user_id,
-                OTP.type == purpose,
+                OTP.purpose == purpose,
                 OTP.is_used == False,
                 OTP.expires_at > datetime.utcnow()
             ).order_by(OTP.created_at.desc()).first()
@@ -137,7 +137,7 @@ class OTPManager:
         try:
             last_otp = session.query(OTP).filter(
                 OTP.user_id == user_id,
-                OTP.type == purpose
+                OTP.purpose == purpose
             ).order_by(OTP.created_at.desc()).first()
 
             if last_otp:
@@ -164,7 +164,7 @@ class OTPManager:
         try:
             otp = session.query(OTP).filter(
                 OTP.user_id == user_id,
-                OTP.type == purpose,
+                OTP.purpose == purpose,
                 OTP.is_used == False,
                 OTP.is_locked == False,
                 OTP.expires_at > datetime.utcnow()
@@ -203,7 +203,7 @@ class OTPManager:
             # Find the valid OTP
             otp = session.query(OTP).filter(
                 OTP.user_id == user_id,
-                OTP.type == purpose,
+                OTP.purpose == purpose,
                 OTP.is_used == False,
                 OTP.expires_at > datetime.utcnow()
             ).order_by(OTP.created_at.desc()).first()
