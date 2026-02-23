@@ -15,8 +15,8 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-# Import models from root_models module (handles namespace collision)
-from ..root_models import (
+# Import models from models module
+from ..models import (
     User,
     UserSettings,
     MedicalProfile,

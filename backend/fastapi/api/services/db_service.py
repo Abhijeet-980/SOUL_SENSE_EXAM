@@ -4,8 +4,8 @@ from sqlalchemy.orm import sessionmaker, Session
 from typing import List, Optional, Tuple
 from datetime import datetime
 
-# Import model classes from root_models module (handles namespace collision)
-from ..root_models import Base, Score, Response, Question, QuestionCategory
+# Import model classes from models module
+from ..models import Base, Score, Response, Question, QuestionCategory
 
 from ..config import get_settings
 

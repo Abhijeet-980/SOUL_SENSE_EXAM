@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from ..services.db_service import get_db
 from ..routers.auth import get_current_user
-from ..root_models import User
+from ..models import User
 from ..schemas import (
     GamificationSummary, 
     AchievementResponse, 

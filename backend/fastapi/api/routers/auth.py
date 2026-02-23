@@ -13,7 +13,7 @@ from ..utils.network import get_real_ip
 from ..constants.errors import ErrorCode
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
 from ..exceptions import AuthException
-from ..root_models import User
+from ..models import User
 from ..exceptions import AuthException, APIException, RateLimitException
 # Rate limiters imported inline within routes to avoid potential circular/timing issues
 from sqlalchemy.orm import Session
@@ -133,7 +133,7 @@ async def register(
     return {"message": message}
 
 
-@router.post("/login", response_model=None, responses={401: {"model": ErrorResponse}, 202: {"model": TwoFactorAuthRequiredResponse}, 200: {"model": Token}})
+@router.post("/login", response_model=Token, responses={401: {"model": ErrorResponse}, 202: {"model": TwoFactorAuthRequiredResponse}})
 async def login(
     response: Response,
     login_request: LoginRequest, 
@@ -197,21 +197,21 @@ async def login(
     )
     
     # return Token(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
-    return {
-    "access_token": access_token,
-    "token_type": "bearer",
-    "refresh_token": refresh_token,
-    "username": user.username,
-    "email": user.personal_profile.email if user.personal_profile else None,
-    "id": user.id,
-    "created_at": user.created_at,
-    "warnings": (
-        [{
-            "code": "MULTIPLE_SESSIONS_ACTIVE",
-            "message": "Your account is active on another device or browser."
-        }] if has_multiple_sessions else []
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=refresh_token,
+        username=user.username,
+        email=user.personal_profile.email if user.personal_profile else None,
+        id=user.id,
+        created_at=user.created_at,
+        warnings=(
+            [{
+                "code": "MULTIPLE_SESSIONS_ACTIVE",
+                "message": "Your account is active on another device or browser."
+            }] if has_multiple_sessions else []
+        )
     )
-}
 
 
 
@@ -247,21 +247,21 @@ async def verify_2fa(
     )
     
     # return Token(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
-    return {
-    "access_token": access_token,
-    "token_type": "bearer",
-    "refresh_token": refresh_token,
-    "username": user.username,
-    "email": user.personal_profile.email if user.personal_profile else None,
-    "id": user.id,
-    "created_at": user.created_at.isoformat() if user.created_at else None,
-    "warnings": (
-        [{
-            "code": "MULTIPLE_SESSIONS_ACTIVE",
-            "message": "Your account is active on another device or browser."
-        }] if has_multiple_sessions else []
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=refresh_token,
+        username=user.username,
+        email=user.personal_profile.email if user.personal_profile else None,
+        id=user.id,
+        created_at=user.created_at,
+        warnings=(
+            [{
+                "code": "MULTIPLE_SESSIONS_ACTIVE",
+                "message": "Your account is active on another device or browser."
+            }] if has_multiple_sessions else []
+        )
     )
-}
 
 
 

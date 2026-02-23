@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, UTC
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from ..services.db_service import SessionLocal
-from ..root_models import AuditLog
+from ..models import AuditLog
 
 logger = logging.getLogger(__name__)
 

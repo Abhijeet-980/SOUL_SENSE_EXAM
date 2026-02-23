@@ -19,7 +19,7 @@ from ..exceptions import AuthException
 from ..config import get_settings
 from ..services.db_service import get_db
 from ..schemas import UserCreate
-from ..root_models import User
+from ..models import User
 from sqlalchemy.orm import Session
 
 settings = get_settings()

@@ -4,7 +4,7 @@ from datetime import datetime, UTC
 from typing import List, Tuple
 from sqlalchemy.orm import Session
 from ..schemas import ExamResponseCreate, ExamResultCreate
-from ..root_models import User, Score, Response
+from ..models import User, Score, Response
 from .db_service import get_db
 from .gamification_service import GamificationService
 try:

@@ -170,7 +170,7 @@ async def get_score_distribution(db: Session = Depends(get_db)):
 
 from ..services.user_analytics_service import UserAnalyticsService
 from ..schemas import UserAnalyticsSummary, UserTrendsResponse
-from ..root_models import User
+from ..models import User
 from .auth import get_current_user
 
 @router.get("/me/summary", response_model=UserAnalyticsSummary)

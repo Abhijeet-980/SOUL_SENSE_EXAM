@@ -5,7 +5,7 @@ from datetime import datetime, UTC
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 
-from ..root_models import AssessmentResult, User
+from ..models import AssessmentResult, User
 from ..schemas import (
     DeepDiveType, 
     DeepDiveQuestion, 

@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional, Any, cast
 from sqlalchemy.orm import Session
-from ..root_models import Score, Response, Question, QuestionCategory
+from ..models import Score, Response, Question, QuestionCategory
 from ..schemas import DetailedExamResult, CategoryScore, Recommendation
 
 logger = logging.getLogger(__name__)

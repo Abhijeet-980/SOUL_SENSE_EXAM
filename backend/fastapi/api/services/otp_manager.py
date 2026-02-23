@@ -3,7 +3,7 @@ import secrets
 import logging
 from datetime import datetime, timedelta, UTC
 from ..services.db_service import SessionLocal
-from ..root_models import OTP, User
+from ..models import OTP, User
 
 logger = logging.getLogger(__name__)
 

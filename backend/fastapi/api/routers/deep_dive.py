@@ -10,7 +10,7 @@ from ..schemas import (
     DeepDiveSubmission, 
     DeepDiveResultResponse
 )
-from ..root_models import User
+from ..models import User
 from .auth import get_current_user
 
 router = APIRouter()

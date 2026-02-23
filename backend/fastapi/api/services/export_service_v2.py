@@ -24,7 +24,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from cryptography.fernet import Fernet
 
-from ..root_models import (
+from ..models import (
     User, Score, JournalEntry, UserSettings,
     PersonalProfile, MedicalProfile, UserStrengths,
     UserEmotionalPatterns, SatisfactionRecord,

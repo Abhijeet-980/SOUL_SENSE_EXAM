@@ -16,7 +16,7 @@ import os
 from ..services.db_service import get_db
 from ..services.export_service import ExportService as ExportServiceV1
 from ..services.export_service_v2 import ExportServiceV2
-from ..root_models import User, ExportRecord
+from ..models import User, ExportRecord
 from .auth import get_current_user
 
 router = APIRouter()

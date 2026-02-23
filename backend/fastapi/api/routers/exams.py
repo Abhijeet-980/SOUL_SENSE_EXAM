@@ -7,7 +7,7 @@ from ..services.exam_service import ExamService
 from ..services.results_service import AssessmentResultsService
 from ..schemas import ExamResponseCreate, ExamResultCreate, AssessmentResponse, AssessmentListResponse, DetailedExamResult
 from .auth import get_current_user
-from ..root_models import User
+from ..models import User
 
 logger = logging.getLogger(__name__)
 

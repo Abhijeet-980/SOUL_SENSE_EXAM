@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import your models
 try:
-    from app.models import Base
+    from backend.fastapi.api.models import Base
     target_metadata = Base.metadata
 except ImportError:
     # Create an empty metadata if models can't be imported
@@ -26,7 +26,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import app config for DB URL
-from app.config import DATABASE_URL
+from backend.fastapi.api.config import get_settings_instance
+settings = get_settings_instance()
+DATABASE_URL = settings.database_url
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
