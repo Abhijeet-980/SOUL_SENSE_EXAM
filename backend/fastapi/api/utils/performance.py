@@ -250,7 +250,7 @@ def get_db_session_stats(db) -> dict:
     return stats
 
 
-def log_query_performance(db, operation: str = "query") -> None:
+def log_query_performance(db, operation: str = "query") -> Callable[[], None]:
     """
     Enable query performance logging for a database session.
 

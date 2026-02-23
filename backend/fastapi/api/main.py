@@ -80,10 +80,6 @@ def create_app() -> FastAPI:
 
     # CORS middleware
     origins = settings.BACKEND_CORS_ORIGINS
-    # If in production, ensure we are not allowing all origins blindly unless intended
-    origins = settings.BACKEND_CORS_ORIGINS
-    
-    origins = settings.cors_origins
     
     app.add_middleware(
         CORSMiddleware,
@@ -101,29 +97,6 @@ def create_app() -> FastAPI:
     # Register V1 API Router
     app.include_router(api_v1_router, prefix="/api/v1")
 
-    # Register Health endpoints at root level for orchestration
-    app.include_router(health_router, tags=["Health"])
-
-    # Version header middleware
-    app.add_middleware(VersionHeaderMiddleware)
-
-    # CORS middleware (Outer-most)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
-        expose_headers=["X-API-Version"],
-        max_age=3600,  # Cache preflight requests for 1 hour
-    )
-    
-    # Version header middleware
-    app.add_middleware(VersionHeaderMiddleware)
-    
-    # Register V1 API Router
-    app.include_router(api_v1_router, prefix="/api/v1")
- 
     # Register Health endpoints at root level for orchestration
     app.include_router(health_router, tags=["Health"])
 
@@ -212,11 +185,21 @@ def create_app() -> FastAPI:
         except Exception as e:
             print(f"[ERROR] Database initialization failed: {e}")
             
-        print("[OK] SoulSense API started successfully")
-        print(f"[ENV] Environment: {settings.app_env}")
-        print(f"[CONFIG] Debug mode: {settings.debug}")
-        print(f"[DB] Database: {settings.database_url}")
-        print(f"[API] API available at /api/v1")
+    print("[OK] SoulSense API started successfully")
+    print(f"[ENV] Environment: {settings.app_env}")
+    print(f"[CONFIG] Debug mode: {settings.debug}")
+    print(f"[DB] Database: {settings.database_url}")
+    print(f"[API] API available at /api/v1")
+
+    # OUTSIDE MIDDLEWARES (added last to run first)
+    
+    # Host Header Validation
+    from fastapi.middleware.trustedhost import TrustedHostMiddleware
+    print(f"[SECURITY] Loading TrustedHostMiddleware with allowed_hosts: {settings.ALLOWED_HOSTS}")
+    app.add_middleware(
+        TrustedHostMiddleware, 
+        allowed_hosts=settings.ALLOWED_HOSTS
+    )
 
     return app
 

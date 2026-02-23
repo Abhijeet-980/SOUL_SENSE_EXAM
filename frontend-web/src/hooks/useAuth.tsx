@@ -81,7 +81,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const checkServerInstance = async () => {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/api/v1/auth/server-id`, {
+      const response = await fetch(`${apiUrl}/auth/server-id`, {
         method: 'GET',
       });
 
@@ -107,7 +107,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const checkMockMode = async () => {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/health`, {
+      // Health check is usually at the API root or base URL
+      const response = await fetch(`${apiUrl.replace(/\/api\/v1\/?$/, '')}/health`, {
         method: 'GET',
       });
 

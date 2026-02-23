@@ -913,7 +913,7 @@ class ExportServiceV2:
             f.write(buffer.getvalue())
 
     @classmethod
-    def _create_score_chart(cls, scores: List[Dict[str, Any]]) -> Optional[Drawing]:
+    def _create_score_chart(cls, scores: List[Dict[str, Any]]) -> Optional[Any]:
         """Create a trend chart for scores."""
         try:
             from reportlab.graphics.shapes import Drawing

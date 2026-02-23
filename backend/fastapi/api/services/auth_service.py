@@ -225,7 +225,7 @@ class AuthService:
         # 3. Create Pre-Auth Token
         return self.create_pre_auth_token(user.id)
 
-    def verify_2fa_login(self, pre_auth_token: str, code: str) -> User:
+    def verify_2fa_login(self, pre_auth_token: str, code: str, ip_address: str = "0.0.0.0") -> User:
         """
         Verify pre-auth token and OTP code.
         Returns User if successful, raises AuthException otherwise.
@@ -253,8 +253,19 @@ class AuthService:
                  raise AuthException(code=ErrorCode.AUTH_USER_NOT_FOUND, message="User not found")
                  
             # Audit success
-            self._record_login_attempt(user.username, True, "0.0.0.0") # IP not passed here, simplified
+            self._record_login_attempt(user.username, True, ip_address)
             self.update_last_login(user.id)
+            
+            # SoulSense Audit Log
+            from app.services.audit_service import AuditService
+            AuditService.log_event(
+                user.id,
+                "LOGIN_2FA",
+                ip_address=ip_address,
+                details={"method": "2fa", "status": "success"},
+                db_session=self.db
+            )
+            
             self.db.commit() # Save OTP used state
             
             return user

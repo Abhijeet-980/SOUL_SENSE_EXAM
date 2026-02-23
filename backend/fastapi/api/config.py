@@ -67,6 +67,16 @@ class BaseAppSettings(BaseSettings):
         description="Allowed origins for CORS"
     )
 
+    # Security Configuration
+    ALLOWED_HOSTS: list[str] = Field(
+        default=["localhost", "127.0.0.1", "0.0.0.0"],
+        description="List of valid hostnames for Host header validation"
+    )
+    TRUSTED_PROXIES: list[str] = Field(
+        default=["127.0.0.1"],
+        description="List of trusted proxy IP addresses"
+    )
+
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:

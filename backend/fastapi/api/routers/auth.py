@@ -9,6 +9,7 @@ from ..schemas import UserCreate, Token, UserResponse, ErrorResponse, PasswordRe
 from ..services.db_service import get_db
 from ..services.auth_service import AuthService
 from ..services.captcha_service import captcha_service
+from ..utils.network import get_real_ip
 from ..constants.errors import ErrorCode
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
 from ..exceptions import AuthException
@@ -91,7 +92,7 @@ async def check_username_availability(
     Check if a username is available.
     Rate limited to 20 requests per minute per IP.
     """
-    client_ip = request.client.host
+    client_ip = get_real_ip(request)
     count = availability_limiter_cache.get(client_ip, 0)
     if count >= 20:
         raise HTTPException(
@@ -112,7 +113,8 @@ async def register(
 ):
     from ..middleware.rate_limiter import registration_limiter
     # Rate limit by IP
-    is_limited, wait_time = registration_limiter.is_rate_limited(request.client.host)
+    real_ip = get_real_ip(request)
+    is_limited, wait_time = registration_limiter.is_rate_limited(real_ip)
     if is_limited:
         raise RateLimitException(
             message=f"Too many registration attempts. Please try again in {wait_time}s.",
@@ -139,7 +141,7 @@ async def login(
     auth_service: AuthService = Depends()
 ):
     from ..middleware.rate_limiter import login_limiter
-    ip = request.client.host
+    ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "Unknown")
 
     # 1. Start with CAPTCHA Validation (Before Rate Limiting to prevent spam cheapness)
@@ -217,12 +219,14 @@ async def login(
 async def verify_2fa(
     login_request: TwoFactorLoginRequest,
     response: Response,
+    request: Request,
     auth_service: AuthService = Depends()
 ):
     """
     Verify 2FA code and issue tokens.
     """
-    user = auth_service.verify_2fa_login(login_request.pre_auth_token, login_request.code)
+    ip = get_real_ip(request)
+    user = auth_service.verify_2fa_login(login_request.pre_auth_token, login_request.code, ip_address=ip)
     
     # Issue Tokens
     access_token = auth_service.create_access_token(
@@ -319,7 +323,8 @@ async def initiate_password_reset(
     ALWAYS returns success message to prevent user enumeration.
     """
     # Rate limit by IP
-    is_limited, wait_time = password_reset_limiter.is_rate_limited(request.client.host)
+    real_ip = get_real_ip(request)
+    is_limited, wait_time = password_reset_limiter.is_rate_limited(real_ip)
     if is_limited:
         raise RateLimitException(
             message=f"Too many reset requests. Please try again in {wait_time}s.",
@@ -355,7 +360,8 @@ async def complete_password_reset(
     Verify OTP and set new password.
     """
     # Rate limit by IP for OTP attempts
-    is_limited, wait_time = password_reset_limiter.is_rate_limited(req_obj.client.host)
+    real_ip = get_real_ip(req_obj)
+    is_limited, wait_time = password_reset_limiter.is_rate_limited(real_ip)
     if is_limited:
          raise RateLimitException(
             message=f"Too many attempts. Please try again in {wait_time}s.",
