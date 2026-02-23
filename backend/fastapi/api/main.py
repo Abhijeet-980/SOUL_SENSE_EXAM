@@ -164,6 +164,12 @@ def create_app() -> FastAPI:
             Base.metadata.create_all(bind=engine)
             print("[OK] Database tables initialized/verified")
             
+            # Verify database connectivity before starting background tasks
+            with SessionLocal() as db:
+                from sqlalchemy import text
+                db.execute(text("SELECT 1"))
+                print("[OK] Database connectivity verified")
+            
             # Start background task for soft-delete cleanup
             async def purge_task_loop():
                 while True:
@@ -173,8 +179,11 @@ def create_app() -> FastAPI:
                             from .services.user_service import UserService
                             user_service = UserService(db)
                             user_service.purge_deleted_users(settings.deletion_grace_period_days)
+                        print("[CLEANUP] Scheduled purge completed successfully")
                     except Exception as e:
-                        print(f"[ERROR] Soft-delete cleanup task failed: {e}")
+                        logger = logging.getLogger("api.purge_task")
+                        logger.error(f"Soft-delete cleanup task failed: {e}", exc_info=True)
+                        # Continue the loop instead of crashing - the task will retry in 24 hours
                     
                     # Run once every 24 hours
                     await asyncio.sleep(24 * 3600)
@@ -184,6 +193,8 @@ def create_app() -> FastAPI:
             
         except Exception as e:
             print(f"[ERROR] Database initialization failed: {e}")
+            # Re-raise to crash the application - don't start with broken DB
+            raise
             
     print("[OK] SoulSense API started successfully")
     print(f"[ENV] Environment: {settings.app_env}")
