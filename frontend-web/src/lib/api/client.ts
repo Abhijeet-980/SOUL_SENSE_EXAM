@@ -47,15 +47,8 @@ function getAuthToken(): string | null {
 function handleAuthFailure(): void {
   if (typeof window === 'undefined') return;
 
-  // Clear token
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-
-  // Notify other tabs to logout
-  localStorage.setItem('logout-event', Date.now().toString());
-
-  // Redirect to login
-  window.location.href = '/login';
+  // Dispatch custom event to let useAuth handle the cleanup
+  window.dispatchEvent(new CustomEvent('auth-failure'));
 }
 
 export async function apiClient<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {

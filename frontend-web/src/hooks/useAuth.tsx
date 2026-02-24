@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   UserSession,
@@ -220,7 +220,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     // Integrate logout fetch from main
     try {
       const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(
@@ -238,7 +238,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     clearSession();
     setUser(null);
     router.push('/login');
-  };
+  }, [router]);
+
+  // Listen for auth-failure events from API client
+  useEffect(() => {
+    const handleAuthFailure = () => {
+      logout();
+    };
+
+    window.addEventListener('auth-failure', handleAuthFailure);
+
+    return () => {
+      window.removeEventListener('auth-failure', handleAuthFailure);
+    };
+  }, [logout]);
 
   // ... existing code ...
 
