@@ -15,6 +15,7 @@ from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
 from ..exceptions import AuthException
 from ..models import User
 from ..exceptions import AuthException, APIException, RateLimitException
+from ..utils.limiter import limiter
 # Rate limiters imported inline within routes to avoid potential circular/timing issues
 from sqlalchemy.orm import Session
 from cachetools import TTLCache
@@ -38,7 +39,7 @@ async def get_server_id(request: Request):
 # oauth2_scheme is still needed for other endpoints but login now uses custom JSON
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
+async def get_current_user(request: Request, token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
     """
     Get current user from JWT token.
     This remains in the router/dependency layer as it couples HTTP security with logic.
@@ -62,6 +63,8 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Se
     if user is None:
         raise credentials_exception
     
+    # Set user_id in request state for rate limiting and auditing
+    request.state.user_id = user.id
     # Check if user is active
     if not getattr(user, 'is_active', True):
         raise HTTPException(
@@ -216,7 +219,9 @@ async def login(
 
 
 @router.post("/login/2fa", response_model=Token, responses={401: {"model": ErrorResponse}})
+@limiter.limit("5/minute")
 async def verify_2fa(
+    request: Request,
     login_request: TwoFactorLoginRequest,
     response: Response,
     request: Request,
@@ -382,7 +387,9 @@ async def complete_password_reset(
 
 
 @router.post("/2fa/setup/initiate")
+@limiter.limit("5/minute")
 async def initiate_2fa_setup(
+    request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     auth_service: AuthService = Depends()
 ):
@@ -393,19 +400,23 @@ async def initiate_2fa_setup(
 
 
 @router.post("/2fa/enable")
+@limiter.limit("5/minute")
 async def enable_2fa(
-    request: TwoFactorConfirmRequest,
+    request: Request,
+    confirm_request: TwoFactorConfirmRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     auth_service: AuthService = Depends()
 ):
     """Enable 2FA after verifying OTP."""
-    if auth_service.enable_2fa(current_user.id, request.code):
+    if auth_service.enable_2fa(current_user.id, confirm_request.code):
         return {"message": "2FA enabled successfully"}
     raise HTTPException(status_code=400, detail="Invalid code")
 
 
 @router.post("/2fa/disable")
+@limiter.limit("5/minute")
 async def disable_2fa(
+    request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     auth_service: AuthService = Depends()
 ):
