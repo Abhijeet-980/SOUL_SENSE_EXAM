@@ -22,7 +22,7 @@ export default function ExamPage() {
   // Exam state
   const {
     questions,
-    currentIndex,
+    currentQuestionIndex,
     answers,
     startTime,
     isCompleted,

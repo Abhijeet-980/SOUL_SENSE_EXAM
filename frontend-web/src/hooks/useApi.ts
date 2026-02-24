@@ -40,7 +40,7 @@ export function useApi<T>({
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(immediate);
   const [error, setError] = useState<string | null>(null);
-  const isMountedRef = useRef(true);
+  const isMountedRef = useRef(false);
 
   // Track mount status for memory leak prevention
   useEffect(() => {

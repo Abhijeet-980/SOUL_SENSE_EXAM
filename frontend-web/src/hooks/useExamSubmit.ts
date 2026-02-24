@@ -18,7 +18,7 @@ export function useExamSubmit(): UseExamSubmitReturn {
   const [result, setResult] = useState<ExamSubmissionResponse | null>(null);
 
   // Use ref to track if component is mounted
-  const isMountedRef = useRef(true);
+  const isMountedRef = useRef(false);
 
   const submitExam = useCallback(
     async (data: ExamSubmissionRequest): Promise<ExamSubmissionResponse | null> => {

@@ -5,6 +5,7 @@
 
 import dynamic from 'next/dynamic';
 import { ComponentType } from 'react';
+import React from 'react';
 
 // Chart components from recharts - lazy loaded to reduce initial bundle
 export const ActivityAreaChart = dynamic(

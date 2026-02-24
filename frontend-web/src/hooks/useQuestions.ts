@@ -32,7 +32,7 @@ export function useQuestions(options: UseQuestionsOptions = {}): UseQuestionsRet
   const [error, setError] = useState<string | null>(null);
 
   // Use ref to track if component is mounted
-  const isMountedRef = useRef(true);
+  const isMountedRef = useRef(false);
 
   const cacheKey = getCacheKey(category, count);
 
