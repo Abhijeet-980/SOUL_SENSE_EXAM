@@ -6,6 +6,7 @@ from app.constants import (
     MAX_TEXT_LENGTH, MAX_ENTRY_LENGTH, MAX_USERNAME_LENGTH,
     MAX_AGE_LENGTH, AGE_MIN, AGE_MAX
 )
+from app.security_config import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
 
 # Security patterns
 SQL_INJECTION_PATTERNS = [
@@ -204,11 +205,11 @@ def validate_username(username: str) -> Tuple[bool, str]:
 
 def validate_password_security(password: str) -> Tuple[bool, str]:
     """Enhanced password security validation."""
-    if len(password) < 8:
-        return False, "Password must be at least 8 characters."
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return False, f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
     
-    if len(password) > 128:
-        return False, "Password too long."
+    if len(password) > MAX_PASSWORD_LENGTH:
+        return False, f"Password too long (max {MAX_PASSWORD_LENGTH} characters)."
     
     # Check against weak/common passwords list
     if is_weak_password(password):
