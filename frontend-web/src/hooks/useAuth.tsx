@@ -61,7 +61,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // 2. Check for existing session
         const session = getSession();
         if (session) {
-          setUser(session.user);
+          // Critical: Verify the session isn't using the stale 'current' fallback
+          if (session.user.id === 'current') {
+            console.error('Critical Auth Sync Error: Stale "current" ID fallback found in stored session.');
+            clearSession();
+            setUser(null);
+            router.push('/login');
+          } else {
+            setUser(session.user);
+          }
         }
 
         // 3. Check if backend is in mock mode
@@ -141,9 +149,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return result; // 2FA Required
       }
 
+      if (!result.id) {
+        console.error(
+          'Critical Auth Sync Error: Valid session established but User ID missing from API payload.'
+        );
+        throw new Error('Invalid session state: Missing user identifier.');
+      }
+
       const session: UserSession = {
         user: {
-          id: result.id?.toString() || 'current',
+          id: result.id.toString(),
           email: (result.email ||
             (loginData.username.includes('@') ? loginData.username : '')) as string,
           name: result.username || loginData.username.split('@')[0],
@@ -186,9 +201,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const result = await authApi.login2FA(data);
 
+      if (!result.id) {
+        console.error(
+          'Critical Auth Sync Error: Valid session established but User ID missing from API payload.'
+        );
+        throw new Error('Invalid session state: Missing user identifier.');
+      }
+
       const session: UserSession = {
         user: {
-          id: result.id?.toString() || 'current',
+          id: result.id.toString(),
           email: (result.email || '') as string,
           name: result.username || 'User',
           username: result.username,

@@ -160,24 +160,54 @@ else:
     DB_PATH = os.path.join(BASE_DIR, DB_DIR_NAME, DB_FILENAME)
 
 # Database Configuration
-DATABASE_TYPE: str = get_env_var("DATABASE_TYPE", "sqlite")
+# FORCE UNIFICATION: Prioritize DATABASE_URL from environment (shared with backend)
+DATABASE_URL: str = os.getenv("DATABASE_URL") or get_env_var("DATABASE_URL")
 
-DATABASE_URL: str
-if DATABASE_TYPE == "postgresql":
-    DB_HOST: str = get_env_var("DB_HOST", "localhost")
-    DB_PORT: int = get_env_var("DB_PORT", 5432, int)
-    DB_NAME: str = get_env_var("DB_NAME", "soulsense")
-    DB_USER: str = get_env_var("DB_USER", "postgres")
-    DB_PASSWORD: str = get_env_var("DB_PASSWORD", "password")
-    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-else:
-    DATABASE_URL = f"sqlite:///{DB_PATH}"
-    # Ensure DB Directory Exists for SQLite
-    if not os.path.exists(os.path.dirname(DB_PATH)):
+if not DATABASE_URL:
+    # Try to import from backend config if available
+    try:
+        import sys
+        # Ensure project root is in path for imports
+        if BASE_DIR not in sys.path:
+            sys.path.insert(0, BASE_DIR)
+        
+        # Check if backend directory exists before trying to import
+        if os.path.exists(os.path.join(BASE_DIR, "backend")):
+            from backend.fastapi.api.config import get_settings_instance
+            DATABASE_URL = get_settings_instance().database_url
+            logging.info(f"Using DATABASE_URL from backend config: {DATABASE_URL}")
+    except (ImportError, Exception) as e:
+        logging.debug(f"Could not import backend config: {e}")
+
+if not DATABASE_URL:
+    # Fallback to legacy local configuration if shared sources unavailable
+    DATABASE_TYPE: str = get_env_var("DATABASE_TYPE", "sqlite")
+    if DATABASE_TYPE == "postgresql":
+        DB_HOST: str = get_env_var("DB_HOST", "localhost")
+        DB_PORT: int = get_env_var("DB_PORT", 5432, int)
+        DB_NAME: str = get_env_var("DB_NAME", "soulsense")
+        DB_USER: str = get_env_var("DB_USER", "postgres")
+        DB_PASSWORD: str = get_env_var("DB_PASSWORD", "password")
+        DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    else:
+        DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+# Ensure we handle SQLite directory creation if applicable
+if DATABASE_URL.startswith("sqlite:///"):
+    # Extract path, handling relative paths (sqlite:///./data/...)
+    sqlite_path = DATABASE_URL.replace("sqlite:///", "")
+    # Remove leading dots/slashes for path normalization if needed
+    if sqlite_path.startswith("./"):
+        sqlite_path = os.path.join(BASE_DIR, sqlite_path[2:])
+    elif not os.path.isabs(sqlite_path):
+        sqlite_path = os.path.join(BASE_DIR, sqlite_path)
+    
+    db_dir = os.path.dirname(sqlite_path)
+    if db_dir and not os.path.exists(db_dir):
         try:
-            os.makedirs(os.path.dirname(DB_PATH))
+            os.makedirs(db_dir)
         except OSError:
-            pass # Handle race condition or permission error
+            pass
 
 # UI Settings
 THEME: str = _config["ui"]["theme"]

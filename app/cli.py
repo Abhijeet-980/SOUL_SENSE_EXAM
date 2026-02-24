@@ -154,6 +154,8 @@ class SoulSenseCLI:
         try:
             from app.db import safe_db_context, get_user_settings
             from app.models import User
+            from app.db import get_engine
+            self.engine = get_engine()
             
             user_id = None
             print("Syncing with database...")
@@ -166,7 +168,8 @@ class SoulSenseCLI:
                     print(f"Creating new user profile for '{self.username}'...")
                     # Create new user with valid constraints
                     import bcrypt
-                    _cli_hash = bcrypt.hashpw(b"implicit_cli_auth", bcrypt.gensalt(rounds=12)).decode()
+                    from app.security_config import PASSWORD_HASH_ROUNDS
+                    _cli_hash = bcrypt.hashpw(b"implicit_cli_auth", bcrypt.gensalt(rounds=PASSWORD_HASH_ROUNDS)).decode()
                     user = User(
                         username=self.username, 
                         password_hash=_cli_hash
@@ -313,28 +316,27 @@ class SoulSenseCLI:
     def get_historical_data(self) -> Tuple[Optional[float], Optional[float]]:
         """Fetch user's previous scores for comparison"""
         try:
-            from app.db import get_connection
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            # Get last score (excluding current)
-            cursor.execute(
-                "SELECT total_score FROM scores WHERE username = ? ORDER BY timestamp DESC LIMIT 2",
-                (self.username,)
-            )
-            rows = cursor.fetchall()
-            last_score = rows[1][0] if len(rows) > 1 else None
-            
-            # Get age group average
-            cursor.execute(
-                "SELECT AVG(total_score) FROM scores WHERE detailed_age_group = ?",
-                (self.age_group,)
-            )
-            avg_row = cursor.fetchone()
-            age_avg = avg_row[0] if avg_row and avg_row[0] else None
-            
-            return last_score, age_avg
-        except Exception:
+            from sqlalchemy import text
+            with self.engine.connect() as conn:
+                # Get last score (excluding current)
+                result = conn.execute(
+                    text("SELECT total_score FROM scores WHERE username = :username ORDER BY timestamp DESC LIMIT 2"),
+                    {"username": self.username}
+                )
+                rows = result.fetchall()
+                last_score = rows[1][0] if len(rows) > 1 else None
+                
+                # Get age group average
+                result = conn.execute(
+                    text("SELECT AVG(total_score) FROM scores WHERE detailed_age_group = :age_group"),
+                    {"age_group": self.age_group}
+                )
+                avg_row = result.fetchone()
+                age_avg = avg_row[0] if avg_row and avg_row[0] else None
+                
+                return last_score, age_avg
+        except Exception as e:
+            logging.debug(f"History fetch error: {e}")
             return None, None
 
     def show_results(self) -> None:
@@ -426,17 +428,15 @@ class SoulSenseCLI:
         print("="*60 + "\n")
         
         try:
-            from app.db import get_connection
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute(
-                """SELECT timestamp, total_score, sentiment_score, is_rushed, is_inconsistent 
-                   FROM scores WHERE username = ? 
-                   ORDER BY timestamp DESC LIMIT 10""",
-                (self.username,)
-            )
-            rows = cursor.fetchall()
+            from sqlalchemy import text
+            with self.engine.connect() as conn:
+                result = conn.execute(
+                    text("""SELECT timestamp, total_score, sentiment_score, is_rushed, is_inconsistent 
+                       FROM scores WHERE username = :username 
+                       ORDER BY timestamp DESC LIMIT 10"""),
+                    {"username": self.username}
+                )
+                rows = result.fetchall()
             
             if not rows:
                 print("No exam history found. Take your first exam!")
@@ -500,47 +500,45 @@ class SoulSenseCLI:
         print("="*60 + "\n")
         
         try:
-            from app.db import get_connection
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            # Basic stats
-            cursor.execute("SELECT COUNT(*) FROM scores WHERE username = ?", (self.username,))
-            total = cursor.fetchone()[0] or 0
-            
-            if total == 0:
-                print("No exam data yet. Take your first exam!")
-                self.get_input("\nPress Enter to continue...")
-                return
-            
-            cursor.execute("SELECT AVG(total_score) FROM scores WHERE username = ?", (self.username,))
-            avg = cursor.fetchone()[0] or 0
-            
-            cursor.execute("SELECT MAX(total_score) FROM scores WHERE username = ?", (self.username,))
-            best = cursor.fetchone()[0] or 0
-            
-            cursor.execute("SELECT MIN(total_score) FROM scores WHERE username = ?", (self.username,))
-            worst = cursor.fetchone()[0] or 0
-            
-            # Consistency rate (non-rushed exams)
-            cursor.execute("SELECT COUNT(*) FROM scores WHERE username = ? AND is_rushed = 0", (self.username,))
-            consistent = cursor.fetchone()[0] or 0
-            consistency_rate = (consistent / total * 100) if total > 0 else 0
-            
-            # First vs Last score (improvement)
-            cursor.execute("SELECT total_score FROM scores WHERE username = ? ORDER BY timestamp ASC LIMIT 1", (self.username,))
-            first_score = cursor.fetchone()
-            first_score = first_score[0] if first_score else 0
-            
-            cursor.execute("SELECT total_score FROM scores WHERE username = ? ORDER BY timestamp DESC LIMIT 1", (self.username,))
-            last_score = cursor.fetchone()
-            last_score = last_score[0] if last_score else 0
-            
-            improvement = last_score - first_score
-            
-            # Average sentiment
-            cursor.execute("SELECT AVG(sentiment_score) FROM scores WHERE username = ?", (self.username,))
-            avg_sentiment = cursor.fetchone()[0] or 0
+            from sqlalchemy import text
+            with self.engine.connect() as conn:
+                # Basic stats
+                result = conn.execute(text("SELECT COUNT(*) FROM scores WHERE username = :u"), {"u": self.username})
+                total = result.fetchone()[0] or 0
+                
+                if total == 0:
+                    print("No exam data yet. Take your first exam!")
+                    self.get_input("\nPress Enter to continue...")
+                    return
+                
+                result = conn.execute(text("SELECT AVG(total_score) FROM scores WHERE username = :u"), {"u": self.username})
+                avg = result.fetchone()[0] or 0
+                
+                result = conn.execute(text("SELECT MAX(total_score) FROM scores WHERE username = :u"), {"u": self.username})
+                best = result.fetchone()[0] or 0
+                
+                result = conn.execute(text("SELECT MIN(total_score) FROM scores WHERE username = :u"), {"u": self.username})
+                worst = result.fetchone()[0] or 0
+                
+                # Consistency rate (non-rushed exams)
+                result = conn.execute(text("SELECT COUNT(*) FROM scores WHERE username = :u AND is_rushed = 0"), {"u": self.username})
+                consistent = result.fetchone()[0] or 0
+                consistency_rate = (consistent / total * 100) if total > 0 else 0
+                
+                # First vs Last score (improvement)
+                result = conn.execute(text("SELECT total_score FROM scores WHERE username = :u ORDER BY timestamp ASC LIMIT 1"), {"u": self.username})
+                first_score_row = result.fetchone()
+                first_score = first_score_row[0] if first_score_row else 0
+                
+                result = conn.execute(text("SELECT total_score FROM scores WHERE username = :u ORDER BY timestamp DESC LIMIT 1"), {"u": self.username})
+                last_score_row = result.fetchone()
+                last_score = last_score_row[0] if last_score_row else 0
+                
+                improvement = last_score - first_score
+                
+                # Average sentiment
+                result = conn.execute(text("SELECT AVG(sentiment_score) FROM scores WHERE username = :u"), {"u": self.username})
+                avg_sentiment = result.fetchone()[0] or 0
             
             # Display stats with colors
             print(colorize("📊 OVERVIEW", Colors.BOLD))
@@ -595,19 +593,17 @@ class SoulSenseCLI:
             return
             
         try:
-            from app.db import get_connection
+            from sqlalchemy import text
             import json
             from datetime import datetime
             
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute(
-                """SELECT timestamp, total_score, sentiment_score, reflection_text, is_rushed, is_inconsistent 
-                   FROM scores WHERE username = ? ORDER BY timestamp DESC""",
-                (self.username,)
-            )
-            rows = cursor.fetchall()
+            with self.engine.connect() as conn:
+                result = conn.execute(
+                    text("""SELECT timestamp, total_score, sentiment_score, reflection_text, is_rushed, is_inconsistent 
+                       FROM scores WHERE username = :u ORDER BY timestamp DESC"""),
+                    {"u": self.username}
+                )
+                rows = result.fetchall()
             
             if not rows:
                 print("No data to export.")
@@ -735,16 +731,14 @@ class SoulSenseCLI:
         print("="*60 + "\n")
         
         try:
-            from app.db import get_connection
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute(
-                """SELECT timestamp, total_score FROM scores 
-                   WHERE username = ? ORDER BY timestamp ASC LIMIT 20""",
-                (self.username,)
-            )
-            rows = cursor.fetchall()
+            from sqlalchemy import text
+            with self.engine.connect() as conn:
+                result = conn.execute(
+                    text("""SELECT timestamp, total_score FROM scores 
+                       WHERE username = :u ORDER BY timestamp ASC LIMIT 20"""),
+                    {"u": self.username}
+                )
+                rows = result.fetchall()
             
             if not rows:
                 print("No data yet. Take some exams first!")
@@ -782,19 +776,17 @@ class SoulSenseCLI:
         print("="*60 + "\n")
         
         try:
-            from app.db import get_connection
+            from sqlalchemy import text
             from datetime import datetime
             
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            # Get all scores with timestamps
-            cursor.execute(
-                """SELECT timestamp, total_score FROM scores 
-                   WHERE username = ? ORDER BY timestamp DESC""",
-                (self.username,)
-            )
-            rows = cursor.fetchall()
+            with self.engine.connect() as conn:
+                # Get all scores with timestamps
+                result = conn.execute(
+                    text("""SELECT timestamp, total_score FROM scores 
+                       WHERE username = :u ORDER BY timestamp DESC"""),
+                    {"u": self.username}
+                )
+                rows = result.fetchall()
             
             if not rows:
                 print("No data yet.")
@@ -841,17 +833,15 @@ class SoulSenseCLI:
         print("="*60 + "\n")
         
         try:
-            from app.db import get_connection
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            # Get average score and sentiment
-            cursor.execute(
-                """SELECT AVG(total_score), AVG(sentiment_score), COUNT(*) 
-                   FROM scores WHERE username = ?""",
-                (self.username,)
-            )
-            row = cursor.fetchone()
+            from sqlalchemy import text
+            with self.engine.connect() as conn:
+                # Get average score and sentiment
+                result = conn.execute(
+                    text("""SELECT AVG(total_score), AVG(sentiment_score), COUNT(*) 
+                       FROM scores WHERE username = :u"""),
+                    {"u": self.username}
+                )
+                row = result.fetchone()
             
             if not row or row[2] == 0:
                 print("No data yet. Take some exams first!")
@@ -902,17 +892,15 @@ class SoulSenseCLI:
         print("="*60 + "\n")
         
         try:
-            from app.db import get_connection
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            # Get user data
-            cursor.execute(
-                """SELECT total_score, sentiment_score, is_rushed, is_inconsistent 
-                   FROM scores WHERE username = ? ORDER BY timestamp DESC LIMIT 5""",
-                (self.username,)
-            )
-            rows = cursor.fetchall()
+            from sqlalchemy import text
+            with self.engine.connect() as conn:
+                # Get user data
+                result = conn.execute(
+                    text("""SELECT total_score, sentiment_score, is_rushed, is_inconsistent 
+                       FROM scores WHERE username = :u ORDER BY timestamp DESC LIMIT 5"""),
+                    {"u": self.username}
+                )
+                rows = result.fetchall()
             
             if not rows:
                 print("Not enough data for AI insights. Take some exams first!")

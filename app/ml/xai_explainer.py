@@ -1,32 +1,47 @@
 """
-XAI Module for SoulSense - Works with your existing app.py
-No changes needed to app.py!
+XAI Module for SoulSense - Works with unified database connection.
 """
-import sqlite3
 import json
+import logging
 from datetime import datetime
+from sqlalchemy import text
+from app.db import get_engine
+
+logger = logging.getLogger(__name__)
 
 class SoulSenseXAI:
     """XAI (Explainable AI) module for SoulSense emotional analysis."""
 
     def __init__(self):
-        """Initialize the XAI explainer with database connection."""
-        self.conn = sqlite3.connect("soulsense_db")
-        self.cursor = self.conn.cursor()
+        """Initialize the XAI explainer with unified database engine."""
+        self.engine = get_engine()
         
-        # Create table for explanations if not exists
-        self.cursor.execute("""
-        CREATE TABLE IF NOT EXISTS explanations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            timestamp TEXT,
-            total_score INTEGER,
-            explanation_text TEXT,
-            feature_analysis TEXT,
-            FOREIGN KEY (user_id) REFERENCES scores (id)
-        )
-        """)
-        self.conn.commit()
+        # Create table for explanations if not exists (health check/init)
+        with self.engine.connect() as conn:
+            if 'postgresql' in str(self.engine.url):
+                conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS explanations (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER,
+                    timestamp TEXT,
+                    total_score INTEGER,
+                    explanation_text TEXT,
+                    feature_analysis TEXT
+                )
+                """))
+            else:
+                conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS explanations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    timestamp TEXT,
+                    total_score INTEGER,
+                    explanation_text TEXT,
+                    feature_analysis TEXT,
+                    FOREIGN KEY (user_id) REFERENCES scores (id)
+                )
+                """))
+            conn.commit()
         
         # Question analysis mapping
         self.question_analysis = {
@@ -139,31 +154,25 @@ class SoulSenseXAI:
         return explanation
     
     def get_detailed_analysis(self, user_id):
-        """Get detailed analysis for a specific user.
-
-        Args:
-            user_id: User's ID.
-
-        Returns:
-            dict or None: Analysis data or None if user not found.
-        """
-        self.cursor.execute("""
-        SELECT username, age, total_score FROM scores WHERE id = ?
-        """, (user_id,))
-        user = self.cursor.fetchone()
-        
-        if not user:
-            return None
-        
-        username, age, total_score = user
-        
-        # Get all explanations for this user
-        self.cursor.execute("""
-        SELECT explanation_text FROM explanations 
-        WHERE user_id = ? ORDER BY timestamp DESC
-        """, (user_id,))
-        
-        explanations = self.cursor.fetchall()
+        """Get detailed analysis for a specific user."""
+        with self.engine.connect() as conn:
+            result = conn.execute(text("""
+            SELECT username, age, total_score FROM scores WHERE id = :user_id
+            """), {"user_id": user_id})
+            user = result.fetchone()
+            
+            if not user:
+                return None
+            
+            username, age, total_score = user
+            
+            # Get all explanations for this user
+            result = conn.execute(text("""
+            SELECT explanation_text FROM explanations 
+            WHERE user_id = :user_id ORDER BY timestamp DESC
+            """), {"user_id": user_id})
+            
+            explanations = result.fetchall()
         
         analysis = {
             'user_info': {
@@ -179,14 +188,7 @@ class SoulSenseXAI:
         return analysis
     
     def _calculate_breakdown(self, total_score):
-        """Calculate detailed score breakdown.
-
-        Args:
-            total_score: Total assessment score.
-
-        Returns:
-            dict: Breakdown by emotional components.
-        """
+        """Calculate detailed score breakdown."""
         breakdown = {
             'emotional_awareness': (total_score * 0.3),  # 30% weight
             'emotional_regulation': (total_score * 0.25),  # 25% weight
@@ -196,20 +198,14 @@ class SoulSenseXAI:
         return breakdown
     
     def _analyze_trends(self, user_id):
-        """Analyze score trends over time.
-
-        Args:
-            user_id: User's ID.
-
-        Returns:
-            str: Trend analysis description.
-        """
-        self.cursor.execute("""
-        SELECT total_score, timestamp FROM scores 
-        WHERE id = ? ORDER BY id DESC LIMIT 5
-        """, (user_id,))
-        
-        scores = self.cursor.fetchall()
+        """Analyze score trends over time."""
+        with self.engine.connect() as conn:
+            result = conn.execute(text("""
+            SELECT total_score, timestamp FROM scores 
+            WHERE id = :user_id ORDER BY id DESC LIMIT 5
+            """), {"user_id": user_id})
+            
+            scores = result.fetchall()
         
         if len(scores) < 2:
             return "Insufficient data for trend analysis"
@@ -228,32 +224,32 @@ class SoulSenseXAI:
         return f"Score trend: {trend} (from {previous_score} to {recent_score})"
     
     def save_explanation(self, user_id, total_score, explanation_text):
-        """Save explanation to database.
-
-        Args:
-            user_id: User's ID.
-            total_score: Total assessment score.
-            explanation_text: Explanation text to save.
-        """
-        self.cursor.execute("""
-        INSERT INTO explanations (user_id, timestamp, total_score, explanation_text)
-        VALUES (?, ?, ?, ?)
-        """, (user_id, datetime.now().isoformat(), total_score, explanation_text))
-        self.conn.commit()
+        """Save explanation to database."""
+        with self.engine.connect() as conn:
+            conn.execute(text("""
+            INSERT INTO explanations (user_id, timestamp, total_score, explanation_text)
+            VALUES (:user_id, :timestamp, :total_score, :explanation_text)
+            """), {
+                "user_id": user_id, 
+                "timestamp": datetime.now().isoformat(), 
+                "total_score": total_score, 
+                "explanation_text": explanation_text
+            })
+            conn.commit()
     
     def get_last_user_id(self):
-        """Get the last inserted user ID.
-
-        Returns:
-            int: Last inserted row ID.
-        """
-        self.cursor.execute("SELECT last_insert_rowid()")
-        return self.cursor.fetchone()[0]
+        """Get the last inserted user ID."""
+        with self.engine.connect() as conn:
+            if 'postgresql' in str(self.engine.url):
+                result = conn.execute(text("SELECT lastval()"))
+            else:
+                result = conn.execute(text("SELECT last_insert_rowid()"))
+            return result.fetchone()[0]
     
     def close(self):
-        """Close database connection."""
-        self.conn.close()
-
+        """Close database engine resources."""
+        # Pooled connections are returned to the pool; no explicit close needed here.
+        pass
 
 # Quick test function
 def test_xai():
@@ -265,7 +261,6 @@ def test_xai():
     print(explanation)
     
     xai.close()
-
 
 if __name__ == "__main__":
     test_xai()

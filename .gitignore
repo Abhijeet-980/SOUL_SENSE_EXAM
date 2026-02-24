@@ -94,6 +94,7 @@ db/*.db
 *.sqlite
 *.sqlite3
 soulsense_db
+soulsense_db.db
 
 # =========================
 # Cache / Runtime files

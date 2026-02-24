@@ -53,6 +53,10 @@ class AnalyticsDashboard:
                 "primary": "#3B82F6",
                 "border": "#334155" if theme == "dark" else "#E2E8F0"
             }
+        
+        # Unified Database Engine
+        from app.db import get_engine
+        self.engine = get_engine()
 
     def load_benchmarks(self) -> Optional[Dict[str, Any]]:
         """Load population benchmarks from JSON"""
@@ -185,27 +189,24 @@ class AnalyticsDashboard:
         parent = self._create_scrollable_frame(parent)
         
         # Get data including new PR #6 fields
-        conn = get_connection()
-        try:
+        from sqlalchemy import text, inspect
+        with self.engine.connect() as conn:
             # Check if columns exist first to avoid errors during dev
-            cursor = conn.cursor()
-            cursor.execute("PRAGMA table_info(journal_entries)")
-            columns = [c[1] for c in cursor.fetchall()]
+            inspector = inspect(self.engine)
+            columns = [c['name'] for c in inspector.get_columns('journal_entries')]
             
             if 'screen_time_mins' not in columns:
                 tk.Label(parent, text="Database schema update required (Missing v2 columns)", fg="red").pack()
                 return
 
-            query = """
+            query = text("""
                 SELECT entry_date, sleep_hours, energy_level, stress_level, screen_time_mins 
                 FROM journal_entries 
-                WHERE username = ? 
+                WHERE username = :u 
                 ORDER BY entry_date
-            """
-            cursor.execute(query, (self.username,))
-            data = cursor.fetchall()
-        finally:
-            conn.close()
+            """)
+            result = conn.execute(query, {"u": self.username})
+            data = result.fetchall()
 
         if not data:
             tk.Label(parent, text=self.i18n.get("journal.no_entries"), font=("Segoe UI", 12)).pack(pady=50)
@@ -445,31 +446,30 @@ class AnalyticsDashboard:
                 widget.destroy()
             
             # Get EQ scores
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            # First, check what columns exist in the scores table
-            cursor.execute("PRAGMA table_info(scores)")
-            columns = [col[1] for col in cursor.fetchall()]
-            
-            # Build query based on available columns
-            if 'timestamp' in columns:
-                cursor.execute("""
-                    SELECT total_score, timestamp 
-                    FROM scores 
-                    WHERE username = ? 
-                    ORDER BY timestamp
-                """, (self.username,))
-            else:
-                cursor.execute("""
-                    SELECT total_score, id 
-                    FROM scores 
-                    WHERE username = ? 
-                    ORDER BY id
-                """, (self.username,))
-            
-            data = cursor.fetchall()
-            conn.close()
+            from sqlalchemy import text, inspect
+            with self.engine.connect() as conn:
+                # First, check what columns exist in the scores table
+                inspector = inspect(self.engine)
+                columns = [col['name'] for col in inspector.get_columns('scores')]
+                
+                # Build query based on available columns
+                if 'timestamp' in columns:
+                    query = text("""
+                        SELECT total_score, timestamp 
+                        FROM scores 
+                        WHERE username = :u 
+                        ORDER BY timestamp
+                    """)
+                else:
+                    query = text("""
+                        SELECT total_score, id 
+                        FROM scores 
+                        WHERE username = :u 
+                        ORDER BY id
+                    """)
+                
+                result = conn.execute(query, {"u": self.username})
+                data = result.fetchall()
             
             if len(data) < 2:
                 self.correlation_text.insert(tk.END, 
@@ -642,21 +642,19 @@ class AnalyticsDashboard:
         # Configure parent
         # parent.configure(style="TFrame")
         
-        conn = get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute("""
-            SELECT total_score, timestamp, id, sentiment_score 
-            FROM scores 
-            WHERE username = ? 
-            ORDER BY id
-            """, (self.username,))
-            data = cursor.fetchall()
-        except Exception as e:
-            print(f"Error fetching EQ trends: {e}")
-            data = []
-        finally:
-            conn.close()
+        from sqlalchemy import text
+        with self.engine.connect() as conn:
+            try:
+                result = conn.execute(text("""
+                SELECT total_score, timestamp, id, sentiment_score 
+                FROM scores 
+                WHERE username = :u 
+                ORDER BY id
+                """), {"u": self.username})
+                data = result.fetchall()
+            except Exception as e:
+                print(f"Error fetching EQ trends: {e}")
+                data = []
         
         if not data:
             tk.Label(parent, text="No EQ data available", font=("Arial", 14), bg=bg_color, fg=text_primary).pack(pady=50)

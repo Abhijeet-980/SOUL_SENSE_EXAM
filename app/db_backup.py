@@ -12,10 +12,14 @@ from dataclasses import dataclass
 from typing import List, Optional
 from contextlib import contextmanager
 
-from app.config import DB_PATH, DATA_DIR
+from app.config import DATABASE_URL, DB_PATH, DATA_DIR
 from app.exceptions import DatabaseError
 
 logger = logging.getLogger(__name__)
+
+def is_sqlite() -> bool:
+    """Check if the current unified database is SQLite."""
+    return DATABASE_URL.startswith("sqlite")
 
 # Backup directory location
 BACKUP_DIR: str = os.path.join(DATA_DIR, "backups")
@@ -94,6 +98,9 @@ def create_backup(description: str = "") -> BackupInfo:
     Raises:
         DatabaseError: If backup creation fails
     """
+    if not is_sqlite():
+        raise DatabaseError("Local database backup is only supported for SQLite databases. Please use external tools for PostgreSQL backups.")
+    
     if not os.path.exists(DB_PATH):
         raise DatabaseError("Database file not found. Cannot create backup.")
     
