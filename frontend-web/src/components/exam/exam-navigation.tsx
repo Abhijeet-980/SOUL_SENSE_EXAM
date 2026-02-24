@@ -27,6 +27,8 @@ export const ExamNavigation: React.FC<ExamNavigationProps> = ({
   const isLast = getIsLastQuestion();
 
   useEffect(() => {
+    // Handle keyboard navigation for exam questions, but ignore when form elements are focused
+    // to allow native browser behavior for radio buttons, inputs, etc. (fixes #875)
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeElement = document.activeElement;
       const isInputFocused =

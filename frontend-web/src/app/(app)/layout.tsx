@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Sidebar, Header } from '@/components/app';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+  // Authentication checks are handled by Edge middleware; this hook is used only for UI state
   const { isAuthenticated, isLoading } = useAuth();
 
   return (
