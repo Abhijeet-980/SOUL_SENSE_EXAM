@@ -27,6 +27,7 @@ interface RequestOptions extends RequestInit {
   retry?: boolean; // Enable retry for this request
   maxRetries?: number;
   _isRetry?: boolean; // Internal flag for auth retry
+  _token?: string; // Override token for retry
 }
 
 /**
@@ -65,7 +66,7 @@ export async function apiClient<T>(endpoint: string, options: RequestOptions = {
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
 
   // Inject authentication token
-  const token = skipAuth ? null : getAuthToken();
+  const token = options._token || (skipAuth ? null : getAuthToken());
   const headers = new Headers(fetchOptions.headers);
 
   if (!headers.has('Content-Type') && !(fetchOptions.body instanceof FormData)) {
@@ -106,8 +107,8 @@ export async function apiClient<T>(endpoint: string, options: RequestOptions = {
             // Queue the request
             return new Promise((resolve, reject) => {
               failedQueue.push({ resolve, reject });
-            }).then(() => {
-              return apiClient(endpoint, { ...options, _isRetry: true });
+            }).then((token) => {
+              return apiClient(endpoint, { ...options, _isRetry: true, _token: token as string });
             });
           }
 
@@ -139,7 +140,7 @@ export async function apiClient<T>(endpoint: string, options: RequestOptions = {
               processQueue(null, data.access_token);
 
               // Retry original request with new token
-              return apiClient(endpoint, { ...options, _isRetry: true });
+              return apiClient(endpoint, { ...options, _isRetry: true, _token: data.access_token });
             } else {
               throw new Error('Refresh failed');
             }
