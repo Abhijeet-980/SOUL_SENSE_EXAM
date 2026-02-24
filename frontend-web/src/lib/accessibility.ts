@@ -164,7 +164,7 @@ export function isFocusable(element: HTMLElement): boolean {
     return true;
   }
 
-  if (element.disabled) return false;
+  if ('disabled' in element && (element as any).disabled) return false;
 
   const focusableTags = ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'A'];
   if (focusableTags.includes(element.tagName)) {

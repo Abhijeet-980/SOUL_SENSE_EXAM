@@ -15,7 +15,7 @@ interface ExamState {
   _hasHydrated: boolean; // For handling Next.js hydration
 
   // Actions
-  setQuestions: (questions: Question[]) => void;
+  setQuestions: (questions: Question[], examId: string) => void;
   setAnswer: (questionId: number, value: number) => void;
   nextQuestion: () => void;
   previousQuestion: () => void;
@@ -49,14 +49,29 @@ export const useExamStore = create<ExamState>()(
       currentExamId: null, // Initialize exam ID
       _hasHydrated: false,
 
-      setQuestions: (questions) =>
-        set({
-          questions,
-          currentQuestionIndex: 0,
-          answers: {},
-          startTime: new Date().toISOString(),
-          isCompleted: false,
-        }),
+      setQuestions: (questions, examId) => {
+        const currentState = get();
+        if (currentState.currentExamId !== examId) {
+          // Different exam, reset state
+          set({
+            questions,
+            currentQuestionIndex: 0,
+            answers: {},
+            startTime: new Date().toISOString(),
+            isCompleted: false,
+            currentExamId: examId,
+          });
+        } else {
+          // Same exam, just update questions
+          set({
+            questions,
+            currentQuestionIndex: 0,
+            answers: currentState.answers, // Keep existing answers if same exam
+            startTime: currentState.startTime || new Date().toISOString(),
+            isCompleted: false,
+          });
+        }
+      },
 
       setAnswer: (questionId, value) =>
         set((state) => ({

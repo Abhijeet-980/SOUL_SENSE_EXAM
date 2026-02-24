@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui';
-import { Sync, CheckCircle2, XCircle } from 'lucide-react';
+import { RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 import { syncQueue } from '@/lib/offline/syncQueue';
 import { networkMonitor } from '@/lib/offline/network';
 
@@ -86,7 +86,7 @@ export function SyncButton() {
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
       >
-        <Sync className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+        <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
         <span className="hidden sm:inline">
           {syncing ? 'Syncing...' : `Sync (${stats.totalPending})`}
         </span>

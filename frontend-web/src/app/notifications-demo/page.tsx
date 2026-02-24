@@ -1,22 +1,43 @@
 'use client';
 
 import { useState } from 'react';
-import { NotificationSettings, NotificationSettingsObject } from '@/components/settings';
+import { NotificationSettings } from '@/components/settings';
+import { UserSettings } from '@/lib/api/settings';
 
 export default function NotificationsDemoPage() {
-  const [settings, setSettings] = useState<NotificationSettingsObject>({
-    masterEnabled: true,
-    emailEnabled: true,
-    pushEnabled: false,
-    frequency: 'daily',
-    quietHours: {
-      start: '22:00',
-      end: '07:00',
+  const [settings, setSettings] = useState<UserSettings>({
+    theme: 'system',
+    notifications: {
+      email: true,
+      push: false,
+      frequency: 'daily',
+      types: {
+        exam_reminders: true,
+        journal_prompts: true,
+        progress_updates: true,
+        system_updates: false,
+      },
+    },
+    privacy: {
+      data_collection: true,
+      analytics: true,
+      data_retention_days: 365,
+      profile_visibility: 'private',
+    },
+    accessibility: {
+      high_contrast: false,
+      reduced_motion: false,
+      font_size: 'medium',
+    },
+    account: {
+      language: 'en',
+      timezone: 'UTC',
+      date_format: 'MM/dd/yyyy',
     },
   });
 
-  const handleSettingsChange = (updated: Partial<NotificationSettingsObject>) => {
-    setSettings((prev: NotificationSettingsObject) => ({ ...prev, ...updated }));
+  const handleSettingsChange = (updated: Partial<UserSettings>) => {
+    setSettings((prev: UserSettings) => ({ ...prev, ...updated }));
   };
 
   return (
@@ -30,7 +51,7 @@ export default function NotificationsDemoPage() {
         </div>
 
         <div className="bg-card p-6 rounded-3xl border shadow-2xl">
-          <PremiumNotificationSettings settings={settings} onChange={handleSettingsChange} />
+          <NotificationSettings settings={settings} onChange={handleSettingsChange} />
         </div>
 
         <div className="bg-muted p-6 rounded-2xl border">
