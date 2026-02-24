@@ -12,6 +12,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .config import get_settings_instance
 from .api.v1.router import api_router as api_v1_router
 from .routers.health import router as health_router
+from .utils.limiter import limiter
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 # Load and validate settings on import
 settings = get_settings_instance()
@@ -67,6 +70,10 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc"
     )
+
+    # Attach slowapi limiter
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # Performance Monitoring Middleware (inner-most for accurate timing)
     app.add_middleware(PerformanceMonitoringMiddleware)
