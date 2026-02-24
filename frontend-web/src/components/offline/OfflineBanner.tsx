@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { networkMonitor, NetworkState } from '@/lib/offline/network';
 import { syncQueue } from '@/lib/offline/syncQueue';
-import { WifiOff, Wifi, Sync, CheckCircle2, AlertCircle } from 'lucide-react';
+import { WifiOff, Wifi, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export function OfflineBanner() {
   const [networkState, setNetworkState] = useState<NetworkState>(networkMonitor.getCurrentState());
@@ -60,7 +60,7 @@ export function OfflineBanner() {
                   <span className="text-green-600 dark:text-green-400">•</span>
                   {syncing ? (
                     <>
-                      <Sync className="w-4 h-4 text-green-600 dark:text-green-400 animate-spin" />
+                      <RefreshCw className="w-4 h-4 text-green-600 dark:text-green-400 animate-spin" />
                       <span className="text-green-700 dark:text-green-300">
                         Syncing {pendingCount} item{pendingCount !== 1 ? 's' : ''}...
                       </span>

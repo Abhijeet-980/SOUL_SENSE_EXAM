@@ -159,7 +159,11 @@ class OfflineFirstClient {
 
     if (networkMonitor.isOnline()) {
       try {
-        await this.request('/assessments', queueData);
+        await this.request('/assessments', {
+          method: 'POST',
+          body: data,
+          priority: 'high',
+        });
         await db.markAsSynced('assessments', record.id!);
       } catch (error) {
         await syncQueue.addItem(
@@ -212,7 +216,11 @@ class OfflineFirstClient {
 
     if (networkMonitor.isOnline()) {
       try {
-        await this.request('/journal', queueData);
+        await this.request('/journal', {
+          method: 'POST',
+          body: data,
+          priority: 'medium',
+        });
         await db.markAsSynced('journals', record.id!);
       } catch (error) {
         await syncQueue.addItem(
