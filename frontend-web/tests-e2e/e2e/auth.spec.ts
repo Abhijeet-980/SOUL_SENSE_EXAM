@@ -32,6 +32,32 @@ test.describe('Authentication Flow', () => {
     await expect(page).toHaveURL(/.*dashboard/);
   });
 
+
+
+  test('should not emit unmounted state update warning during rapid auth-page navigation', async ({ page }) => {
+    const consoleWarnings: string[] = [];
+
+    page.on('console', msg => {
+      if (msg.type() === 'warning' || msg.type() === 'error') {
+        consoleWarnings.push(msg.text());
+      }
+    });
+
+    await authPage.goto();
+
+    // Trigger route change quickly while auth initialization timeout is still pending.
+    await authPage.signupLink.click();
+
+    await expect(page).toHaveURL(/.*signup/);
+    await page.waitForTimeout(200);
+
+    const unmountedStateWarning = consoleWarnings.find(message =>
+      message.includes("Can't perform a React state update on an unmounted component")
+    );
+
+    expect(unmountedStateWarning).toBeUndefined();
+  });
+
   test('should navigate to signup page', async ({ page }) => {
     await authPage.goto();
     await authPage.signupLink.click();

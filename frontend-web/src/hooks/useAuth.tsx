@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   UserSession,
@@ -49,11 +49,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isMockMode, setIsMockMode] = useState(false);
   const router = useRouter();
+  const isMountedRef = useRef(true);
+  const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [mounted, setMounted] = useState(false);
 
+  const clearLoadingTimer = useCallback(() => {
+    if (loadingTimerRef.current) {
+      clearTimeout(loadingTimerRef.current);
+      loadingTimerRef.current = null;
+    }
+  }, []);
+
+  const safeSetIsLoading = useCallback(
+    (loading: boolean) => {
+      if (isMountedRef.current) {
+        setIsLoading(loading);
+      }
+    },
+    [setIsLoading]
+  );
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      clearLoadingTimer();
+    };
+  }, [clearLoadingTimer]);
+
   useEffect(() => {
     setMounted(true);
+    let cancelled = false;
+
     const initAuth = async () => {
       try {
         // 1. Check if server has restarted
@@ -67,10 +95,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             console.error('Critical Auth Sync Error: Stale "current" ID fallback found in stored session.');
             toast.error('Authentication session corrupted. Please log in again.');
             clearSession();
-            setUser(null);
+            if (!cancelled) {
+              setUser(null);
+            }
             router.push('/login');
           } else {
-            setUser(session.user);
+            if (!cancelled) {
+              setUser(session.user);
+            }
           }
         }
 
@@ -80,13 +112,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.warn('Auth initialization error:', e);
       } finally {
         // Small delay to ensure state propagates
-        const timer = setTimeout(() => setIsLoading(false), 50);
-        return () => clearTimeout(timer);
+        clearLoadingTimer();
+        if (!cancelled) {
+          loadingTimerRef.current = setTimeout(() => {
+            safeSetIsLoading(false);
+            loadingTimerRef.current = null;
+          }, 50);
+        }
       }
     };
 
     initAuth();
-  }, []);
+
+    return () => {
+      cancelled = true;
+      clearLoadingTimer();
+    };
+  }, [clearLoadingTimer, router, safeSetIsLoading]);
 
   const checkServerInstance = async () => {
     try {
@@ -102,7 +144,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (storedId && server_id && storedId !== server_id) {
           console.log('🔄 Server restart detected. Clearing stale session.');
           clearSession();
-          setUser(null);
+          if (isMountedRef.current) {
+            setUser(null);
+          }
         }
 
         if (server_id) {
@@ -124,7 +168,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (response.ok) {
         const data = await response.json();
-        setIsMockMode(data.mock_auth_mode || false);
+        if (isMountedRef.current) {
+          setIsMockMode(data.mock_auth_mode || false);
+        }
       }
     } catch (error) {
       console.warn('Could not check mock mode status:', error);
@@ -143,7 +189,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     redirectTo = '/',
     stayLoadingOnSuccess = false
   ) => {
-    setIsLoading(true);
+    safeSetIsLoading(true);
     try {
       const result = await authApi.login(loginData);
 
@@ -172,7 +218,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
 
       saveSession(session, rememberMe);
-      setUser(session.user);
+      if (isMountedRef.current) {
+        setUser(session.user);
+      }
 
       if (shouldRedirect) {
         const finalRedirect = isValidCallbackUrl(redirectTo) ? redirectTo : '/';
@@ -183,10 +231,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // If we are redirecting and want to stay loading, we don't clear it here
       if (stayLoadingOnSuccess) return result;
 
-      setIsLoading(false);
+      safeSetIsLoading(false);
       return result;
     } catch (error) {
-      setIsLoading(false);
+      safeSetIsLoading(false);
       console.error('Login failed:', error);
       toast.error('Login failed. Please check your credentials and try again.');
       throw error;
@@ -200,7 +248,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     redirectTo = '/',
     stayLoadingOnSuccess = false
   ) => {
-    setIsLoading(true);
+    safeSetIsLoading(true);
     try {
       const result = await authApi.login2FA(data);
 
@@ -224,7 +272,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
 
       saveSession(session, rememberMe);
-      setUser(session.user);
+      if (isMountedRef.current) {
+        setUser(session.user);
+      }
 
       if (shouldRedirect) {
         const finalRedirect = isValidCallbackUrl(redirectTo) ? redirectTo : '/';
@@ -233,14 +283,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (stayLoadingOnSuccess) return result;
 
-      setIsLoading(false);
+      safeSetIsLoading(false);
       return result;
     } catch (error) {
       console.error('2FA verification failed:', error);
       throw error;
     } finally {
       if (!stayLoadingOnSuccess) {
-        setIsLoading(false);
+        safeSetIsLoading(false);
       }
     }
   };
@@ -254,7 +304,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       // Always clear local session even if backend call fails
       clearSession();
-      setUser(null);
+      if (isMountedRef.current) {
+        setUser(null);
+      }
       router.push('/login');
     }
   }, [router]);
@@ -284,7 +336,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         login,
         login2FA,
         logout,
-        setIsLoading,
+        setIsLoading: safeSetIsLoading,
       }}
     >
       {/* Always render children for Next.js router hydration, overlay loader if needed */}
