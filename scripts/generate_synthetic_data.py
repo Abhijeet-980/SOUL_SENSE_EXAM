@@ -106,7 +106,7 @@ class SyntheticDataGenerator:
             weights = list(pattern_config['response_bias'].values())
             response_text = random.choices(choices, weights=weights, k=1)[0]
             
-            # Map response text to score (1-4)
+            # Map response text to score (1-5)
             score_map = {'Never': 1, 'Sometimes': 2, 'Often': 3, 'Always': 4}
             responses[q_id] = {
                 'response': response_text,

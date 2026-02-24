@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
-from ..root_models import (
+from ..models import (
     User, Achievement, UserAchievement, UserStreak, UserXP, 
     Challenge, UserChallenge, JournalEntry, AssessmentResult
 )

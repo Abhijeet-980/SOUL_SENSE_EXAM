@@ -5,7 +5,7 @@ import { ThemeProvider, NavbarController, BottomNavigation } from '@/components/
 import { ToastProvider } from '@/components/ui';
 import { NetworkErrorBanner } from '@/components/common';
 import { AuthProvider } from '@/hooks/useAuth';
-import { WebVitalsMonitor } from '@/components/monitoring/WebVitalsMonitor';
+import { WebVitalsMonitor } from '@/components/monitoring';
 import { SkipLinks } from '@/components/accessibility';
 import { OfflineBanner } from '@/components/offline';
 import { register } from '@/lib/offline';
@@ -23,7 +23,6 @@ export const metadata: Metadata = {
     'Self-Awareness',
     'Professional Growth',
   ],
-  authors: [{ name: 'Soul Sense Team' }],
   authors: [{ name: 'Soul Sense' }],
   creator: 'Soul Sense',
   publisher: 'Soul Sense',
@@ -50,30 +49,24 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Soul Sense',
+  },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 5,
+  maximumScale: 1,
   userScalable: true,
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
     { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
   ],
   colorScheme: 'light dark',
-  manifest: '/manifest.json',
-  themeColor: '#8b5cf6',
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-  },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'default',
-    title: 'Soul Sense',
-  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

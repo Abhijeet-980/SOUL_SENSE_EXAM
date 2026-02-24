@@ -131,20 +131,20 @@ export default function DashboardPage() {
 
       <BentoGrid className="auto-rows-[20rem]">
         {/* Row 1 */}
-        <SectionWrapper isLoading={loading} error={error} onRetry={fetchData}>
+        <SectionWrapper isLoading={false} error={error} onRetry={fetchData}>
           <WelcomeCard userName={userName} lastActivity={recentActivityDate} />
         </SectionWrapper>
 
-        <SectionWrapper isLoading={loading} error={error} onRetry={fetchData}>
+        <SectionWrapper isLoading={false} error={error} onRetry={fetchData}>
           <QuickActions />
         </SectionWrapper>
 
         {/* Row 2 */}
-        <SectionWrapper isLoading={loading} error={error} onRetry={fetchData}>
+        <SectionWrapper isLoading={false} error={error} onRetry={fetchData}>
           <MoodWidget />
         </SectionWrapper>
 
-        <SectionWrapper isLoading={loading} error={error} onRetry={fetchData}>
+        <SectionWrapper isLoading={false} error={error} onRetry={fetchData}>
           <RecentActivity activities={activities} />
         </SectionWrapper>
 
@@ -152,7 +152,7 @@ export default function DashboardPage() {
         {data.insights.map((insight, idx) => (
           <SectionWrapper
             key={`insight-${idx}`}
-            isLoading={loading}
+            isLoading={false}
             error={error}
             onRetry={fetchData}
           >
@@ -176,7 +176,7 @@ export default function DashboardPage() {
         ))}
 
         {/* Additional Insight or Filler */}
-        <SectionWrapper isLoading={loading} error={error} onRetry={fetchData}>
+        <SectionWrapper isLoading={false} error={error} onRetry={fetchData}>
           <InsightCard
             insight={{
               title: 'Security & Privacy',

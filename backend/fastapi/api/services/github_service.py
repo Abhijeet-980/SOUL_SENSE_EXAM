@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from cachetools import LRUCache
 from backend.fastapi.api.config import get_settings_instance
-from app.utils.atomic import atomic_write
+from ..utils.atomic import atomic_write
 
 # NLTK Setup for Sentiment Analysis
 import nltk

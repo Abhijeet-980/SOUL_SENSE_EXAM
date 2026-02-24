@@ -18,7 +18,7 @@ export function useExamSubmit(): UseExamSubmitReturn {
   const [result, setResult] = useState<ExamSubmissionResponse | null>(null);
 
   // Use ref to track if component is mounted
-  const isMountedRef = useRef(true);
+  const isMountedRef = useRef(false);
 
   const submitExam = useCallback(
     async (data: ExamSubmissionRequest): Promise<ExamSubmissionResponse | null> => {
@@ -44,7 +44,12 @@ export function useExamSubmit(): UseExamSubmitReturn {
             // Handle field validation errors
             if (Array.isArray(err.data.detail)) {
               const fieldErrors = err.data.detail
-                .map((error: any) => `${error.field}: ${error.message}`)
+                .map((error: any) => {
+                  const fieldName = error.loc && error.loc.length > 1
+                    ? error.loc[error.loc.length - 1].toString()
+                    : 'unknown_field';
+                  return `Error in ${fieldName}: ${error.msg}`;
+                })
                 .join(', ');
               setError(`Validation failed: ${fieldErrors}`);
             } else {

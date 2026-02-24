@@ -45,7 +45,7 @@ def test_submit_answer_valid(mock_conn, exam_session):
     mock_cursor = MagicMock()
     mock_conn.return_value.cursor.return_value = mock_cursor
     
-    # Submit valid answer (1-4)
+    # Submit valid answer (1-5)
     exam_session.submit_answer(3) 
     
     assert len(exam_session.responses) == 1
@@ -62,9 +62,9 @@ def test_submit_answer_valid(mock_conn, exam_session):
 
 def test_submit_answer_invalid(exam_session):
     exam_session.start_exam()
-    # Value must be 1-4
-    with pytest.raises(ValueError, match="Answer must be between 1 and 4"):
-        exam_session.submit_answer(5)
+    # Value must be 1-5
+    with pytest.raises(ValueError, match="Answer must be between 1 and 5"):
+        exam_session.submit_answer(6)
 
 @patch('app.services.exam_service.safe_db_context')
 def test_exam_completion_flow(mock_safe_db, exam_session, temp_db):  # Add temp_db fixture

@@ -200,9 +200,9 @@ class ExamSession:
             return (str(q_data), None)
 
     def submit_answer(self, value: int) -> None:
-        """Submit answer (1-4) and advance."""
-        if not (1 <= value <= 4):
-            raise ValueError("Answer must be between 1 and 4")
+        """Submit answer (1-5) and advance."""
+        if not (1 <= value <= 5):
+            raise ValueError("Answer must be between 1 and 5")
 
         # Record metrics
         duration = 0.0

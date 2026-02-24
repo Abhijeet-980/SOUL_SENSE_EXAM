@@ -17,8 +17,8 @@ from sqlalchemy import func, and_, or_
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-# Import models from root_models module (handles namespace collision)
-from ..root_models import JournalEntry, User
+# Import models from models module
+from ..models import JournalEntry, User
 from .gamification_service import GamificationService
 
 

@@ -116,7 +116,10 @@ export function PrivacySettings({ settings, onChange }: PrivacySettingsProps) {
           <h3 className="text-sm font-medium">Data Retention</h3>
           <p className="text-xs text-muted-foreground">How long to keep your data</p>
         </div>
-        <Select value={settings.privacy.data_retention_days.toString()} onValueChange={(value) => handleRetentionChange(parseInt(value))}>
+        <Select
+          value={settings.privacy.data_retention_days.toString()}
+          onValueChange={(value) => handleRetentionChange(parseInt(value))}
+        >
           <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
@@ -135,10 +138,7 @@ export function PrivacySettings({ settings, onChange }: PrivacySettingsProps) {
           <Eye className="h-3.5 w-3.5" />
           <h3 className="text-[10px] uppercase tracking-widest font-black">Public Exposure</h3>
         </div>
-        <Select
-          value={settings.privacy.profile_visibility}
-          onValueChange={handleVisibilityChange}
-        >
+        <Select value={settings.privacy.profile_visibility} onValueChange={handleVisibilityChange}>
           <SelectTrigger className="w-full h-11 rounded-xl bg-muted/10 border-border/40">
             <SelectValue />
           </SelectTrigger>
@@ -149,55 +149,54 @@ export function PrivacySettings({ settings, onChange }: PrivacySettingsProps) {
           </SelectContent>
         </Select>
       </div>
-    </div>
 
-      {/* Utilities */ }
-  <div className="space-y-6 pt-4">
-    <div className="flex items-center gap-2 text-muted-foreground/60">
-      <Download className="h-3.5 w-3.5" />
-      <h3 className="text-[10px] uppercase tracking-widest font-black">Data Portability</h3>
-    </div>
-
-    <div className="flex flex-col sm:flex-row items-center justify-between p-5 bg-muted/10 border border-border/40 rounded-2xl gap-4">
-      <div className="flex items-center gap-4">
-        <div className="p-2.5 rounded-xl bg-background border border-border/40 text-muted-foreground">
-          <Download className="h-4 w-4" />
+      {/* Utilities */}
+      <div className="space-y-6 pt-4">
+        <div className="flex items-center gap-2 text-muted-foreground/60">
+          <Download className="h-3.5 w-3.5" />
+          <h3 className="text-[10px] uppercase tracking-widest font-black">Data Portability</h3>
         </div>
-        <p className="text-xs font-bold">Request Comprehensive Data Export</p>
-      </div>
-      <Button
-        variant="outline"
-        onClick={handleExportData}
-        className="w-full sm:w-auto font-black uppercase tracking-widest text-[10px] h-9 rounded-full px-8 border-border/60 hover:bg-primary/5 hover:text-primary transition-colors"
-      >
-        Initiate Transfer
-      </Button>
-    </div>
-  </div>
 
-  {/* Irreversible Actions */ }
-  <div className="space-y-6 pt-10 border-t border-destructive/20">
-    <div className="flex items-center gap-2 text-destructive/60">
-      <AlertTriangle className="h-3.5 w-3.5" />
-      <h3 className="text-[10px] uppercase tracking-widest font-black">Critical Actions</h3>
-    </div>
-
-    <div className="flex flex-col sm:flex-row items-center justify-between p-6 bg-destructive/5 border border-destructive/10 rounded-2xl gap-6">
-      <div className="space-y-1 text-center sm:text-left">
-        <p className="text-sm font-black text-destructive">Deactivate Personal Identity</p>
-        <p className="text-[10px] text-destructive/60 font-medium">
-          Permanently purge all assessment results, journals, and credentials.
-        </p>
+        <div className="flex flex-col sm:flex-row items-center justify-between p-5 bg-muted/10 border border-border/40 rounded-2xl gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-2.5 rounded-xl bg-background border border-border/40 text-muted-foreground">
+              <Download className="h-4 w-4" />
+            </div>
+            <p className="text-xs font-bold">Request Comprehensive Data Export</p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={handleExportData}
+            className="w-full sm:w-auto font-black uppercase tracking-widest text-[10px] h-9 rounded-full px-8 border-border/60 hover:bg-primary/5 hover:text-primary transition-colors"
+          >
+            Initiate Transfer
+          </Button>
+        </div>
       </div>
-      <Button
-        variant="destructive"
-        onClick={handleDeleteAccount}
-        className="w-full sm:w-auto font-black uppercase tracking-widest text-[10px] h-10 rounded-full px-10 shadow-lg shadow-destructive/20"
-      >
-        Final Deletion
-      </Button>
+
+      {/* Irreversible Actions */}
+      <div className="space-y-6 pt-10 border-t border-destructive/20">
+        <div className="flex items-center gap-2 text-destructive/60">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          <h3 className="text-[10px] uppercase tracking-widest font-black">Critical Actions</h3>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-between p-6 bg-destructive/5 border border-destructive/10 rounded-2xl gap-6">
+          <div className="space-y-1 text-center sm:text-left">
+            <p className="text-sm font-black text-destructive">Deactivate Personal Identity</p>
+            <p className="text-[10px] text-destructive/60 font-medium">
+              Permanently purge all assessment results, journals, and credentials.
+            </p>
+          </div>
+          <Button
+            variant="destructive"
+            onClick={handleDeleteAccount}
+            className="w-full sm:w-auto font-black uppercase tracking-widest text-[10px] h-10 rounded-full px-10 shadow-lg shadow-destructive/20"
+          >
+            Final Deletion
+          </Button>
+        </div>
+      </div>
     </div>
-  </div>
-    </div >
   );
 }

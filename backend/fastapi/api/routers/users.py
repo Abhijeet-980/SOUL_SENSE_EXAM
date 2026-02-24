@@ -16,12 +16,12 @@ from ..schemas import (
     CompleteProfileResponse,
     AuditLogResponse
 )
-from app.services.audit_service import AuditService
+from ..services.audit_service import AuditService
 from ..services.user_service import UserService
 from ..services.profile_service import ProfileService
 from ..routers.auth import get_current_user
 from ..services.db_service import get_db
-from ..root_models import User
+from ..models import User
 
 router = APIRouter(tags=["Users"])
 

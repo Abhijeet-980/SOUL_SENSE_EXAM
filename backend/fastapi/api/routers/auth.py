@@ -9,10 +9,11 @@ from ..schemas import UserCreate, Token, UserResponse, ErrorResponse, PasswordRe
 from ..services.db_service import get_db
 from ..services.auth_service import AuthService
 from ..services.captcha_service import captcha_service
+from ..utils.network import get_real_ip
 from ..constants.errors import ErrorCode
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
 from ..exceptions import AuthException
-from ..root_models import User
+from ..models import User
 from ..exceptions import AuthException, APIException, RateLimitException
 from ..utils.limiter import limiter
 # Rate limiters imported inline within routes to avoid potential circular/timing issues
@@ -64,6 +65,20 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
     
     # Set user_id in request state for rate limiting and auditing
     request.state.user_id = user.id
+    # Check if user is active
+    if not getattr(user, 'is_active', True):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Inactive user"
+        )
+    
+    # Check if user is deleted
+    if getattr(user, 'is_deleted', False) or getattr(user, 'deleted_at', None) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is deleted"
+        )
+    
     return user
 
 
@@ -80,7 +95,7 @@ async def check_username_availability(
     Check if a username is available.
     Rate limited to 20 requests per minute per IP.
     """
-    client_ip = request.client.host
+    client_ip = get_real_ip(request)
     count = availability_limiter_cache.get(client_ip, 0)
     if count >= 20:
         raise HTTPException(
@@ -101,7 +116,8 @@ async def register(
 ):
     from ..middleware.rate_limiter import registration_limiter
     # Rate limit by IP
-    is_limited, wait_time = registration_limiter.is_rate_limited(request.client.host)
+    real_ip = get_real_ip(request)
+    is_limited, wait_time = registration_limiter.is_rate_limited(real_ip)
     if is_limited:
         raise RateLimitException(
             message=f"Too many registration attempts. Please try again in {wait_time}s.",
@@ -120,7 +136,7 @@ async def register(
     return {"message": message}
 
 
-@router.post("/login", response_model=None, responses={401: {"model": ErrorResponse}, 202: {"model": TwoFactorAuthRequiredResponse}, 200: {"model": Token}})
+@router.post("/login", response_model=Token, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}, 202: {"model": TwoFactorAuthRequiredResponse}})
 async def login(
     response: Response,
     login_request: LoginRequest, 
@@ -128,14 +144,14 @@ async def login(
     auth_service: AuthService = Depends()
 ):
     from ..middleware.rate_limiter import login_limiter
-    ip = request.client.host
+    ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "Unknown")
 
     # 1. Start with CAPTCHA Validation (Before Rate Limiting to prevent spam cheapness)
     if not captcha_service.validate_captcha(login_request.session_id, login_request.captcha_input):
          raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "AUTH003", "message": "Invalid CAPTCHA"}
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The CAPTCHA validation failed. Please refresh the CAPTCHA and try again."
         )
 
     # 2. Rate Limit by IP
@@ -184,21 +200,21 @@ async def login(
     )
     
     # return Token(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
-    return {
-    "access_token": access_token,
-    "token_type": "bearer",
-    "refresh_token": refresh_token,
-    "username": user.username,
-    "email": user.personal_profile.email if user.personal_profile else None,
-    "id": user.id,
-    "created_at": user.created_at,
-    "warnings": (
-        [{
-            "code": "MULTIPLE_SESSIONS_ACTIVE",
-            "message": "Your account is active on another device or browser."
-        }] if has_multiple_sessions else []
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=refresh_token,
+        username=user.username,
+        email=user.personal_profile.email if user.personal_profile else None,
+        id=user.id,
+        created_at=user.created_at,
+        warnings=(
+            [{
+                "code": "MULTIPLE_SESSIONS_ACTIVE",
+                "message": "Your account is active on another device or browser."
+            }] if has_multiple_sessions else []
+        )
     )
-}
 
 
 
@@ -208,12 +224,14 @@ async def verify_2fa(
     request: Request,
     login_request: TwoFactorLoginRequest,
     response: Response,
+    request: Request,
     auth_service: AuthService = Depends()
 ):
     """
     Verify 2FA code and issue tokens.
     """
-    user = auth_service.verify_2fa_login(login_request.pre_auth_token, login_request.code)
+    ip = get_real_ip(request)
+    user = auth_service.verify_2fa_login(login_request.pre_auth_token, login_request.code, ip_address=ip)
     
     # Issue Tokens
     access_token = auth_service.create_access_token(
@@ -234,21 +252,21 @@ async def verify_2fa(
     )
     
     # return Token(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
-    return {
-    "access_token": access_token,
-    "token_type": "bearer",
-    "refresh_token": refresh_token,
-    "username": user.username,
-    "email": user.personal_profile.email if user.personal_profile else None,
-    "id": user.id,
-    "created_at": user.created_at.isoformat() if user.created_at else None,
-    "warnings": (
-        [{
-            "code": "MULTIPLE_SESSIONS_ACTIVE",
-            "message": "Your account is active on another device or browser."
-        }] if has_multiple_sessions else []
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=refresh_token,
+        username=user.username,
+        email=user.personal_profile.email if user.personal_profile else None,
+        id=user.id,
+        created_at=user.created_at,
+        warnings=(
+            [{
+                "code": "MULTIPLE_SESSIONS_ACTIVE",
+                "message": "Your account is active on another device or browser."
+            }] if has_multiple_sessions else []
+        )
     )
-}
 
 
 
@@ -310,7 +328,8 @@ async def initiate_password_reset(
     ALWAYS returns success message to prevent user enumeration.
     """
     # Rate limit by IP
-    is_limited, wait_time = password_reset_limiter.is_rate_limited(request.client.host)
+    real_ip = get_real_ip(request)
+    is_limited, wait_time = password_reset_limiter.is_rate_limited(real_ip)
     if is_limited:
         raise RateLimitException(
             message=f"Too many reset requests. Please try again in {wait_time}s.",
@@ -346,7 +365,8 @@ async def complete_password_reset(
     Verify OTP and set new password.
     """
     # Rate limit by IP for OTP attempts
-    is_limited, wait_time = password_reset_limiter.is_rate_limited(req_obj.client.host)
+    real_ip = get_real_ip(req_obj)
+    is_limited, wait_time = password_reset_limiter.is_rate_limited(real_ip)
     if is_limited:
          raise RateLimitException(
             message=f"Too many attempts. Please try again in {wait_time}s.",

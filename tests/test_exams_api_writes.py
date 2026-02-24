@@ -6,7 +6,7 @@ from datetime import datetime
 # Adjust import based on your actual structure
 from backend.fastapi.api.main import app
 from backend.fastapi.api.schemas import ExamResponseCreate, ExamResultCreate
-from backend.fastapi.api.root_models import User, Score, Response
+from backend.fastapi.api.models import User, Score, Response
 from app.auth.auth import AuthManager
 
 client = TestClient(app)
@@ -101,7 +101,7 @@ def test_invalid_response_value(auth_headers):
     session_id = "test-session"
     payload = {
         "question_id": 101,
-        "value": 5, # Invalid (must be 1-4)
+        "value": 6, # Invalid (must be 1-5)
         "age_group": "18-25"
     }
     response = client.post(

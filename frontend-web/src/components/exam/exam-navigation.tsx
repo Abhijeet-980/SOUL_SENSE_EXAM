@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 
 interface ExamNavigationProps {
   onSubmit: () => void;
+  onReview?: () => void; // New prop for review action
   isSubmitting?: boolean;
   className?: string;
   canGoNext?: boolean;
@@ -15,6 +16,7 @@ interface ExamNavigationProps {
 
 export const ExamNavigation: React.FC<ExamNavigationProps> = ({
   onSubmit,
+  onReview,
   isSubmitting = false,
   className,
   canGoNext = true,
@@ -65,19 +67,19 @@ export const ExamNavigation: React.FC<ExamNavigationProps> = ({
           </Button>
         ) : (
           <Button
-            onClick={onSubmit}
+            onClick={onReview || onSubmit}
             disabled={isSubmitting}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
           >
             {isSubmitting ? (
               <>
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                Submitting...
+                {onReview ? 'Loading Review...' : 'Submitting...'}
               </>
             ) : (
               <>
                 <Send className="h-4 w-4" />
-                Submit Exam
+                {onReview ? 'Review Answers' : 'Submit Exam'}
               </>
             )}
           </Button>

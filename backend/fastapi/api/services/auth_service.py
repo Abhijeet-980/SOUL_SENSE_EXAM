@@ -14,11 +14,12 @@ from sqlalchemy.exc import OperationalError
 import bcrypt
 
 from .db_service import get_db
-from ..root_models import User, LoginAttempt, PersonalProfile, RefreshToken
+from ..models import User, LoginAttempt, PersonalProfile, RefreshToken
 from ..config import get_settings
 from ..constants.errors import ErrorCode
 from ..constants.security_constants import BCRYPT_ROUNDS, REFRESH_TOKEN_EXPIRE_DAYS
 from ..exceptions import AuthException
+from .audit_service import AuditService
 
 settings = get_settings()
 
@@ -143,7 +144,6 @@ class AuthService:
         self.update_last_login(user.id)
         
         # SoulSense Audit Log
-        from app.services.audit_service import AuditService
         AuditService.log_event(
             user.id,
             "LOGIN",
@@ -200,8 +200,8 @@ class AuthService:
         """
         Generate OTP, send email, and return pre_auth_token.
         """
-        from app.auth.otp_manager import OTPManager
-        from app.services.email_service import EmailService
+        from .otp_manager import OTPManager
+        from .email_service import EmailService
         
         # 1. Generate OTP
         code, _ = OTPManager.generate_otp(user.id, "LOGIN_CHALLENGE", db_session=self.db)
@@ -225,13 +225,13 @@ class AuthService:
         # 3. Create Pre-Auth Token
         return self.create_pre_auth_token(user.id)
 
-    def verify_2fa_login(self, pre_auth_token: str, code: str) -> User:
+    def verify_2fa_login(self, pre_auth_token: str, code: str, ip_address: str = "0.0.0.0") -> User:
         """
         Verify pre-auth token and OTP code.
         Returns User if successful, raises AuthException otherwise.
         """
         from jose import jwt, JWTError
-        from app.auth.otp_manager import OTPManager
+        from .otp_manager import OTPManager
         
         try:
             # 1. Verify Token
@@ -253,8 +253,18 @@ class AuthService:
                  raise AuthException(code=ErrorCode.AUTH_USER_NOT_FOUND, message="User not found")
                  
             # Audit success
-            self._record_login_attempt(user.username, True, "0.0.0.0") # IP not passed here, simplified
+            self._record_login_attempt(user.username, True, ip_address)
             self.update_last_login(user.id)
+            
+            # SoulSense Audit Log
+            AuditService.log_event(
+                user.id,
+                "LOGIN_2FA",
+                ip_address=ip_address,
+                details={"method": "2fa", "status": "success"},
+                db_session=self.db
+            )
+            
             self.db.commit() # Save OTP used state
             
             return user
@@ -269,8 +279,8 @@ class AuthService:
 
     def send_2fa_setup_otp(self, user: User) -> bool:
         """Generate and send OTP for 2FA setup."""
-        from app.auth.otp_manager import OTPManager
-        from app.services.email_service import EmailService
+        from .otp_manager import OTPManager
+        from .email_service import EmailService
         
         code, _ = OTPManager.generate_otp(user.id, "2FA_SETUP", db_session=self.db)
         if not code:
@@ -290,7 +300,7 @@ class AuthService:
 
     def enable_2fa(self, user_id: int, code: str) -> bool:
         """Verify code and enable 2FA."""
-        from app.auth.otp_manager import OTPManager
+        from .otp_manager import OTPManager
         
         if OTPManager.verify_otp(user_id, code, "2FA_SETUP", db_session=self.db):
             user = self.db.query(User).filter(User.id == user_id).first()
@@ -463,7 +473,7 @@ class AuthService:
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False, None, "An internal error occurred. Please try again later."
 
-    def create_refresh_token(self, user_id: int) -> str:
+    def create_refresh_token(self, user_id: int, commit: bool = True) -> str:
         """
         Generate a secure refresh token, hash it, and store it in the DB.
         """
@@ -478,7 +488,8 @@ class AuthService:
             expires_at=expires_at
         )
         self.db.add(db_token)
-        self.db.commit()
+        if commit:
+            self.db.commit()
         
         return token
     
@@ -495,6 +506,7 @@ class AuthService:
     def refresh_access_token(self, refresh_token: str) -> Tuple[str, str]:
         """
         Validate a refresh token and return a new access token + new refresh token (Rotation).
+        Uses atomic transaction to ensure old token revocation and new token creation succeed together.
         """
         token_hash = hashlib.sha256(refresh_token.encode()).hexdigest()
         
@@ -512,23 +524,35 @@ class AuthService:
                 message="Invalid or expired refresh token"
             )
             
-        # Token Rotation: Invalidate the current one immediately
-        db_token.is_revoked = True
-        self.db.commit()
-        
-        # Get user
+        # Get user first to validate
         user = self.db.query(User).filter(User.id == db_token.user_id).first()
         if not user:
              raise AuthException(
                 code=ErrorCode.AUTH_INVALID_TOKEN,
                 message="User associated with token no longer exists"
             )
-            
-        # Create new tokens
-        access_token = self.create_access_token(data={"sub": user.username})
-        new_refresh_token = self.create_refresh_token(user.id)
         
-        return access_token, new_refresh_token
+        try:
+            # Token Rotation: Invalidate the current one
+            db_token.is_revoked = True
+            
+            # Create new tokens (added to session but not committed yet)
+            access_token = self.create_access_token(data={"sub": user.username})
+            new_refresh_token = self.create_refresh_token(user.id, commit=False)
+            
+            # Atomic commit: both revocation and new token creation
+            self.db.commit()
+            
+            return access_token, new_refresh_token
+            
+        except Exception as e:
+            # Rollback on any error to maintain data integrity
+            self.db.rollback()
+            logger.error(f"Failed to rotate refresh token for user {db_token.user_id}: {str(e)}")
+            raise AuthException(
+                code=ErrorCode.AUTH_TOKEN_ROTATION_FAILED,
+                message="Token rotation failed. Please try logging in again."
+            )
 
     def revoke_refresh_token(self, refresh_token: str) -> None:
         """Manually revoke a refresh token (e.g., on logout)."""
@@ -550,8 +574,8 @@ class AuthService:
         2. Generate OTP.
         3. Send OTP (Mock).
         """
-        from app.auth.otp_manager import OTPManager
-        from app.services.email_service import EmailService
+        from .otp_manager import OTPManager
+        from .email_service import EmailService
 
         try:
             email_lower = email.lower().strip()
@@ -592,7 +616,7 @@ class AuthService:
         1. Verify OTP.
         2. Update Password.
         """
-        from app.auth.otp_manager import OTPManager
+        from .otp_manager import OTPManager
         from ..utils.weak_passwords import WEAK_PASSWORDS
         
         # Block weak/common passwords

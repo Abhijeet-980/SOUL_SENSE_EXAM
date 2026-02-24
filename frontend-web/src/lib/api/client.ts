@@ -5,12 +5,29 @@ import { getSession, saveSession } from '../utils/sessionStorage';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
 
+// State variables for token refresh locking mechanism
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value?: unknown) => void;
+  reject: (reason?: any) => void;
+}> = [];
+
+// Process the queue of failed requests
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) prom.reject(error);
+    else prom.resolve(token);
+  });
+  failedQueue = [];
+};
+
 interface RequestOptions extends RequestInit {
   timeout?: number;
   skipAuth?: boolean; // For public endpoints like login
   retry?: boolean; // Enable retry for this request
   maxRetries?: number;
   _isRetry?: boolean; // Internal flag for auth retry
+  _token?: string; // Override token for retry
 }
 
 /**
@@ -30,15 +47,8 @@ function getAuthToken(): string | null {
 function handleAuthFailure(): void {
   if (typeof window === 'undefined') return;
 
-  // Clear token
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-
-  // Notify other tabs to logout
-  localStorage.setItem('logout-event', Date.now().toString());
-
-  // Redirect to login
-  window.location.href = '/login';
+  // Dispatch custom event to let useAuth handle the cleanup
+  window.dispatchEvent(new CustomEvent('auth-failure'));
 }
 
 export async function apiClient<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
@@ -56,7 +66,7 @@ export async function apiClient<T>(endpoint: string, options: RequestOptions = {
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
 
   // Inject authentication token
-  const token = skipAuth ? null : getAuthToken();
+  const token = options._token || (skipAuth ? null : getAuthToken());
   const headers = new Headers(fetchOptions.headers);
 
   if (!headers.has('Content-Type') && !(fetchOptions.body instanceof FormData)) {
@@ -89,37 +99,59 @@ export async function apiClient<T>(endpoint: string, options: RequestOptions = {
 
         // Handle 401 - Unauthorized
         if (response.status === 401) {
-          if (!options._isRetry) {
-            try {
-              // Internal refresh fetch to avoid circular dependency
-              const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh`, {
-                method: 'POST',
-                // Include cookies for refresh token
-                credentials: 'include',
-              });
-
-              if (refreshRes.ok) {
-                const data = await refreshRes.json();
-
-                // Update session
-                const session = getSession();
-                if (session) {
-                  session.token = data.access_token;
-                  if (data.refresh_token) {
-                    // Cookie is HTTPOnly
-                  }
-                  // Persist update (keeping existing storage type)
-                  saveSession(session, !!localStorage.getItem('soul_sense_auth_session'));
-                }
-
-                // Retry original request with new token
-                return apiClient(endpoint, { ...options, _isRetry: true });
-              }
-            } catch (err) {
-              console.error('Token refresh failed:', err);
-            }
+          if (options._isRetry) {
+            throw apiError;
           }
-          handleAuthFailure();
+
+          if (isRefreshing) {
+            // Queue the request
+            return new Promise((resolve, reject) => {
+              failedQueue.push({ resolve, reject });
+            }).then((token) => {
+              return apiClient(endpoint, { ...options, _isRetry: true, _token: token as string });
+            });
+          }
+
+          // Start refreshing
+          isRefreshing = true;
+
+          try {
+            // Internal refresh fetch to avoid circular dependency
+            const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh`, {
+              method: 'POST',
+              // Include cookies for refresh token
+              credentials: 'include',
+            });
+
+            if (refreshRes.ok) {
+              const data = await refreshRes.json();
+
+              // Update session
+              const session = getSession();
+              if (session) {
+                session.token = data.access_token;
+                if (data.refresh_token) {
+                  // Cookie is HTTPOnly
+                }
+                // Persist update (keeping existing storage type)
+                saveSession(session, !!localStorage.getItem('soul_sense_auth_session'));
+              }
+
+              processQueue(null, data.access_token);
+
+              // Retry original request with new token
+              return apiClient(endpoint, { ...options, _isRetry: true, _token: data.access_token });
+            } else {
+              throw new Error('Refresh failed');
+            }
+          } catch (err) {
+            console.error('Token refresh failed:', err);
+            processQueue(err, null);
+            handleAuthFailure();
+            throw apiError;
+          } finally {
+            isRefreshing = false;
+          }
         }
 
         throw apiError;

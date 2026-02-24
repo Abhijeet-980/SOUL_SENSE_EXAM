@@ -126,7 +126,7 @@ class SimpleBiasChecker:
             for qid, data in question_data.items():
                 if 'Younger' in data and 'Older' in data:
                     diff = abs(data['Younger']['avg'] - data['Older']['avg'])
-                    if diff > 1.0:  # More than 1 point difference on 1-4 scale
+                    if diff > 1.0:  # More than 1 point difference on 1-5 scale
                         biased_questions.append({
                             "question_id": qid,
                             "younger_avg": data['Younger']['avg'],

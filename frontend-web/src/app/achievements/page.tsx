@@ -3,10 +3,7 @@
 import React, { useState } from 'react';
 import { useApi } from '@/hooks/useApi';
 import { gamificationApi } from '@/lib/api/gamification';
-import { XPProgress } from '@/components/gamification/xp-progress';
-import { StreakDisplay } from '@/components/gamification/streak-display';
-import { AchievementGallery } from '@/components/gamification/achievement-gallery';
-import { AchievementToast } from '@/components/gamification/achievement-toast';
+import { XPProgress, StreakDisplay, AchievementGallery, AchievementToast } from '@/components/gamification';
 import { Trophy, Users, Zap, Calendar } from 'lucide-react';
 import { motion } from 'framer-motion';
 

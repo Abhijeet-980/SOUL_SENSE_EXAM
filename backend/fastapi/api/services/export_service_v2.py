@@ -24,14 +24,14 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from cryptography.fernet import Fernet
 
-from ..root_models import (
+from ..models import (
     User, Score, JournalEntry, UserSettings,
     PersonalProfile, MedicalProfile, UserStrengths,
     UserEmotionalPatterns, SatisfactionRecord,
     AssessmentResult, Response, ExportRecord
 )
-from app.utils.file_validation import sanitize_filename, validate_file_path
-from app.utils.atomic import atomic_write
+from ..utils.file_validation import sanitize_filename, validate_file_path
+from ..utils.atomic import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -913,7 +913,7 @@ class ExportServiceV2:
             f.write(buffer.getvalue())
 
     @classmethod
-    def _create_score_chart(cls, scores: List[Dict[str, Any]]) -> Optional[Drawing]:
+    def _create_score_chart(cls, scores: List[Dict[str, Any]]) -> Optional[Any]:
         """Create a trend chart for scores."""
         try:
             from reportlab.graphics.shapes import Drawing

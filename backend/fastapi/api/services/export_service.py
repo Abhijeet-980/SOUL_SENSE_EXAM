@@ -7,9 +7,9 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Tuple, Dict, Any
 from pathlib import Path
 from sqlalchemy.orm import Session
-from ..root_models import User, Score
-from app.utils.file_validation import sanitize_filename, validate_file_path
-from app.utils.atomic import atomic_write
+from ..models import User, Score
+from ..utils.file_validation import sanitize_filename, validate_file_path
+from ..utils.atomic import atomic_write
 
 logger = logging.getLogger(__name__)
 

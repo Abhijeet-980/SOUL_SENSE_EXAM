@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 import json
 
-# Import models from root_models module (handles namespace collision)
-from ..root_models import UserSyncSetting
+# Import models from models module
+from ..models import UserSyncSetting
 
 
 class SettingsSyncService:

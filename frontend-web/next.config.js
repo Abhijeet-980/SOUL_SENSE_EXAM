@@ -23,11 +23,6 @@ const nextConfig = {
   // Enable SWC minification for faster builds
   swcMinify: true,
 
-  // Optimize production builds
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
-  },
-
   // Performance optimizations
   experimental: {
     optimizeCss: true,

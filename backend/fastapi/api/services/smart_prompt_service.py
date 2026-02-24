@@ -15,7 +15,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
-from app.models import Score, JournalEntry, UserEmotionalPatterns
+from ..models import Score, JournalEntry, UserEmotionalPatterns
 
 
 # ============================================================================

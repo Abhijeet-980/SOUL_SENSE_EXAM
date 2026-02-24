@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { PremiumPrivacySettings } from '@/components/settings';
+import { PrivacySettingsPremium } from '@/components/settings';
 
 export default function PrivacyDemoPage() {
   const [settings, setSettings] = useState({
@@ -43,7 +43,7 @@ export default function PrivacyDemoPage() {
         </div>
 
         <div className="bg-card p-6 rounded-3xl border shadow-2xl">
-          <PremiumPrivacySettings
+          <PrivacySettingsPremium
             settings={settings}
             onChange={handleSettingsChange}
             onExportData={handleExport}

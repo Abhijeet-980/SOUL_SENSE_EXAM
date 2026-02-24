@@ -371,14 +371,17 @@ class AppAuth:
                     self._load_user_settings(user)
                     login_win.destroy()
                     self._post_login_init()
-                elif response.status_code == 401:
+                elif response.status_code == 400:
                     error_data = response.json()
                     code = error_data.get('detail', {}).get('code')
                     if code == 'AUTH003':
                         captcha_error_label.config(text="Invalid CAPTCHA. Please try again!")
                         refresh_captcha()  # Regenerate CAPTCHA
                     else:
-                        tmb.showerror("Login Failed", error_data.get('detail', {}).get('message', 'Invalid credentials'))
+                        tmb.showerror("Login Failed", error_data.get('detail', {}).get('message', 'Invalid input'))
+                elif response.status_code == 401:
+                    error_data = response.json()
+                    tmb.showerror("Login Failed", error_data.get('detail', {}).get('message', 'Invalid credentials'))
                 else:
                     error_data = response.json()
                     tmb.showerror("Login Failed", error_data.get('detail', {}).get('message', 'Login failed'))

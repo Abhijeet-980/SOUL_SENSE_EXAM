@@ -19,10 +19,15 @@ from ..exceptions import AuthException
 from ..config import get_settings
 from ..services.db_service import get_db
 from ..schemas import UserCreate
-from ..root_models import User
+from ..models import User
 from sqlalchemy.orm import Session
 
 settings = get_settings()
+
+# CRITICAL SECURITY GUARD: Prevent MockAuthService from loading in production
+if settings.ENVIRONMENT == "production":
+    raise RuntimeError("CRITICAL SECURITY VIOLATION: MockAuthService cannot be loaded in a production environment!")
+
 logger = logging.getLogger(__name__)
 
 # Mock users for testing
@@ -306,12 +311,13 @@ class MockAuthService:
         user.email = user_data.email
         return True, user, "User registered successfully (Mock)"
 
-    def create_refresh_token(self, user_id: int) -> str:
+    def create_refresh_token(self, user_id: int, commit: bool = True) -> str:
         """
         Create a mock refresh token.
         
         Args:
             user_id: User ID
+            commit: Ignored in mock implementation
             
         Returns:
             Refresh token string

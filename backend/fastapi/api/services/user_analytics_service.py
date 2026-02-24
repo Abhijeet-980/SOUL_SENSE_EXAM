@@ -3,7 +3,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
-from app.models import Score, JournalEntry
+from ..models import Score, JournalEntry
 from ..schemas import (
     UserAnalyticsSummary,
     EQScorePoint,

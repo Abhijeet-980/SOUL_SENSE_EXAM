@@ -172,6 +172,8 @@ class Token(BaseModel):
     email: Optional[str] = None
     id: int
     created_at: Optional[str] = None
+    id: Optional[int] = None
+    created_at: Optional[datetime] = None
     warnings: Optional[List[Dict[str, str]]] = None
 
 
@@ -302,7 +304,7 @@ class AssessmentStatsResponse(BaseModel):
 class ExamResponseCreate(BaseModel):
     """Schema for saving a single question response (click)."""
     question_id: int
-    value: int = Field(..., ge=1, le=4, description="Answer value (1-4)")
+    value: int = Field(..., ge=1, le=5, description="Likert Scale metric (1-5)")
     age_group: Optional[str] = Field(None, description="Age group context")
     session_id: Optional[str] = Field(None, description="Exam session ID")
 

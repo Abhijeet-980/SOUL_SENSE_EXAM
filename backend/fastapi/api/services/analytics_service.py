@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from typing import List, Dict, Tuple, Optional
 from datetime import datetime, timedelta
 
-# Import models from root_models module (handles namespace collision)
-from ..root_models import Score, User, AnalyticsEvent
+# Import models from models module
+from ..models import Score, User, AnalyticsEvent
 
 
 class AnalyticsService:

@@ -2,7 +2,14 @@
 
 import React from 'react';
 import { usePathname } from 'next/navigation';
-import { FloatingNavbar } from './floating-navbar';
+import dynamic from 'next/dynamic';
+
+// Use dynamic import with ssr: false to prevent hydration mismatch
+// on the floating navbar which depends on complex client-side state
+const FloatingNavbar = dynamic(
+  () => import('./floating-navbar').then((mod) => mod.FloatingNavbar),
+  { ssr: false }
+);
 
 /**
  * Conditionally renders the floating navbar based on pathname.

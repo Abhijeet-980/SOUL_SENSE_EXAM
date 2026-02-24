@@ -253,7 +253,7 @@ class SoulSenseCLI:
             
             # Input Loop
             while True:
-                choice = self.get_input("\nSelect (1-4): ").lower()
+                choice = self.get_input("\nSelect (1-5): ").lower()
                 
                 if choice == 'q':
                     confirm = self.get_input("Are you sure you want to quit? (y/n): ").lower()
@@ -267,12 +267,12 @@ class SoulSenseCLI:
                     else:
                         print("Already at the first question.")
                 
-                elif choice in ('1', '2', '3', '4'):
+                elif choice in ('1', '2', '3', '4', '5'):
                     self.session.submit_answer(int(choice))
                     break # Advance to next q
                 
                 else:
-                    print("Invalid input. Please enter 1-4, 'b', or 'q'.")
+                    print("Invalid input. Please enter 1-5, 'b', or 'q'.")
 
     def run_reflection(self) -> None:
         """Reflection Phase"""
