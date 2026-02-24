@@ -11,7 +11,8 @@ from ..schemas import (
     TrendAnalytics,
     BenchmarkComparison,
     PopulationInsights,
-    AnalyticsEventCreate
+    AnalyticsEventCreate,
+    DashboardStatisticsResponse
 )
 from ..middleware.rate_limiter import rate_limit_analytics
 
@@ -124,6 +125,29 @@ async def get_population_insights(db: Session = Depends(get_db)):
     insights = AnalyticsService.get_population_insights(db)
     return PopulationInsights(**insights)
 
+@router.get("/statistics", response_model=DashboardStatisticsResponse, dependencies=[Depends(rate_limit_analytics)])
+async def get_dashboard_statistics(
+    timeframe: str = Query('30d', pattern='^(7d|30d|90d)$', description="Time period for historical data"),
+    exam_type: Optional[str] = Query(None, description="Filter by exam type"),
+    sentiment: Optional[str] = Query(None, pattern='^(positive|neutral|negative)$', description="Filter by sentiment"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get dashboard statistics with historical trends.
+    
+    **Rate Limited**: 30 requests per minute per IP
+    
+    **Data Privacy**: Returns aggregated historical data only.
+    No individual user information.
+    
+    - **timeframe**: Time period (7d, 30d, 90d)
+    - **exam_type**: Optional filter by exam type
+    - **sentiment**: Optional filter by sentiment (positive, neutral, negative)
+    
+    Returns historical trends with scores over time.
+    """
+    trends = AnalyticsService.get_dashboard_statistics(db, timeframe=timeframe, exam_type=exam_type, sentiment=sentiment)
+    return DashboardStatisticsResponse(historical_trends=trends)
 
 @router.get("/age-groups", dependencies=[Depends(rate_limit_analytics)])
 async def get_age_group_statistics(db: Session = Depends(get_db)):
@@ -169,7 +193,7 @@ async def get_score_distribution(db: Session = Depends(get_db)):
 # ============================================================================
 
 from ..services.user_analytics_service import UserAnalyticsService
-from ..schemas import UserAnalyticsSummary, UserTrendsResponse
+from ..schemas import UserAnalyticsSummary, UserTrendsResponse, DashboardStatisticsResponse
 from ..models import User
 from .auth import get_current_user
 
@@ -213,6 +237,36 @@ async def get_user_analytics_trends(
         eq_scores=eq_scores,
         wellbeing=wellbeing
     )
+
+
+@router.get("/statistics", response_model=DashboardStatisticsResponse)
+async def get_dashboard_statistics(
+    timeframe: str = Query("30d", description="Timeframe for data (e.g., 7d, 30d, 90d)"),
+    exam_type: Optional[str] = Query(None, description="Filter by exam type"),
+    sentiment: Optional[str] = Query(None, description="Filter by sentiment"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get dashboard statistics with historical trends.
+    
+    Params:
+    - timeframe: Time period (7d, 30d, 90d)
+    - exam_type: Optional filter by exam type
+    - sentiment: Optional filter by sentiment
+    
+    Returns:
+    - historical_trends: List of EQ score points
+    """
+    # Parse timeframe to days
+    days_map = {"7d": 7, "30d": 30, "90d": 90}
+    days = days_map.get(timeframe, 30)
+    
+    # For now, ignore exam_type and sentiment filters as they are not implemented in the data model
+    # TODO: Add filtering logic when exam types and sentiments are added
+    eq_scores = UserAnalyticsService.get_eq_trends(db, current_user.id, days)
+    
+    return DashboardStatisticsResponse(historical_trends=eq_scores)
 
 
 # ============================================================================

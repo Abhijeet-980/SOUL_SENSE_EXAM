@@ -288,3 +288,74 @@ class AnalyticsService:
             'total_population_size': total_users,
             'assessment_completion_rate': completion_rate
         }
+    
+    @staticmethod
+    def get_dashboard_statistics(
+        db: Session,
+        timeframe: str = '30d',
+        exam_type: Optional[str] = None,
+        sentiment: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Get dashboard statistics with historical trends.
+        
+        Args:
+            db: Database session
+            timeframe: Time period ('7d', '30d', '90d')
+            exam_type: Optional filter by exam type
+            sentiment: Optional filter by sentiment
+            
+        Returns:
+            List of historical trend data points
+        """
+        # Calculate date range
+        now = datetime.utcnow()
+        if timeframe == '7d':
+            start_date = now - timedelta(days=7)
+        elif timeframe == '30d':
+            start_date = now - timedelta(days=30)
+        elif timeframe == '90d':
+            start_date = now - timedelta(days=90)
+        else:
+            start_date = now - timedelta(days=30)  # default to 30 days
+        
+        # Build query
+        query = db.query(
+            Score.id,
+            Score.timestamp,
+            Score.total_score,
+            Score.sentiment_score
+        ).filter(
+            Score.timestamp >= start_date
+        )
+        
+        # Apply filters
+        if exam_type:
+            # For now, we'll assume exam_type is stored somewhere or we can filter by other criteria
+            # This might need to be adjusted based on your data model
+            pass
+            
+        if sentiment:
+            if sentiment == 'positive':
+                query = query.filter(Score.sentiment_score >= 0.6)
+            elif sentiment == 'neutral':
+                query = query.filter(Score.sentiment_score.between(0.4, 0.6))
+            elif sentiment == 'negative':
+                query = query.filter(Score.sentiment_score < 0.4)
+        
+        # Order by timestamp
+        query = query.order_by(Score.timestamp.desc())
+        
+        results = query.limit(100).all()  # Limit to prevent too much data
+        
+        # Format for response
+        trends = []
+        for score in reversed(results):  # Chronological order
+            trends.append({
+                'id': score.id,
+                'timestamp': score.timestamp.isoformat(),
+                'total_score': score.total_score,
+                'sentiment_score': score.sentiment_score
+            })
+        
+        return trends

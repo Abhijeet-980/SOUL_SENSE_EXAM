@@ -12,6 +12,7 @@ import {
   BentoGrid,
   SectionWrapper,
 } from '@/components/dashboard';
+import DashboardCharts from '@/components/dashboard/dashboard-charts';
 import { apiClient } from '@/lib/api/client';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -137,6 +138,11 @@ export default function DashboardPage() {
 
         <SectionWrapper isLoading={false} error={error} onRetry={fetchData}>
           <QuickActions />
+        </SectionWrapper>
+
+        {/* Charts Section */}
+        <SectionWrapper isLoading={false} error={error} onRetry={fetchData} className="md:col-span-2">
+          <DashboardCharts />
         </SectionWrapper>
 
         {/* Row 2 */}

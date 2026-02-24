@@ -1229,3 +1229,8 @@ class GamificationSummary(BaseModel):
     streaks: List[UserStreakResponse]
     recent_achievements: List[AchievementResponse]
     active_challenges: List[ChallengeResponse]
+
+
+class DashboardStatisticsResponse(BaseModel):
+    """Response for dashboard statistics with historical trends."""
+    historical_trends: List[EQScorePoint]

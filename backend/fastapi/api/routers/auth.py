@@ -227,7 +227,6 @@ async def login(
 @router.post("/login/2fa", response_model=Token, responses={401: {"model": ErrorResponse}})
 @limiter.limit("5/minute")
 async def verify_2fa(
-    request: Request,
     login_request: TwoFactorLoginRequest,
     response: Response,
     request: Request,
