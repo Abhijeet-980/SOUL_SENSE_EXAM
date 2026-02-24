@@ -80,7 +80,7 @@ export function AppearanceSettings({ settings, onChange }: AppearanceSettingsPro
             </div>
             <Checkbox
               checked={settings.accessibility.high_contrast}
-              onCheckedChange={(checked) => handleAccessibilityChange('high_contrast', !!checked)}
+              onChange={(e) => handleAccessibilityChange('high_contrast', e.target.checked)}
               className="h-5 w-5 rounded-lg border-2 border-border/60"
             />
           </div>
@@ -94,7 +94,7 @@ export function AppearanceSettings({ settings, onChange }: AppearanceSettingsPro
             </div>
             <Checkbox
               checked={settings.accessibility.reduced_motion}
-              onCheckedChange={(checked) => handleAccessibilityChange('reduced_motion', !!checked)}
+              onChange={(e) => handleAccessibilityChange('reduced_motion', e.target.checked)}
               className="h-5 w-5 rounded-lg border-2 border-border/60"
             />
           </div>

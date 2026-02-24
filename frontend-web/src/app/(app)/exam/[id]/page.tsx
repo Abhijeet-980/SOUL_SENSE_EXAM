@@ -52,9 +52,9 @@ export default function ExamPage() {
   // Load questions on mount
   useEffect(() => {
     if (apiQuestions.length > 0 && questions.length === 0) {
-      setQuestions(apiQuestions);
+      setQuestions(apiQuestions, examId);
     }
-  }, [apiQuestions, questions.length, setQuestions]);
+  }, [apiQuestions, questions.length, setQuestions, examId]);
 
   // Handle exam completion
   useEffect(() => {

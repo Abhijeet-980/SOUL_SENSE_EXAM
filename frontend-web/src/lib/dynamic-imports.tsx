@@ -19,7 +19,7 @@ export const ActivityAreaChart = dynamic(
 ) as ComponentType<any>;
 
 export const ContributionMix = dynamic(
-  () => import('@/components/dashboard/charts/contribution-mix').then(mod => ({ default: mod.ContributionMix })),
+  () => import('@/components/dashboard/charts/contribution-mix').then(mod => ({ default: mod.ContributionMixChart })),
   {
     loading: () => (
       <div className="h-[200px] w-full animate-pulse bg-slate-100 dark:bg-slate-800 rounded-lg" />
@@ -50,7 +50,7 @@ export const RepositorySunburst = dynamic(
 
 // Results chart components
 export const HistoryChart = dynamic(
-  () => import('@/components/results/history-chart').then(mod => ({ default: mod.HistoryChart })),
+  () => import('@/components/results/history-chart'),
   {
     loading: () => (
       <div className="h-[250px] w-full animate-pulse bg-slate-100 dark:bg-slate-800 rounded-lg" />
@@ -60,7 +60,7 @@ export const HistoryChart = dynamic(
 ) as ComponentType<any>;
 
 export const ScoreGauge = dynamic(
-  () => import('@/components/results/score-gauge').then(mod => ({ default: mod.ScoreGauge })),
+  () => import('@/components/results/score-gauge'),
   {
     loading: () => (
       <div className="h-[180px] w-full animate-pulse bg-slate-100 dark:bg-slate-800 rounded-lg" />
