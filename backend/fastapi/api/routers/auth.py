@@ -51,7 +51,13 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
     try:
         # Pydantic schema validation for TokenData could be used here
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.jwt_algorithm])
-        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        
+        # Check if token is revoked
+        from ..root_models import TokenRevocation
+        revoked = db.query(TokenRevocation).filter(TokenRevocation.token_str == token).first()
+        if revoked:
+            raise credentials_exception
+
         username: str = payload.get("sub")
         if not username:
             raise credentials_exception
@@ -283,11 +289,28 @@ async def refresh(
 async def logout(
     request: Request,
     response: Response,
+    current_user: Annotated[User, Depends(get_current_user)],
+    token: Annotated[str, Depends(oauth2_scheme)],
     auth_service: AuthService = Depends()
 ):
+    """ Logout the current user by revoking tokens and clearing cookies. """
+    # 1. Revoke Refresh Token (from cookie)
     refresh_token = request.cookies.get("refresh_token")
     if refresh_token:
         auth_service.revoke_refresh_token(refresh_token)
+    
+    # 2. Revoke Access Token (from header)
+    auth_service.revoke_access_token(token)
+    
+    # 3. Audit Logout
+    from app.services.audit_service import AuditService
+    AuditService.log_event(
+        current_user.id,
+        "LOGOUT",
+        ip_address=request.client.host,
+        user_agent=request.headers.get("user-agent", "Unknown"),
+        db_session=auth_service.db
+    )
         
     response.delete_cookie("refresh_token")
     return {"message": "Logged out successfully"}

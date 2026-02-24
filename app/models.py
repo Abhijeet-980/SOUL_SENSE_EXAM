@@ -159,6 +159,14 @@ class UserSession(Base):
         Index('idx_session_created', 'created_at'),
     )
 
+class TokenRevocation(Base):
+    """Store revoked access tokens to prevent reuse until they expire."""
+    __tablename__ = 'token_revocations'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token_str = Column(String, index=True, nullable=False)
+    revoked_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
 class UserSyncSetting(Base):
     """Store user-specific sync settings as key-value pairs with version control for conflict detection."""
     __tablename__ = 'user_sync_settings'

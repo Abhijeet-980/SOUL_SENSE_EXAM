@@ -538,6 +538,25 @@ class AuthService:
             db_token.is_revoked = True
             self.db.commit()
             logger.info(f"Revoked refresh token for user_id={db_token.user_id}")
+
+    def revoke_access_token(self, token: str) -> None:
+        """Revoke an access token by adding it to the revocation list."""
+        from jose import jwt
+        from ..root_models import TokenRevocation
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.jwt_algorithm])
+            exp = payload.get("exp")
+            if exp:
+                expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
+                revocation = TokenRevocation(
+                    token_str=token,
+                    expires_at=expires_at
+                )
+                self.db.add(revocation)
+                self.db.commit()
+                logger.info(f"Access token revoked for user: {payload.get('sub')}")
+        except Exception as e:
+            logger.error(f"Failed to revoke access token: {e}")
     
 
 

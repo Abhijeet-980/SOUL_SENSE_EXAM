@@ -113,4 +113,11 @@ export const authApi = {
       method: 'POST',
     });
   },
+
+  async logout(): Promise<void> {
+    return apiClient('/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    });
+  },
 };

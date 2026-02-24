@@ -58,6 +58,7 @@ UserStreak = _models_module.UserStreak
 UserXP = _models_module.UserXP
 Challenge = _models_module.Challenge
 UserChallenge = _models_module.UserChallenge
+TokenRevocation = _models_module.TokenRevocation
 
 # Export all for easy discovery
 __all__ = [
@@ -91,4 +92,5 @@ __all__ = [
     'UserXP',
     'Challenge',
     'UserChallenge',
+    'TokenRevocation',
 ]

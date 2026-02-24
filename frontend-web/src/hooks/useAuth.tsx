@@ -242,23 +242,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = async () => {
-    // Integrate logout fetch from main
     try {
-      const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(
-        /\/api\/v1\/?$/,
-        ''
-      );
-      await fetch(`${apiUrl}/api/v1/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      await authApi.logout();
     } catch (error) {
       console.error('Logout error:', error);
+    } finally {
+      // Always clear local session even if backend call fails
+      clearSession();
+      setUser(null);
+      router.push('/login');
     }
-
-    clearSession();
-    setUser(null);
-    router.push('/login');
   };
 
   // ... existing code ...

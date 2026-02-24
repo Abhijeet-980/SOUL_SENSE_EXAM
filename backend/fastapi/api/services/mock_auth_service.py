@@ -364,6 +364,10 @@ class MockAuthService:
             del MOCK_REFRESH_TOKENS[refresh_token]
             logger.info("🎭 Mock refresh token revoked")
 
+    def revoke_access_token(self, token: str) -> None:
+        """Mock access token revocation."""
+        logger.info("🎭 Mock access token revoked")
+
     async def initiate_password_reset(self, email: str, background_tasks: Any) -> Tuple[bool, str]:
         """
         Mock password reset initiation.
