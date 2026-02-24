@@ -1,6 +1,6 @@
 from datetime import timedelta
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 
@@ -302,6 +302,7 @@ async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]
 async def initiate_password_reset(
     request: Request,
     reset_data: PasswordResetRequest, # Renamed to avoid name conflict with Request
+    background_tasks: BackgroundTasks,
     auth_service: AuthService = Depends()
 ):
     from ..middleware.rate_limiter import password_reset_limiter
@@ -325,7 +326,7 @@ async def initiate_password_reset(
             wait_seconds=wait_time
         )
 
-    success, message = auth_service.initiate_password_reset(reset_data.email)
+    success, message = await auth_service.initiate_password_reset(reset_data.email, background_tasks)
     if not success:
         # Rate limit or server error
         raise HTTPException(

@@ -364,19 +364,22 @@ class MockAuthService:
             del MOCK_REFRESH_TOKENS[refresh_token]
             logger.info("🎭 Mock refresh token revoked")
 
-    def initiate_password_reset(self, email: str) -> str:
+    async def initiate_password_reset(self, email: str, background_tasks: Any) -> Tuple[bool, str]:
         """
         Mock password reset initiation.
         
         Args:
             email: User email
+            background_tasks: Background tasks (ignored in mock)
             
         Returns:
-            Mock OTP code
+            Tuple of (Success, Message)
         """
         otp_code = MOCK_OTP_CODES.get(email.lower(), "123456")
         logger.info(f"🎭 Mock password reset initiated for {email}. OTP: {otp_code}")
-        return otp_code
+        
+        # Consistent with real AuthService: Generic message for enumeration protection
+        return True, "If an account with that email exists, we have sent a reset link to it."
 
     def complete_password_reset(
         self, 

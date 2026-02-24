@@ -8,7 +8,7 @@ from typing import Optional, Dict, TYPE_CHECKING, Tuple
 if TYPE_CHECKING:
     from ..schemas import UserCreate
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 import bcrypt
@@ -543,15 +543,18 @@ class AuthService:
 
 
 
-    def initiate_password_reset(self, email: str) -> tuple[bool, str]:
+    async def initiate_password_reset(self, email: str, background_tasks: BackgroundTasks) -> tuple[bool, str]:
         """
         Initiate password reset flow:
         1. Find user by email.
         2. Generate OTP.
-        3. Send OTP (Mock).
+        3. Send OTP (via BackgroundTasks to prevent timing attacks).
         """
         from app.auth.otp_manager import OTPManager
         from app.services.email_service import EmailService
+
+        # Security: Perfectly generic message to prevent user enumeration
+        GENERIC_SUCCESS_MSG = "If an account with that email exists, we have sent a reset link to it."
 
         try:
             email_lower = email.lower().strip()
@@ -562,28 +565,28 @@ class AuthService:
             if profile:
                 user = self.db.query(User).filter(User.id == profile.user_id).first()
             
-            # Privacy: If user not found, return success-like message
+            # Privacy: If user not found, log internally and return generic success
             if not user:
-                # Add random jitter to simulate OTP generation/lookup time (100ms - 300ms)
-                time.sleep(secrets.SystemRandom().uniform(0.1, 0.3))
-                logger.info(f"Password reset requested for unknown email: {email_lower}")
-                return True, "If an account exists with this email, a reset code has been sent."
+                logger.info(f"Password reset requested for non-existent email: {email_lower}")
+                return True, GENERIC_SUCCESS_MSG
 
             # Generate OTP
             # Pass our session to prevent premature closing
             code, error = OTPManager.generate_otp(user.id, "RESET_PASSWORD", db_session=self.db)
             
             if not code:
+                # This could be due to rate limiting in OTPManager
                 return False, error or "Too many requests. Please wait."
                 
-            # Send Email
-            if EmailService.send_otp(email_lower, code, "Password Reset"):
-                return True, "If an account exists with this email, a reset code has been sent."
-            else:
-                return False, "Failed to send email. Please try again later."
+            # Send Email via BackgroundTasks to mask timing discrepancies (SMTP can be slow)
+            background_tasks.add_task(EmailService.send_otp, email_lower, code, "Password Reset")
+            
+            # Always return the same generic message
+            return True, GENERIC_SUCCESS_MSG
                 
         except Exception as e:
             logger.error(f"Error in initiate_password_reset: {e}")
+            # Even on internal error, we should ideally return generic message unless it's a fatal DB issue
             return False, "An error occurred. Please try again."
 
     def complete_password_reset(self, email: str, otp_code: str, new_password: str) -> tuple[bool, str]:
