@@ -67,6 +67,14 @@ export interface UserProfile {
   };
   created_at: string;
   updated_at: string;
+  sleep_hours?: number;
+  exercise_freq?: string;
+  dietary_patterns?: string;
+  has_therapist?: boolean;
+  support_network_size?: number;
+  primary_support_type?: string;
+  primary_goal?: string;
+  focus_areas?: string[];
 }
 
 export interface UpdateUserProfile {
@@ -83,6 +91,14 @@ export interface UpdateUserProfile {
     notification_frequency?: string;
     theme?: string;
   };
+  sleep_hours?: number;
+  exercise_freq?: string;
+  dietary_patterns?: string;
+  has_therapist?: boolean;
+  support_network_size?: number;
+  primary_support_type?: string;
+  primary_goal?: string;
+  focus_areas?: string[];
 }
 
 export const profileApi = {
@@ -166,6 +182,14 @@ export const profileApi = {
         },
         created_at: data.user.created_at,
         updated_at: data.personal_profile?.last_updated || data.user.created_at,
+        sleep_hours: data.personal_profile?.sleep_hours,
+        exercise_freq: data.personal_profile?.exercise_freq,
+        dietary_patterns: data.personal_profile?.dietary_patterns,
+        has_therapist: data.personal_profile?.has_therapist,
+        support_network_size: data.personal_profile?.support_network_size,
+        primary_support_type: data.personal_profile?.primary_support_type,
+        primary_goal: data.strengths?.primary_goal,
+        focus_areas: data.strengths?.focus_areas,
       };
     });
   },
@@ -180,17 +204,31 @@ export const profileApi = {
         bio: data.bio,
         age: data.age,
         gender: data.gender,
+        sleep_hours: data.sleep_hours,
+        exercise_freq: data.exercise_freq,
+        dietary_patterns: data.dietary_patterns,
+        has_therapist: data.has_therapist,
+        support_network_size: data.support_network_size,
+        primary_support_type: data.primary_support_type,
       }),
     });
 
     // 2. Update strengths
+    const strengthsData: Record<string, any> = {};
     if (data.goals) {
+      strengthsData.short_term_goals = data.goals.short_term;
+      strengthsData.long_term_vision = data.goals.long_term;
+    }
+    if (data.primary_goal !== undefined) {
+      strengthsData.primary_goal = data.primary_goal;
+    }
+    if (data.focus_areas !== undefined) {
+      strengthsData.focus_areas = data.focus_areas;
+    }
+    if (Object.keys(strengthsData).length > 0) {
       await apiClient('/profiles/strengths', {
         method: 'PUT',
-        body: JSON.stringify({
-          short_term_goals: data.goals.short_term,
-          long_term_vision: data.goals.long_term,
-        }),
+        body: JSON.stringify(strengthsData),
       });
     }
 

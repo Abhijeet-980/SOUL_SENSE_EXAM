@@ -34,7 +34,27 @@ export default function ProfilePage() {
   };
 
   const handleSave = async (data: any) => {
-    await updateProfile(data);
+    // Transform camelCase to snake_case for API
+    const transformedData = {
+      first_name: data.firstName,
+      last_name: data.lastName,
+      bio: data.bio,
+      age: data.age,
+      gender: data.gender,
+      goals: {
+        short_term: data.shortTermGoals,
+        long_term: data.longTermGoals,
+      },
+      sleep_hours: data.sleepHours,
+      exercise_freq: data.exerciseFrequency,
+      dietary_patterns: data.dietType,
+      has_therapist: data.hasTherapist,
+      support_network_size: data.supportNetworkSize,
+      primary_support_type: data.primarySupportType,
+      primary_goal: data.primaryGoal,
+      focus_areas: data.focusAreas,
+    };
+    await updateProfile(transformedData);
     setIsEditing(false);
   };
 

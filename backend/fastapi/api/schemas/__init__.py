@@ -576,6 +576,10 @@ class PersonalProfileCreate(BaseModel):
     social_interaction_freq: Optional[str] = None
     exercise_freq: Optional[str] = None
     dietary_patterns: Optional[str] = None
+    sleep_hours: Optional[float] = Field(None, ge=0, le=24, description="Average hours of sleep per night (0-24)")
+    has_therapist: Optional[bool] = None
+    support_network_size: Optional[int] = Field(None, ge=0, le=100, description="Number of people in support network (0-100)")
+    primary_support_type: Optional[str] = None
 
 
 class PersonalProfileUpdate(BaseModel):
@@ -604,6 +608,10 @@ class PersonalProfileUpdate(BaseModel):
     social_interaction_freq: Optional[str] = None
     exercise_freq: Optional[str] = None
     dietary_patterns: Optional[str] = None
+    sleep_hours: Optional[float] = Field(None, ge=0, le=24, description="Average hours of sleep per night (0-24)")
+    has_therapist: Optional[bool] = None
+    support_network_size: Optional[int] = Field(None, ge=0, le=100, description="Number of people in support network (0-100)")
+    primary_support_type: Optional[str] = None
 
     @field_validator('email', mode='before')
     @classmethod
@@ -648,6 +656,10 @@ class PersonalProfileResponse(BaseModel):
     social_interaction_freq: Optional[str] = None
     exercise_freq: Optional[str] = None
     dietary_patterns: Optional[str] = None
+    sleep_hours: Optional[float] = None
+    has_therapist: Optional[bool] = None
+    support_network_size: Optional[int] = None
+    primary_support_type: Optional[str] = None
     
     last_updated: str
 
@@ -674,6 +686,8 @@ class UserStrengthsCreate(BaseModel):
     short_term_goals: Optional[str] = None
     long_term_vision: Optional[str] = None
     primary_help_area: Optional[str] = None
+    primary_goal: Optional[str] = Field(None, max_length=500)
+    focus_areas: Optional[List[str]] = None
 
 
 class UserStrengthsUpdate(BaseModel):
@@ -692,6 +706,8 @@ class UserStrengthsUpdate(BaseModel):
     short_term_goals: Optional[str] = None
     long_term_vision: Optional[str] = None
     primary_help_area: Optional[str] = None
+    primary_goal: Optional[str] = Field(None, max_length=500)
+    focus_areas: Optional[List[str]] = None
 
 
 class UserStrengthsResponse(BaseModel):
@@ -712,6 +728,8 @@ class UserStrengthsResponse(BaseModel):
     short_term_goals: Optional[str] = None
     long_term_vision: Optional[str] = None
     primary_help_area: Optional[str] = None
+    primary_goal: Optional[str] = None
+    focus_areas: Optional[List[str]] = None
     
     last_updated: str
 
