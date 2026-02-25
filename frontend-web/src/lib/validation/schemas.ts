@@ -151,6 +151,39 @@ export const asyncUsernameUnique = async (username: string): Promise<boolean> =>
   });
 };
 
+// AI Boundaries schema
+export const aiBoundariesSchema = z.object({
+  off_limit_topics: z
+    .array(z.string()
+      .min(1)
+      .regex(/^[^<>/]*$/, 'Topic cannot contain systemic symbols (<, >, /)'))
+    .max(20, 'Maximum of 20 off-limit topics allowed'),
+  ai_tone_preference: z.enum(['Clinical', 'Warm', 'Direct', 'Philosophical']),
+  storage_retention_days: z.number().min(1).max(3650),
+});
+
+export const userSettingsSchema = z.object({
+  theme: z.enum(['light', 'dark', 'system']),
+  notifications: z.object({
+    email: z.boolean(),
+    push: z.boolean(),
+    frequency: z.enum(['immediate', 'daily', 'weekly']),
+    types: z.object({
+      exam_reminders: z.boolean(),
+      journal_prompts: z.boolean(),
+      progress_updates: z.boolean(),
+      system_updates: z.boolean(),
+    }),
+  }),
+  privacy: z.object({
+    data_collection: z.boolean(),
+    analytics: z.boolean(),
+    data_retention_days: z.number(),
+    profile_visibility: z.enum(['public', 'private', 'friends']),
+  }),
+  ai_boundaries: aiBoundariesSchema,
+});
+
 // Enhanced schemas with async validation
 export const registrationSchemaWithAsync = registrationSchema
   .refine(async (data) => await asyncEmailUnique(data.email), {
@@ -161,3 +194,5 @@ export const registrationSchemaWithAsync = registrationSchema
     message: 'Username is already taken',
     path: ['username'],
   });
+
+

@@ -29,6 +29,11 @@ export interface UserSettings {
     timezone: string;
     date_format: string;
   };
+  ai_boundaries: {
+    off_limit_topics: string[];
+    ai_tone_preference: 'Clinical' | 'Warm' | 'Direct' | 'Philosophical';
+    storage_retention_days: number;
+  };
 }
 
 export const settingsApi = {
@@ -65,6 +70,11 @@ export const settingsApi = {
           language: 'en',
           timezone: 'UTC',
           date_format: 'MM/DD/YYYY',
+        },
+        ai_boundaries: {
+          off_limit_topics: [],
+          ai_tone_preference: 'Warm',
+          storage_retention_days: 180,
         },
       };
     }
