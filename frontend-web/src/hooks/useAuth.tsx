@@ -6,6 +6,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
   ReactNode,
 } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -59,6 +60,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const pathname = usePathname();
 
   const [mounted, setMounted] = useState(false);
+  const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clear lingering global loading state when transitioning away from auth pages
   useEffect(() => {
@@ -68,7 +70,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [pathname, isLoading, user, mounted]);
 
   useEffect(() => {
+    let isMounted = true;
     setMounted(true);
+
     const initAuth = async () => {
       try {
         // 1. Check if server has restarted
@@ -84,10 +88,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             );
             toast.error('Authentication session corrupted. Please log in again.');
             clearSession();
-            setUser(null);
+            if (isMounted) setUser(null);
             router.push('/login');
           } else {
-            setUser(session.user);
+            if (isMounted) setUser(session.user);
           }
         }
 
@@ -97,12 +101,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.warn('Auth initialization error:', e);
       } finally {
         // Small delay to ensure state propagates
-        const timer = setTimeout(() => setIsLoading(false), 50);
-        return () => clearTimeout(timer);
+        initTimerRef.current = setTimeout(() => {
+          if (isMounted) setIsLoading(false);
+        }, 50);
       }
     };
 
     initAuth();
+
+    return () => {
+      isMounted = false;
+      if (initTimerRef.current !== null) {
+        clearTimeout(initTimerRef.current);
+        initTimerRef.current = null;
+      }
+    };
   }, []);
 
   const checkServerInstance = async () => {
