@@ -576,6 +576,7 @@ class PersonalProfileCreate(BaseModel):
     social_interaction_freq: Optional[str] = None
     exercise_freq: Optional[str] = None
     dietary_patterns: Optional[str] = None
+    sleep_hours: Optional[float] = Field(None, ge=0, le=24, description="Average hours of sleep per night (0-24)")
 
 
 class PersonalProfileUpdate(BaseModel):
@@ -604,6 +605,7 @@ class PersonalProfileUpdate(BaseModel):
     social_interaction_freq: Optional[str] = None
     exercise_freq: Optional[str] = None
     dietary_patterns: Optional[str] = None
+    sleep_hours: Optional[float] = Field(None, ge=0, le=24, description="Average hours of sleep per night (0-24)")
 
     @field_validator('email', mode='before')
     @classmethod
@@ -648,6 +650,7 @@ class PersonalProfileResponse(BaseModel):
     social_interaction_freq: Optional[str] = None
     exercise_freq: Optional[str] = None
     dietary_patterns: Optional[str] = None
+    sleep_hours: Optional[float] = None
     
     last_updated: str
 

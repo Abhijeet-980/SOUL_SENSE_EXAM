@@ -34,6 +34,9 @@ const profileSchema = z.object({
   shortTermGoals: z.string().optional(),
   longTermGoals: z.string().optional(),
   avatarUrl: z.string().optional(),
+  sleepHours: z.coerce.number().min(0, 'Sleep hours must be at least 0').max(24, 'Sleep hours must be at most 24').optional(),
+  exerciseFrequency: z.enum(['none', 'light', 'moderate', 'heavy']).optional(),
+  dietType: z.string().optional(),
 });
 
 export type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -63,13 +66,16 @@ export function ProfileForm({ profile, onSubmit, onCancel, isSubmitting }: Profi
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      firstName: profile?.firstName || '',
-      lastName: profile?.lastName || '',
+      firstName: profile?.first_name || '',
+      lastName: profile?.last_name || '',
       bio: profile?.bio || '',
       age: profile?.age || 18,
       gender: profile?.gender || 'prefer_not_to_say',
-      shortTermGoals: profile?.shortTermGoals || '',
-      longTermGoals: profile?.longTermGoals || '',
+      shortTermGoals: profile?.goals?.short_term || '',
+      longTermGoals: profile?.goals?.long_term || '',
+      sleepHours: profile?.sleep_hours,
+      exerciseFrequency: profile?.exercise_freq,
+      dietType: profile?.dietary_patterns || '',
     },
   });
 
@@ -231,6 +237,42 @@ export function ProfileForm({ profile, onSubmit, onCancel, isSubmitting }: Profi
                   {(field) => <Textarea {...field} rows={3} className="resize-none shadow-sm" />}
                 </FormField>
               </div>
+            </div>
+
+            <div className="space-y-6 pt-6 border-t border-border/50">
+              <h3 className="text-lg font-semibold flex items-center text-foreground/80">
+                <ChevronRight className="h-5 w-5 mr-1 text-primary" />
+                Lifestyle & Habits
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="sleepHours"
+                  label="Average Sleep Hours per Night"
+                  type="number"
+                  step="0.5"
+                  placeholder="7.5"
+                />
+                <FormField control={form.control} name="exerciseFrequency" label="Exercise Frequency" required>
+                  {(field) => (
+                    <Select {...field}>
+                      <option value="">Select frequency</option>
+                      <option value="none">None</option>
+                      <option value="light">Light (1-2 times/week)</option>
+                      <option value="moderate">Moderate (3-4 times/week)</option>
+                      <option value="heavy">Heavy (5+ times/week)</option>
+                    </Select>
+                  )}
+                </FormField>
+              </div>
+
+              <FormField
+                control={form.control}
+                name="dietType"
+                label="Diet Type"
+                placeholder="E.g. Mediterranean, Vegetarian, Keto..."
+              />
             </div>
           </CardContent>
 
