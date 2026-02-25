@@ -2,7 +2,7 @@
 
 import { PersonalProfile } from '@/lib/api/profile';
 import { Avatar, AvatarFallback } from '@/components/ui';
-import { Mail, Calendar, User as UserIcon, Briefcase, GraduationCap, Edit2 } from 'lucide-react';
+import { Mail, Calendar, User as UserIcon, Briefcase, GraduationCap, Edit2, Moon, Activity, Apple } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ProfileCardProps {
@@ -151,6 +151,48 @@ export function ProfileCard({
                     Education
                   </p>
                   <p className="font-semibold text-sm">{profile.education_level}</p>
+                </div>
+              </div>
+            )}
+
+            {profile?.sleep_hours && (
+              <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40 group hover:border-primary/20 transition-colors">
+                <div className="p-2.5 rounded-xl bg-background border border-border/40 text-muted-foreground group-hover:text-primary transition-colors">
+                  <Moon className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/60 mb-0.5">
+                    Sleep Hours
+                  </p>
+                  <p className="font-semibold text-sm">{profile.sleep_hours} hours/night</p>
+                </div>
+              </div>
+            )}
+
+            {profile?.exercise_freq && (
+              <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40 group hover:border-primary/20 transition-colors">
+                <div className="p-2.5 rounded-xl bg-background border border-border/40 text-muted-foreground group-hover:text-primary transition-colors">
+                  <Activity className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/60 mb-0.5">
+                    Exercise Frequency
+                  </p>
+                  <p className="font-semibold text-sm capitalize">{profile.exercise_freq}</p>
+                </div>
+              </div>
+            )}
+
+            {profile?.dietary_patterns && (
+              <div className="flex items-center gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40 group hover:border-primary/20 transition-colors">
+                <div className="p-2.5 rounded-xl bg-background border border-border/40 text-muted-foreground group-hover:text-primary transition-colors">
+                  <Apple className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/60 mb-0.5">
+                    Diet Type
+                  </p>
+                  <p className="font-semibold text-sm">{profile.dietary_patterns}</p>
                 </div>
               </div>
             )}

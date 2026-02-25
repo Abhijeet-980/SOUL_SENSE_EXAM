@@ -67,6 +67,9 @@ export interface UserProfile {
   };
   created_at: string;
   updated_at: string;
+  sleep_hours?: number;
+  exercise_freq?: string;
+  dietary_patterns?: string;
 }
 
 export interface UpdateUserProfile {
@@ -83,6 +86,9 @@ export interface UpdateUserProfile {
     notification_frequency?: string;
     theme?: string;
   };
+  sleep_hours?: number;
+  exercise_freq?: string;
+  dietary_patterns?: string;
 }
 
 export const profileApi = {
@@ -166,6 +172,9 @@ export const profileApi = {
         },
         created_at: data.user.created_at,
         updated_at: data.personal_profile?.last_updated || data.user.created_at,
+        sleep_hours: data.personal_profile?.sleep_hours,
+        exercise_freq: data.personal_profile?.exercise_freq,
+        dietary_patterns: data.personal_profile?.dietary_patterns,
       };
     });
   },
@@ -180,6 +189,9 @@ export const profileApi = {
         bio: data.bio,
         age: data.age,
         gender: data.gender,
+        sleep_hours: data.sleep_hours,
+        exercise_freq: data.exercise_freq,
+        dietary_patterns: data.dietary_patterns,
       }),
     });
 
