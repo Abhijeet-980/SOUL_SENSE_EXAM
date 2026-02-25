@@ -216,8 +216,11 @@ class ExamSession:
             self.responses.append(value)
             self.response_times.append(duration)
             
+        # Capture current question data before advancing
+        current_question_data = self.questions[self.current_question_index]
+        
         # Async/Fire-and-forget save to DB
-        self._save_response_to_db(value)
+        self._save_response_to_db(value, current_question_data)
 
         # Advance
         self.current_question_index += 1
@@ -303,10 +306,9 @@ class ExamSession:
             detailed_age_group=self.age_group
         )
 
-    def _save_response_to_db(self, answer_value: int):
+    def _save_response_to_db(self, answer_value: int, question_data: Tuple[Any, ...]):
         """Helper to save single response via Service"""
-        # Map index to correct ID if possible
-        q_data = self.questions[self.current_question_index]
-        q_id = q_data[0] if (isinstance(q_data, tuple) and isinstance(q_data[0], int)) else (self.current_question_index + 1)
+        # Extract question ID from the question data
+        q_id = question_data[0] if (isinstance(question_data, tuple) and isinstance(question_data[0], int)) else (self.current_question_index + 1)
         
         ExamService.save_response(self.username, q_id, answer_value, self.age_group)
