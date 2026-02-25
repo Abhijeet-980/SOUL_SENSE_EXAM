@@ -76,18 +76,45 @@ class LoginAttempt(Base):
     failure_reason = Column(String, nullable=True)
 
 class AuditLog(Base):
-    """Audit Log for tracking security-critical user actions.
-    Separated from LoginAttempt to provide a user-facing history.
+    """Comprehensive audit log for tracking all user actions, admin operations, and system events.
+    Enhanced for security monitoring, compliance, and forensic analysis.
     """
     __tablename__ = 'audit_logs'
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    action = Column(String, nullable=False) # e.g., 'password_change', '2fa_enable'
-    ip_address = Column(String)
-    user_agent = Column(String, nullable=True)
-    details = Column(Text, nullable=True)
+    event_id = Column(String(36), unique=True, index=True)  # UUID for event uniqueness
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    event_type = Column(String(100), index=True)  # e.g., 'auth', 'data_access', 'admin', 'system'
+    severity = Column(String(20), default='info')  # 'info', 'warning', 'error', 'critical'
+
+    # Actor information
+    username = Column(String(100), index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    ip_address = Column(String(45))  # Support IPv6
+    user_agent = Column(Text)
+
+    # Event details
+    resource_type = Column(String(50))  # 'user', 'assessment', 'journal', 'system', etc.
+    resource_id = Column(String(100))   # ID of the affected resource
+    action = Column(String(100))        # 'login', 'view', 'create', 'update', 'delete', etc.
+    outcome = Column(String(20))        # 'success', 'failure', 'denied'
+
+    # Additional context
+    details = Column(Text, nullable=True)  # JSON string with additional details
+    error_message = Column(Text, nullable=True)
+
+    # Compliance and retention
+    retention_until = Column(DateTime, nullable=True)
+    archived = Column(Boolean, default=False)
+
+    # Relationships
     user = relationship("User", back_populates="audit_logs")
+
+    __table_args__ = (
+        Index('idx_audit_logs_timestamp_event_type', 'timestamp', 'event_type'),
+        Index('idx_audit_logs_user_timestamp', 'user_id', 'timestamp'),
+        Index('idx_audit_logs_resource', 'resource_type', 'resource_id'),
+    )
 
 class AnalyticsEvent(Base):
     """Track user behavior events (e.g., signup drop-off).

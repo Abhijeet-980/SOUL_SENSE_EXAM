@@ -143,13 +143,13 @@ class AuthService:
         self._record_login_attempt(identifier_lower, True, ip_address)
         self.update_last_login(user.id)
         
-        # SoulSense Audit Log
-        AuditService.log_event(
-            user.id,
-            "LOGIN",
+        # Comprehensive Audit Log
+        AuditService.log_auth_event(
+            'login',
+            user.username,
+            details={"method": "password", "outcome": "success"},
             ip_address=ip_address,
             user_agent=user_agent,
-            details={"method": "password", "status": "success"},
             db_session=self.db
         )
 

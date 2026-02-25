@@ -1,127 +1,511 @@
 import logging
 import json
+import uuid
 from datetime import datetime, timedelta, UTC
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_, desc
 from app.db import get_session
-from app.models import AuditLog
+from app.models import AuditLog, User
 
 logger = logging.getLogger(__name__)
 
 class AuditService:
     """
-    Service for securely logging user actions and retrieving audit history.
+    Comprehensive audit logging service for security monitoring, compliance, and forensic analysis.
     """
-    
-    # Allowed fields in details JSON to prevent PII leakage
-    ALLOWED_DETAIL_FIELDS = {
-        "status", "reason", "method", "device", "location", "changed_field", "old_value"
+
+    # Event type categories
+    EVENT_TYPES = {
+        'auth': ['login', 'logout', 'password_change', 'password_reset', 'account_create', 'account_delete',
+                'session_create', 'session_expire', 'token_refresh', 'mfa_enable', 'mfa_disable', 'suspicious_activity'],
+        'data_access': ['assessment_view', 'assessment_create', 'assessment_update', 'assessment_delete',
+                       'journal_view', 'journal_create', 'journal_update', 'journal_delete',
+                       'profile_view', 'profile_update', 'data_export', 'settings_change', 'backup_create', 'backup_restore'],
+        'admin': ['admin_login', 'user_management', 'config_change', 'db_schema_change', 'maintenance_start',
+                 'maintenance_end', 'feature_flag_change', 'bulk_operation'],
+        'system': ['app_startup', 'app_shutdown', 'db_connection_failure', 'api_error', 'performance_anomaly',
+                  'security_event', 'config_reload']
     }
 
+    # Severity levels
+    SEVERITY_LEVELS = ['info', 'warning', 'error', 'critical']
+
+    # Retention periods (days)
+    RETENTION_ACTIVE = 90
+    RETENTION_ARCHIVE = 365
+    RETENTION_EXTENDED = 2555  # 7 years
+
     @classmethod
-    def log_event(cls, user_id: int, action: str, 
-                 ip_address: Optional[str] = "SYSTEM", 
-                 user_agent: Optional[str] = None, 
-                 details: Optional[Dict[str, Any]] = None,
-                 db_session: Optional[Session] = None) -> bool:
+    def log_event(
+        cls,
+        event_type: str,
+        username: str = None,
+        user_id: int = None,
+        action: str = None,
+        resource_type: str = None,
+        resource_id: str = None,
+        outcome: str = 'success',
+        severity: str = 'info',
+        ip_address: str = None,
+        user_agent: str = None,
+        details: Dict[str, Any] = None,
+        error_message: str = None,
+        db_session: Optional[Session] = None
+    ) -> bool:
         """
-        Log a security-critical event.
-        
+        Log a comprehensive audit event.
+
         Args:
-            user_id: ID of the user performing the action
-            action: Action name (e.g., 'LOGIN', 'PASSWORD_CHANGE')
-            ip_address: IP address of the requester
+            event_type: Category of event (auth, data_access, admin, system)
+            username: Username of the actor
+            user_id: User ID of the actor
+            action: Specific action performed
+            resource_type: Type of resource affected
+            resource_id: ID of the affected resource
+            outcome: Result of the action (success, failure, denied)
+            severity: Severity level (info, warning, error, critical)
+            ip_address: IP address of the request
             user_agent: User agent string
-            details: Dictionary of additional context (will be filtered)
-            db_session: Optional shared session to use
-            
+            details: Additional context data
+            error_message: Error message if applicable
+            db_session: Optional shared session
+
         Returns:
-            bool: True if logged successfully, False otherwise path
+            bool: True if logged successfully
         """
         session = db_session if db_session else get_session()
         should_close = db_session is None
-        
+
         try:
-            # 1. Sanitize Inputs
-            # Truncate User Agent
-            safe_ua = (user_agent[:250] + "...") if user_agent and len(user_agent) > 250 else user_agent
-            
-            # Filter Details
-            safe_details = "{}"
-            if details:
-                filtered = {k: v for k, v in details.items() if k in cls.ALLOWED_DETAIL_FIELDS}
-                try:
-                    safe_details = json.dumps(filtered)
-                except Exception as e:
-                    logger.warning(f"Failed to serialize audit details: {e}")
-            
-            # 2. Create Record
+            # Validate inputs
+            if event_type not in cls.EVENT_TYPES:
+                logger.warning(f"Invalid event_type: {event_type}")
+                event_type = 'system'
+
+            if severity not in cls.SEVERITY_LEVELS:
+                severity = 'info'
+
+            if outcome not in ['success', 'failure', 'denied']:
+                outcome = 'success'
+
+            # Sanitize inputs
+            safe_ua = cls._sanitize_user_agent(user_agent)
+            safe_details = cls._sanitize_metadata(details)
+            safe_error = cls._sanitize_text(error_message, 1000)
+
+            # Generate unique event ID
+            event_id = str(uuid.uuid4())
+
+            # Calculate retention date based on severity
+            retention_days = cls._get_retention_days(severity)
+            retention_until = datetime.now(UTC) + timedelta(days=retention_days)
+
+            # Create audit log entry
             log_entry = AuditLog(
+                event_id=event_id,
+                timestamp=datetime.now(UTC),
+                event_type=event_type,
+                severity=severity,
+                username=username,
                 user_id=user_id,
-                action=action,
                 ip_address=ip_address,
                 user_agent=safe_ua,
+                resource_type=resource_type,
+                resource_id=str(resource_id) if resource_id else None,
+                action=action,
+                outcome=outcome,
                 details=safe_details,
-                timestamp=datetime.now(UTC)
+                error_message=safe_error,
+                retention_until=retention_until
             )
-            
+
             session.add(log_entry)
             session.commit()
-            
-            logger.info(f"AUDIT LOG: User {user_id} performed {action} from {ip_address}")
+
+            # Log to application logger for immediate visibility
+            log_level = getattr(logging, severity.upper(), logging.INFO)
+            logger.log(log_level, f"AUDIT [{event_type}:{action}] User:{username} Resource:{resource_type}:{resource_id} Outcome:{outcome}")
+
             return True
-            
+
         except Exception as e:
-            # Fallback logging if DB fails
-            logger.critical(f"AUDIT LOG FAILURE: User {user_id} performed {action}. Error: {e}")
-            session.rollback()
+            logger.critical(f"AUDIT LOG FAILURE: {e}")
+            if not db_session:
+                session.rollback()
             return False
         finally:
             if should_close:
                 session.close()
 
-    @staticmethod
-    def get_user_logs(user_id: int, page: int = 1, per_page: int = 20, db_session: Optional[Session] = None) -> List[AuditLog]:
+    @classmethod
+    def log_auth_event(cls, event_type: str, username: str, details: Dict[str, Any] = None,
+                      ip_address: str = None, user_agent: str = None, db_session: Optional[Session] = None) -> bool:
+        """Log authentication-related events."""
+        return cls.log_event(
+            event_type='auth',
+            username=username,
+            action=event_type,
+            outcome=details.get('outcome', 'success') if details else 'success',
+            severity=details.get('severity', 'info') if details else 'info',
+            ip_address=ip_address,
+            user_agent=user_agent,
+            metadata=details,
+            db_session=db_session
+        )
+
+    @classmethod
+    def log_data_access(cls, username: str, resource_type: str, resource_id: str, action: str,
+                       outcome: str = 'success', details: Dict[str, Any] = None,
+                       ip_address: str = None, db_session: Optional[Session] = None) -> bool:
+        """Log data access events."""
+        return cls.log_event(
+            event_type='data_access',
+            username=username,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            action=action,
+            outcome=outcome,
+            ip_address=ip_address,
+            details=details,
+            db_session=db_session
+        )
+
+    @classmethod
+    def log_admin_action(cls, admin_username: str, target_resource: str, target_id: str, action: str,
+                        outcome: str = 'success', details: Dict[str, Any] = None,
+                        ip_address: str = None, db_session: Optional[Session] = None) -> bool:
+        """Log administrative actions."""
+        return cls.log_event(
+            event_type='admin',
+            username=admin_username,
+            resource_type=target_resource,
+            resource_id=target_id,
+            action=action,
+            outcome=outcome,
+            severity='warning',  # Admin actions are typically warnings or higher
+            ip_address=ip_address,
+            details=details,
+            db_session=db_session
+        )
+
+    @classmethod
+    def log_system_event(cls, event_type: str, details: Dict[str, Any] = None,
+                        severity: str = 'info', db_session: Optional[Session] = None) -> bool:
+        """Log system-level events."""
+        return cls.log_event(
+            event_type='system',
+            action=event_type,
+            severity=severity,
+            details=details,
+            db_session=db_session
+        )
+
+    @classmethod
+    def query_logs(cls, filters: Dict[str, Any] = None, page: int = 1, per_page: int = 50,
+                  db_session: Optional[Session] = None) -> Tuple[List[AuditLog], int]:
         """
-        Retrieve audit logs for a specific user with pagination.
+        Query audit logs with filtering and pagination.
+
+        Args:
+            filters: Dictionary of filter criteria
+            page: Page number (1-based)
+            per_page: Results per page
+            db_session: Optional session
+
+        Returns:
+            Tuple of (logs, total_count)
         """
         session = db_session if db_session else get_session()
         should_close = db_session is None
-        
+
         try:
+            query = session.query(AuditLog)
+
+            # Apply filters
+            if filters:
+                query = cls._apply_filters(query, filters)
+
+            # Get total count
+            total_count = query.count()
+
+            # Apply pagination and ordering
             offset = (page - 1) * per_page
-            logs = session.query(AuditLog).filter(
-                AuditLog.user_id == user_id
-            ).order_by(
-                AuditLog.timestamp.desc()
-            ).limit(per_page).offset(offset).all()
-            
-            return logs
+            logs = query.order_by(desc(AuditLog.timestamp)).limit(per_page).offset(offset).all()
+
+            return logs, total_count
+
         except Exception as e:
-            logger.error(f"Failed to fetch audit logs for user {user_id}: {e}")
-            return []
+            logger.error(f"Failed to query audit logs: {e}")
+            return [], 0
         finally:
             if should_close:
                 session.close()
 
-    @staticmethod
-    def cleanup_old_logs(days: int = 90) -> int:
+    @classmethod
+    def get_user_activity(cls, user_id: int, page: int = 1, per_page: int = 20,
+                         db_session: Optional[Session] = None) -> Tuple[List[AuditLog], int]:
+        """Get audit logs for a specific user (user can view their own activity)."""
+        filters = {'user_id': user_id}
+        return cls.query_logs(filters, page, per_page, db_session)
+
+    @classmethod
+    def export_logs(cls, filters: Dict[str, Any] = None, format: str = 'json',
+                   db_session: Optional[Session] = None) -> str:
         """
-        Delete logs older than retention period.
-        Returns: Number of records deleted.
+        Export audit logs in specified format.
+
+        Args:
+            filters: Filter criteria
+            format: Export format ('json', 'csv')
+            db_session: Optional session
+
+        Returns:
+            Exported data as string
         """
-        session = get_session()
+        logs, _ = cls.query_logs(filters, page=1, per_page=10000, db_session=db_session)  # Reasonable limit
+
+        if format.lower() == 'csv':
+            return cls._export_csv(logs)
+        else:
+            return cls._export_json(logs)
+
+    @classmethod
+    def archive_old_logs(cls, retention_days: int = None, db_session: Optional[Session] = None) -> int:
+        """
+        Archive logs older than retention period.
+
+        Args:
+            retention_days: Override default retention days
+            db_session: Optional session
+
+        Returns:
+            Number of logs archived
+        """
+        if retention_days is None:
+            retention_days = cls.RETENTION_ACTIVE
+
+        session = db_session if db_session else get_session()
+        should_close = db_session is None
+
         try:
-            cutoff_date = datetime.now(UTC) - timedelta(days=days)
-            deleted_count = session.query(AuditLog).filter(
-                AuditLog.timestamp < cutoff_date
-            ).delete()
+            cutoff_date = datetime.now(UTC) - timedelta(days=retention_days)
+            archived_count = session.query(AuditLog).filter(
+                and_(
+                    AuditLog.timestamp < cutoff_date,
+                    AuditLog.archived == False
+                )
+            ).update({'archived': True})
+
             session.commit()
-            logger.info(f"Cleaned up {deleted_count} old audit logs.")
-            return deleted_count
+            logger.info(f"Archived {archived_count} old audit logs")
+            return archived_count
+
         except Exception as e:
-            session.rollback()
-            logger.error(f"Audit cleanup failed: {e}")
+            logger.error(f"Audit archive failed: {e}")
+            if not db_session:
+                session.rollback()
             return 0
         finally:
-            session.close()
+            if should_close:
+                session.close()
+
+    @classmethod
+    def cleanup_expired_logs(cls, db_session: Optional[Session] = None) -> int:
+        """
+        Permanently delete logs past their retention period.
+
+        Returns:
+            Number of logs deleted
+        """
+        session = db_session if db_session else get_session()
+        should_close = db_session is None
+
+        try:
+            cutoff_date = datetime.now(UTC)
+            deleted_count = session.query(AuditLog).filter(
+                and_(
+                    AuditLog.retention_until < cutoff_date,
+                    AuditLog.archived == True
+                )
+            ).delete()
+
+            session.commit()
+            logger.info(f"Cleaned up {deleted_count} expired audit logs")
+            return deleted_count
+
+        except Exception as e:
+            logger.error(f"Audit cleanup failed: {e}")
+            if not db_session:
+                session.rollback()
+            return 0
+        finally:
+            if should_close:
+                session.close()
+
+    # Helper methods
+    @staticmethod
+    def _sanitize_user_agent(user_agent: str) -> str:
+        """Sanitize user agent string."""
+        if not user_agent:
+            return None
+        return user_agent[:500] + "..." if len(user_agent) > 500 else user_agent
+
+    @staticmethod
+    def _sanitize_metadata(metadata: Dict[str, Any]) -> str:
+        """Sanitize and serialize metadata."""
+        if not metadata:
+            return None
+        try:
+            # Filter out sensitive fields
+            safe_metadata = {k: v for k, v in metadata.items() if not k.lower().startswith(('password', 'token', 'secret'))}
+            return json.dumps(safe_metadata)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _sanitize_text(text: str, max_length: int = 1000) -> str:
+        """Sanitize text fields."""
+        if not text:
+            return None
+        return text[:max_length] + "..." if len(text) > max_length else text
+
+    @staticmethod
+    def _get_retention_days(severity: str) -> int:
+        """Get retention days based on severity."""
+        if severity in ['error', 'critical']:
+            return AuditService.RETENTION_EXTENDED
+        elif severity == 'warning':
+            return AuditService.RETENTION_ARCHIVE
+        else:
+            return AuditService.RETENTION_ACTIVE
+
+    @staticmethod
+    def _apply_filters(query, filters: Dict[str, Any]):
+        """Apply filters to query."""
+        if 'event_type' in filters:
+            query = query.filter(AuditLog.event_type == filters['event_type'])
+        if 'username' in filters:
+            query = query.filter(AuditLog.username == filters['username'])
+        if 'user_id' in filters:
+            query = query.filter(AuditLog.user_id == filters['user_id'])
+        if 'resource_type' in filters:
+            query = query.filter(AuditLog.resource_type == filters['resource_type'])
+        if 'action' in filters:
+            query = query.filter(AuditLog.action == filters['action'])
+        if 'outcome' in filters:
+            query = query.filter(AuditLog.outcome == filters['outcome'])
+        if 'severity' in filters:
+            query = query.filter(AuditLog.severity == filters['severity'])
+        if 'start_date' in filters:
+            query = query.filter(AuditLog.timestamp >= filters['start_date'])
+        if 'end_date' in filters:
+            query = query.filter(AuditLog.timestamp <= filters['end_date'])
+        if 'ip_address' in filters:
+            query = query.filter(AuditLog.ip_address == filters['ip_address'])
+
+        return query
+
+    @staticmethod
+    def _export_json(logs: List[AuditLog]) -> str:
+        """Export logs as JSON."""
+        data = []
+        for log in logs:
+            data.append({
+                'event_id': log.event_id,
+                'timestamp': log.timestamp.isoformat() if log.timestamp else None,
+                'event_type': log.event_type,
+                'severity': log.severity,
+                'username': log.username,
+                'user_id': log.user_id,
+                'ip_address': log.ip_address,
+                'user_agent': log.user_agent,
+                'resource_type': log.resource_type,
+                'resource_id': log.resource_id,
+                'action': log.action,
+                'outcome': log.outcome,
+                'metadata': log.metadata,
+                'error_message': log.error_message
+            })
+        return json.dumps(data, indent=2)
+
+    @staticmethod
+    def _export_csv(logs: List[AuditLog]) -> str:
+        """Export logs as CSV."""
+        import csv
+        import io
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Header
+        writer.writerow([
+            'event_id', 'timestamp', 'event_type', 'severity', 'username', 'user_id',
+            'ip_address', 'resource_type', 'resource_id', 'action', 'outcome', 'error_message'
+        ])
+
+        # Data
+        for log in logs:
+            writer.writerow([
+                log.event_id,
+                log.timestamp.isoformat() if log.timestamp else '',
+                log.event_type,
+                log.severity,
+                log.username,
+                log.user_id,
+                log.ip_address,
+                log.resource_type,
+                log.resource_id,
+                log.action,
+                log.outcome,
+                log.error_message
+            ])
+
+        return output.getvalue()
+
+    # Legacy compatibility methods
+    @classmethod
+    def log_event_legacy(cls, user_id: int, action: str, ip_address: Optional[str] = "SYSTEM",
+                        user_agent: Optional[str] = None, details: Optional[Dict[str, Any]] = None,
+                        db_session: Optional[Session] = None) -> bool:
+        """Legacy method for backward compatibility."""
+        # Get username from user_id
+        session = db_session if db_session else get_session()
+        should_close = db_session is None
+
+        try:
+            user = session.query(User).filter(User.id == user_id).first()
+            username = user.username if user else f"user_{user_id}"
+        except Exception:
+            username = f"user_{user_id}"
+        finally:
+            if should_close:
+                session.close()
+
+        # Map legacy action to new format
+        event_type = 'auth' if action in ['LOGIN', 'PASSWORD_CHANGE', '2FA_ENABLE'] else 'system'
+        severity = 'warning' if 'fail' in action.lower() else 'info'
+
+        return cls.log_event(
+            event_type=event_type,
+            username=username,
+            user_id=user_id,
+            action=action.lower(),
+            outcome='failure' if 'fail' in action.lower() else 'success',
+            severity=severity,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            metadata=details,
+            db_session=db_session
+        )
+
+    @staticmethod
+    def get_user_logs(user_id: int, page: int = 1, per_page: int = 20, db_session: Optional[Session] = None) -> List[AuditLog]:
+        """Legacy method for backward compatibility."""
+        logs, _ = AuditService.get_user_activity(user_id, page, per_page, db_session)
+        return logs
+
+    @staticmethod
+    def cleanup_old_logs(days: int = 90) -> int:
+        """Legacy method for backward compatibility."""
+        return AuditService.archive_old_logs(days)
