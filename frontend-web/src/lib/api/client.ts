@@ -54,7 +54,7 @@ function handleAuthFailure(): void {
 
 export async function apiClient<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const {
-    timeout = 10000,
+    timeout = 30000,
     skipAuth = false,
     retry = false,
     maxRetries = 3,
@@ -82,6 +82,7 @@ export async function apiClient<T>(endpoint: string, options: RequestOptions = {
   const makeRequest = async (): Promise<T> => {
     try {
       const response = await fetch(url, {
+        cache: options.cache || (endpoint.includes('/captcha') ? 'no-store' : undefined),
         ...fetchOptions,
         headers,
         signal: controller.signal,
@@ -102,6 +103,11 @@ export async function apiClient<T>(endpoint: string, options: RequestOptions = {
         // Handle 401 - Unauthorized
         if (response.status === 401) {
           if (options._isRetry) {
+            throw apiError;
+          }
+
+          // Do not attempt refresh for explicit auth endpoints (login, register) or if skipAuth is true
+          if (endpoint.includes('/auth/login') || endpoint.includes('/auth/register') || skipAuth) {
             throw apiError;
           }
 

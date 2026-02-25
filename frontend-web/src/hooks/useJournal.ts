@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api/client';
 
 export interface JournalEntry {
   id: number;
@@ -29,13 +30,15 @@ interface JournalResponse {
   per_page: number;
 }
 
-const API_BASE = '/api/v1/journal';
+const API_BASE = '/journal';
 
 export function useJournal(initialParams: JournalQueryParams = {}, suspense = false) {
   const queryClient = useQueryClient();
   const [entry, setEntry] = useState<JournalEntry | null>(null);
   const [params, setParams] = useState<JournalQueryParams>(initialParams);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [entries, setEntries] = useState<JournalEntry[]>([]);
 
   //build query string
   const buildQueryString = (params: JournalQueryParams) => {
@@ -54,19 +57,20 @@ export function useJournal(initialParams: JournalQueryParams = {}, suspense = fa
     return query.toString();
   };
 
-  const { data: journalData, isLoading, refetch } = useQuery({
+  const {
+    data: journalData,
+    isLoading: isQueryLoading,
+    refetch,
+  } = useQuery({
     queryKey: ['journal', 'entries', params],
     queryFn: async () => {
       const queryString = buildQueryString(params);
-      const res = await fetch(`${API_BASE}?${queryString}`);
-      if (!res.ok) throw new Error('Failed to fetch entries');
-      return res.json() as Promise<JournalResponse>;
+      return await apiClient<JournalResponse>(`${API_BASE}?${queryString}`);
     },
-    suspense,
   });
 
-  const entries = journalData?.entries || [];
-  const total = journalData?.total || 0;
+  const queryEntries = journalData?.entries || [];
+  const queryTotal = journalData?.total || 0;
 
   //Fetch single entry
   const fetchEntry = async (id: number) => {
@@ -74,19 +78,15 @@ export function useJournal(initialParams: JournalQueryParams = {}, suspense = fa
     setError(null);
 
     try {
-      //const queryString = buildQueryString(params);
-      const res = await fetch(`${API_BASE}/${id}`);
-      if (!res.ok) throw new Error('Failed to fetch entry');
-
-      const data = await res.json();
+      const data = await apiClient<JournalEntry>(`${API_BASE}/${id}`);
       setEntry(data);
-      //setTotal(data.total);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setIsLoading(false);
     }
   };
+
   //create entry
   const createEntry = async (newEntry: Partial<JournalEntry>) => {
     const tempId = Date.now();
@@ -105,18 +105,16 @@ export function useJournal(initialParams: JournalQueryParams = {}, suspense = fa
     setEntries((prev: JournalEntry[]) => [optimisticEntry, ...prev]);
 
     try {
-      const res = await fetch(API_BASE, {
+      const saved = await apiClient<JournalEntry>(API_BASE, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEntry),
       });
-      if (!res.ok) throw new Error('Failed to create entry');
-
-      const saved = await res.json();
 
       setEntries((prev: JournalEntry[]) =>
         prev.map((e: JournalEntry) => (e.id === tempId ? saved : e))
       );
+      // Let React Query know the data is stale
+      queryClient.invalidateQueries({ queryKey: ['journal', 'entries'] });
       return saved;
     } catch (err: any) {
       setEntries((prev: JournalEntry[]) => prev.filter((e) => e.id !== tempId));
@@ -124,6 +122,7 @@ export function useJournal(initialParams: JournalQueryParams = {}, suspense = fa
       throw err;
     }
   };
+
   //update entry
   const updateEntry = async (id: number, updates: Partial<JournalEntry>) => {
     const previous = entries;
@@ -133,18 +132,16 @@ export function useJournal(initialParams: JournalQueryParams = {}, suspense = fa
     );
 
     try {
-      const res = await fetch(`${API_BASE}/${id}`, {
+      const updated = await apiClient<JournalEntry>(`${API_BASE}/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       });
-      if (!res.ok) throw new Error('Failed to update entry');
-
-      const updated = await res.json();
 
       setEntries((prev: JournalEntry[]) =>
         prev.map((e: JournalEntry) => (e.id === id ? updated : e))
       );
+      // Let React Query know the data is stale
+      queryClient.invalidateQueries({ queryKey: ['journal', 'entries'] });
       return updated;
     } catch (err: any) {
       setEntries(previous);
@@ -152,33 +149,32 @@ export function useJournal(initialParams: JournalQueryParams = {}, suspense = fa
       throw err;
     }
   };
+
   //delete entry
   const deleteEntry = async (id: number) => {
     const previous = entries;
 
     setEntries((prev: JournalEntry[]) => prev.filter((e) => e.id !== id));
     try {
-      const res = await fetch(`${API_BASE}/${id}`, {
+      await apiClient(`${API_BASE}/${id}`, {
         method: 'DELETE',
       });
-      if (!res.ok) throw new Error('Failed to delete entry');
+      // Let React Query know the data is stale
+      queryClient.invalidateQueries({ queryKey: ['journal', 'entries'] });
     } catch (err: any) {
       setEntries(previous);
       setError(err.message);
       throw err;
     }
   };
-  useEffect(() => {
-    fetchEntries();
-  }, [fetchEntries]);
   return {
-    entries,
+    entries: queryEntries,
     entry,
-    total,
+    total: queryTotal,
     page: params.page || 1,
     per_page: params.per_page || 10,
-    totalPages: Math.ceil(total / (params.per_page || 10)),
-    hasNextPage: (params.page || 1) * (params.per_page || 10) < total,
+    totalPages: Math.ceil(queryTotal / (params.per_page || 10)),
+    hasNextPage: (params.page || 1) * (params.per_page || 10) < queryTotal,
     hasPrevPage: (params.page || 1) > 1,
     isLoading,
     error,
@@ -186,7 +182,7 @@ export function useJournal(initialParams: JournalQueryParams = {}, suspense = fa
     setPage: (p: number) => setParams((prev) => ({ ...prev, page: p })),
     setFilters: (f: Partial<JournalQueryParams>) =>
       setParams((prev) => ({ ...prev, ...f, page: 1 })),
-    refetch: fetchEntries,
+    refetch,
     loadMore: () => setParams((prev) => ({ ...prev, page: (prev.page || 1) + 1 })),
     fetchEntry,
     createEntry,

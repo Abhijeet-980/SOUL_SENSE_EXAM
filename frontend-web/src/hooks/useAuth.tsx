@@ -1,7 +1,14 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  ReactNode,
+} from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import {
   UserSession,
   getSession,
@@ -49,8 +56,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isMockMode, setIsMockMode] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
 
   const [mounted, setMounted] = useState(false);
+
+  // Clear lingering global loading state when transitioning away from auth pages
+  useEffect(() => {
+    if (mounted && isLoading && !!user && pathname !== '/login' && pathname !== '/register') {
+      setIsLoading(false);
+    }
+  }, [pathname, isLoading, user, mounted]);
 
   useEffect(() => {
     setMounted(true);
@@ -64,7 +79,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (session) {
           // Critical: Verify the session isn't using the stale 'current' fallback
           if (session.user.id === 'current') {
-            console.error('Critical Auth Sync Error: Stale "current" ID fallback found in stored session.');
+            console.error(
+              'Critical Auth Sync Error: Stale "current" ID fallback found in stored session.'
+            );
             toast.error('Authentication session corrupted. Please log in again.');
             clearSession();
             setUser(null);

@@ -200,7 +200,7 @@ class UserResponse(BaseModel):
     """Schema for user response (excludes password)."""
     id: int
     username: str
-    created_at: str
+    created_at: datetime
     last_login: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -228,11 +228,11 @@ class ErrorResponse(BaseModel):
 class AssessmentResponse(BaseModel):
     """Schema for a single assessment response."""
     id: int
-    username: str
+    username: Optional[str] = None
     total_score: int
     sentiment_score: Optional[float] = 0.0
-    age: Optional[int]
-    detailed_age_group: Optional[str]
+    age: Optional[int] = None
+    detailed_age_group: Optional[str] = None
     timestamp: str
     
     model_config = ConfigDict(from_attributes=True)
@@ -481,17 +481,17 @@ class UserSettingsResponse(BaseModel):
     language: str
     
     # Wave 2 Phase 2.3 & 2.4
-    decision_making_style: Optional[str]
-    risk_tolerance: Optional[int]
-    readiness_for_change: Optional[int]
-    advice_frequency: Optional[str]
-    reminder_style: str
-    advice_boundaries: List[str]
-    ai_trust_level: Optional[int]
+    decision_making_style: Optional[str] = None
+    risk_tolerance: Optional[int] = None
+    readiness_for_change: Optional[int] = None
+    advice_frequency: Optional[str] = None
+    reminder_style: Optional[str] = None
+    advice_boundaries: Optional[List[str]] = None
+    ai_trust_level: Optional[int] = None
     
-    data_usage_consent: bool
-    emergency_disclaimer_accepted: bool
-    crisis_support_preference: bool
+    data_usage_consent: Optional[bool] = None
+    emergency_disclaimer_accepted: Optional[bool] = None
+    crisis_support_preference: Optional[bool] = None
     
     updated_at: str
 
@@ -724,12 +724,12 @@ class UserStrengthsResponse(BaseModel):
     goals: Optional[str]
     
     # Wave 2 Phase 2.1 & 2.2
-    relationship_stress: Optional[int]
-    short_term_goals: Optional[str]
-    long_term_vision: Optional[str]
-    primary_help_area: Optional[str]
-    primary_goal: Optional[str]
-    focus_areas: Optional[List[str]]
+    relationship_stress: Optional[int] = None
+    short_term_goals: Optional[str] = None
+    long_term_vision: Optional[str] = None
+    primary_help_area: Optional[str] = None
+    primary_goal: Optional[str] = None
+    focus_areas: Optional[List[str]] = None
     
     last_updated: str
 
@@ -761,9 +761,9 @@ class UserEmotionalPatternsResponse(BaseModel):
     id: int
     user_id: int
     common_emotions: str
-    emotional_triggers: Optional[str]
-    coping_strategies: Optional[str]
-    preferred_support: Optional[str]
+    emotional_triggers: Optional[str] = None
+    coping_strategies: Optional[str] = None
+    preferred_support: Optional[str] = None
     last_updated: str
 
     model_config = ConfigDict(from_attributes=True)

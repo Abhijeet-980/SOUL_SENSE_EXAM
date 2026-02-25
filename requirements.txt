@@ -64,4 +64,4 @@ alembic==1.14.0
 
 # Configuration
 python-dotenv==1.0.0
-# reportlab (Removed duplicate)
+slowapi>=0.1.9

@@ -30,10 +30,7 @@ export const authApi = {
     });
   },
 
-  async login2FA(data: {
-    pre_auth_token: string;
-    code: string;
-  }): Promise<{
+  async login2FA(data: { pre_auth_token: string; code: string }): Promise<{
     access_token: string;
     email?: string;
     username?: string;
@@ -69,7 +66,7 @@ export const authApi = {
     });
   },
   async getCaptcha(): Promise<{ captcha_code: string; session_id: string }> {
-    return apiClient('/auth/captcha', {
+    return apiClient(`/auth/captcha?t=${Date.now()}`, {
       method: 'GET',
     });
   },

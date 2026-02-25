@@ -138,6 +138,14 @@ class RefreshToken(Base):
     is_revoked = Column(Boolean, default=False)
     user = relationship("User", back_populates="refresh_tokens")
 
+class TokenRevocation(Base):
+    """Store revoked access tokens to prevent reuse until they expire."""
+    __tablename__ = 'token_revocations'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token_str = Column(String, index=True, nullable=False)
+    revoked_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
 class UserSession(Base):
     """Track user login sessions with unique session IDs"""
     __tablename__ = 'user_sessions'

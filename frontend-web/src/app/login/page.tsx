@@ -347,7 +347,17 @@ export default function LoginPage() {
     <>
       <SessionWarningModal />
       <AuthLayout title="Welcome back" subtitle="Enter your credentials to access your account">
-        <Form schema={loginSchema} onSubmit={handleLoginSubmit} className="space-y-5">
+        <Form
+          schema={loginSchema}
+          onSubmit={handleLoginSubmit}
+          className="space-y-5"
+          defaultValues={{
+            identifier: '',
+            password: '',
+            captcha_input: '',
+            rememberMe: false,
+          }}
+        >
           {(methods) => (
             <>
               {/* Error Messages */}

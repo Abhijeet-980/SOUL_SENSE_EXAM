@@ -25,7 +25,7 @@ const nextConfig = {
 
   // Performance optimizations
   experimental: {
-    optimizeCss: true,
+    // optimizeCss: true, // Only available for "pages" directory
   },
 
   // Headers for better caching and security

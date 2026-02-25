@@ -5,7 +5,7 @@ import { UserSettings } from '../../lib/api/settings';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
 import { Checkbox } from '@/components/ui';
 import { Button } from '@/components/ui';
-import { useDebounce } from '@/hooks/useDebounce';
+import { useDebounceCallback } from '@/hooks/useDebounceCallback';
 import {
   AlertTriangle,
   Download,
@@ -30,7 +30,7 @@ interface PrivacySettingsProps {
 export function PrivacySettings({ settings, onChange }: PrivacySettingsProps) {
   const { toast } = useToast();
   const [isDownloading, setIsDownloading] = useState(false);
-  const debouncedOnChange = useDebounce(onChange, 500);
+  const debouncedOnChange = useDebounceCallback(onChange, 500);
 
   const handlePrivacyChange = (key: 'data_collection' | 'analytics', value: boolean) => {
     debouncedOnChange({

@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from pydantic import Field, field_validator, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
 BACKEND_DIR = ROOT_DIR / "backend"
 FASTAPI_DIR = BACKEND_DIR / "fastapi"
 ENV_FILE = ROOT_DIR / ".env"
@@ -40,7 +40,10 @@ class BaseAppSettings(BaseSettings):
 
     # Database configuration
     database_type: str = Field(default="sqlite", description="Database type")
-    database_url: str = Field(default="sqlite:///../../data/soulsense.db", description="Database URL")
+    database_url: str = Field(
+        default=f"sqlite:///{ROOT_DIR}/data/soulsense.db",
+        description="Database URL"
+    )
 
     # Deletion Grace Period
     deletion_grace_period_days: int = Field(default=30, ge=0, description="Grace period for account deletion in days")
@@ -104,6 +107,11 @@ class BaseAppSettings(BaseSettings):
         """Alias for app_env to match issue requirements."""
         return self.app_env
 
+    @property
+    def is_production(self) -> bool:
+        """Check if the current environment is production."""
+        return self.app_env == "production"
+
     @field_validator('app_env')
     @classmethod
     def validate_app_env(cls, v: str) -> str:
@@ -125,6 +133,11 @@ class BaseAppSettings(BaseSettings):
     def validate_database_url(cls, v: str) -> str:
         if not v:
             raise ValueError('database_url cannot be empty')
+        
+        # Normalize to forward slashes for SQLite on Windows
+        if v.startswith('sqlite:///'):
+            v = v.replace('\\', '/')
+            
         # Basic URL validation for database URLs
         if not (v.startswith('sqlite:///') or '://' in v):
             raise ValueError('database_url must be a valid database URL')

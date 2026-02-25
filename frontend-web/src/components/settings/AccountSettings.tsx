@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui';
 import { Input } from '@/components/ui';
 import { Label } from '@/components/ui';
-import { useDebounce } from '@/hooks/useDebounce';
+import { useDebounceCallback } from '@/hooks/useDebounceCallback';
 import { useId, useState } from 'react';
 import { Globe, Clock, Calendar, Lock, Shield, Mail, Chrome } from 'lucide-react';
 
@@ -19,7 +19,7 @@ export function AccountSettings({ settings, onChange }: AccountSettingsProps) {
   const currentPasswordId = `${scopeId}-current-password`;
   const newPasswordId = `${scopeId}-new-password`;
   const confirmPasswordId = `${scopeId}-confirm-password`;
-  const debouncedOnChange = useDebounce(onChange, 500);
+  const debouncedOnChange = useDebounceCallback(onChange, 500);
   const [passwordData, setPasswordData] = useState({
     current: '',
     new: '',
