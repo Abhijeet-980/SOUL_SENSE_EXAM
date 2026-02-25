@@ -39,6 +39,9 @@ class User(Base):
     otp_secret = Column(String, nullable=True) # TOTP Secret
     is_2fa_enabled = Column(Boolean, default=False, nullable=False)
     last_activity = Column(String, nullable=True) # Track idle time
+    
+    # Onboarding Status (Issue #933)
+    onboarding_completed = Column(Boolean, default=False, nullable=False)
 
     scores = relationship("Score", back_populates="user", cascade="all, delete-orphan")
     responses = relationship("Response", back_populates="user", cascade="all, delete-orphan")

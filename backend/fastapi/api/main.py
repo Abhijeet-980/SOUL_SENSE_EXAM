@@ -187,12 +187,18 @@ def create_app() -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware)
 
     # CORS middleware
-    origins = settings.BACKEND_CORS_ORIGINS
+    # In debug mode, allow all origins for easier development
+    if settings.debug:
+        origins = ["*"]
+        allow_credentials = False  # Must be False when using wildcard origins
+    else:
+        origins = settings.BACKEND_CORS_ORIGINS
+        allow_credentials = True
     
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-        allow_credentials=True,
+        allow_credentials=allow_credentials,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
         expose_headers=["X-API-Version"],

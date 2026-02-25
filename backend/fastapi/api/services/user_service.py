@@ -268,7 +268,8 @@ class UserService:
             "has_personal_profile": user.personal_profile is not None,
             "has_strengths": user.strengths is not None,
             "has_emotional_patterns": user.emotional_patterns is not None,
-            "total_assessments": total_assessments
+            "total_assessments": total_assessments,
+            "onboarding_completed": user.onboarding_completed or False
         }
 
     def update_last_login(self, user_id: int) -> None:

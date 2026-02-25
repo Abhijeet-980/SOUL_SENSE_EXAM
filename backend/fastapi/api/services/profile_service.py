@@ -430,11 +430,13 @@ class ProfileService:
                 "id": user.id,
                 "username": user.username,
                 "created_at": user.created_at,
-                "last_login": user.last_login
+                "last_login": user.last_login,
+                "onboarding_completed": user.onboarding_completed or False
             },
             "settings": self.get_user_settings(user_id),
             "medical_profile": self.get_medical_profile(user_id),
             "personal_profile": self.get_personal_profile(user_id),
             "strengths": self.get_user_strengths(user_id),
-            "emotional_patterns": self.get_emotional_patterns(user_id)
+            "emotional_patterns": self.get_emotional_patterns(user_id),
+            "onboarding_completed": user.onboarding_completed or False
         }

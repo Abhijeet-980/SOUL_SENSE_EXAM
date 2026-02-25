@@ -75,6 +75,7 @@ export interface UserProfile {
   primary_support_type?: string;
   primary_goal?: string;
   focus_areas?: string[];
+  onboarding_completed?: boolean;
 }
 
 export interface UpdateUserProfile {
@@ -99,6 +100,35 @@ export interface UpdateUserProfile {
   primary_support_type?: string;
   primary_goal?: string;
   focus_areas?: string[];
+}
+
+// ============================================================================
+// Onboarding Types (Issue #933)
+// ============================================================================
+
+export interface OnboardingData {
+  /** Step 1: Welcome & Vision */
+  primary_goal?: string;
+  focus_areas?: string[];
+  
+  /** Step 2: Current Lifestyle */
+  sleep_hours?: number;
+  exercise_freq?: string;
+  dietary_patterns?: string;
+  
+  /** Step 3: Support System */
+  has_therapist?: boolean;
+  support_network_size?: number;
+  primary_support_type?: string;
+}
+
+export interface OnboardingStatus {
+  onboarding_completed: boolean;
+}
+
+export interface OnboardingCompleteResponse {
+  message: string;
+  onboarding_completed: boolean;
 }
 
 export const profileApi = {
@@ -262,6 +292,21 @@ export const profileApi = {
   async deleteAvatar(): Promise<void> {
     return apiClient('/profiles/me/avatar', {
       method: 'DELETE',
+    });
+  },
+
+  // ========================================================================
+  // Onboarding API (Issue #933)
+  // ========================================================================
+
+  async getOnboardingStatus(): Promise<OnboardingStatus> {
+    return apiClient<OnboardingStatus>('/users/me/onboarding/status');
+  },
+
+  async completeOnboarding(data: OnboardingData): Promise<OnboardingCompleteResponse> {
+    return apiClient<OnboardingCompleteResponse>('/users/me/onboarding/complete', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   },
 };

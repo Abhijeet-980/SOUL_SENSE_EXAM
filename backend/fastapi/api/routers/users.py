@@ -4,7 +4,7 @@ Users Router
 Provides authenticated CRUD endpoints for user management.
 """
 
-from typing import Annotated, List
+from typing import Annotated, List, Dict
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -12,9 +12,10 @@ from ..schemas import (
     UserResponse,
     UserUpdate,
     UserDetail,
-    UserDetail,
     CompleteProfileResponse,
-    AuditLogResponse
+    AuditLogResponse,
+    OnboardingData,
+    OnboardingCompleteResponse
 )
 from ..services.audit_service import AuditService
 from ..services.user_service import UserService
@@ -244,3 +245,73 @@ async def get_user_detail(
     """
     detail = user_service.get_user_detail(user_id)
     return UserDetail(**detail)
+
+
+# ============================================================================
+# Onboarding Endpoints (Issue #933)
+# ============================================================================
+
+@router.post("/me/onboarding/complete", response_model=OnboardingCompleteResponse, summary="Complete User Onboarding")
+async def complete_onboarding(
+    onboarding_data: OnboardingData,
+    current_user: Annotated[User, Depends(get_current_user)],
+    profile_service: Annotated[ProfileService, Depends(get_profile_service)]
+):
+    """
+    Complete the onboarding wizard and save all profile data.
+    This marks the user as having completed onboarding.
+    
+    **Steps:**
+    - Step 1: Welcome & Vision (primary_goal, focus_areas)
+    - Step 2: Current Lifestyle (sleep_hours, exercise_freq, dietary_patterns)
+    - Step 3: Support System (has_therapist, support_network_size, primary_support_type)
+    
+    **Authentication Required**
+    """
+    # 1. Update personal profile with lifestyle data
+    personal_profile_data = {
+        "sleep_hours": onboarding_data.sleep_hours,
+        "exercise_freq": onboarding_data.exercise_freq,
+        "dietary_patterns": onboarding_data.dietary_patterns,
+        "has_therapist": onboarding_data.has_therapist,
+        "support_network_size": onboarding_data.support_network_size,
+        "primary_support_type": onboarding_data.primary_support_type,
+    }
+    # Filter out None values
+    personal_profile_data = {k: v for k, v in personal_profile_data.items() if v is not None}
+    if personal_profile_data:
+        profile_service.update_personal_profile(current_user.id, personal_profile_data)
+    
+    # 2. Update strengths with goals data
+    strengths_data = {}
+    if onboarding_data.primary_goal is not None:
+        strengths_data["primary_goal"] = onboarding_data.primary_goal
+    if onboarding_data.focus_areas is not None:
+        strengths_data["focus_areas"] = onboarding_data.focus_areas
+    if strengths_data:
+        profile_service.update_user_strengths(current_user.id, strengths_data)
+    
+    # 3. Mark onboarding as completed
+    current_user.onboarding_completed = True
+    from ..services.db_service import get_db
+    db = next(get_db())
+    db.commit()
+    
+    return OnboardingCompleteResponse(
+        message="Onboarding completed successfully",
+        onboarding_completed=True
+    )
+
+
+@router.get("/me/onboarding/status", response_model=Dict[str, bool], summary="Get Onboarding Status")
+async def get_onboarding_status(
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    """
+    Check if the current user has completed onboarding.
+    
+    **Authentication Required**
+    """
+    return {
+        "onboarding_completed": current_user.onboarding_completed or False
+    }

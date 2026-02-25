@@ -170,11 +170,10 @@ class Token(BaseModel):
     refresh_token: Optional[str] = None
     username: Optional[str] = None
     email: Optional[str] = None
-    id: int
-    created_at: Optional[str] = None
     id: Optional[int] = None
     created_at: Optional[datetime] = None
     warnings: Optional[List[Dict[str, str]]] = None
+    onboarding_completed: Optional[bool] = None
 
 
 class CaptchaResponse(BaseModel):
@@ -202,6 +201,7 @@ class UserResponse(BaseModel):
     username: str
     created_at: datetime
     last_login: Optional[str] = None
+    onboarding_completed: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -418,6 +418,7 @@ class UserDetail(BaseModel):
     has_strengths: bool = False
     has_emotional_patterns: bool = False
     total_assessments: int = 0
+    onboarding_completed: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -781,6 +782,34 @@ class CompleteProfileResponse(BaseModel):
     personal_profile: Optional[PersonalProfileResponse] = None
     strengths: Optional[UserStrengthsResponse] = None
     emotional_patterns: Optional[UserEmotionalPatternsResponse] = None
+    onboarding_completed: bool = False
+
+
+# ============================================================================
+# Onboarding Schemas (Issue #933)
+# ============================================================================
+
+class OnboardingData(BaseModel):
+    """Schema for completing onboarding with all profile data."""
+    # Step 1: Welcome & Vision (Goals)
+    primary_goal: Optional[str] = Field(None, max_length=500)
+    focus_areas: Optional[List[str]] = None
+    
+    # Step 2: Current Lifestyle
+    sleep_hours: Optional[float] = Field(None, ge=0, le=24)
+    exercise_freq: Optional[str] = None
+    dietary_patterns: Optional[str] = None
+    
+    # Step 3: Support System
+    has_therapist: Optional[bool] = None
+    support_network_size: Optional[int] = Field(None, ge=0, le=100)
+    primary_support_type: Optional[str] = None
+
+
+class OnboardingCompleteResponse(BaseModel):
+    """Response after completing onboarding."""
+    message: str = "Onboarding completed successfully"
+    onboarding_completed: bool = True
 
 
 

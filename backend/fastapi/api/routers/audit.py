@@ -5,7 +5,7 @@ from datetime import datetime
 from ..services.db_service import get_db
 from ..services.audit_service import AuditService
 from ..models import User
-from ..utils.auth import get_current_user
+from ..routers.auth import get_current_user
 from ..schemas import AuditLogResponse, AuditLogListResponse, AuditExportResponse
 
 router = APIRouter()
