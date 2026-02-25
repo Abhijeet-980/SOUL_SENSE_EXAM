@@ -8,3 +8,5 @@ export { PremiumPrivacySettings as PrivacySettingsPremium } from './privacy-sett
 
 export * from './AccountSettings';
 export * from './AboutSettings';
+export { AIBoundarySettings } from './AIBoundarySettings';
+

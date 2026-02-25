@@ -12,6 +12,7 @@ import {
   PrivacySettings,
   AccountSettings,
   AboutSettings,
+  AIBoundarySettings,
 } from '@/components/settings';
 import { cn } from '@/lib/utils';
 import {
@@ -21,6 +22,7 @@ import {
   Palette,
   Bell,
   Shield,
+  ShieldAlert,
   User as UserIcon,
   Info,
   RefreshCw,
@@ -30,6 +32,7 @@ const tabs = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'privacy', label: 'Privacy & Data', icon: Shield },
+  { id: 'ai-guidelines', label: 'AI Trust', icon: ShieldAlert },
   { id: 'account', label: 'Account', icon: UserIcon },
   { id: 'about', label: 'About', icon: Info },
 ];
@@ -253,6 +256,22 @@ export default function SettingsPage() {
                 </CardHeader>
                 <CardContent className="p-8">
                   <PrivacySettings settings={settings} onChange={handleSettingChange} />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="ai-guidelines" className="mt-0 focus-visible:outline-none">
+              <Card className="rounded-3xl border border-border/40 bg-background/60 backdrop-blur-md shadow-sm">
+                <CardHeader className="p-8 border-b border-border/40">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-primary/5 text-primary">
+                      <ShieldAlert className="h-5 w-5" />
+                    </div>
+                    <CardTitle className="text-xl font-black">Data Privacy & AI Guidelines</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-8">
+                  <AIBoundarySettings settings={settings} onChange={handleSettingChange} />
                 </CardContent>
               </Card>
             </TabsContent>
