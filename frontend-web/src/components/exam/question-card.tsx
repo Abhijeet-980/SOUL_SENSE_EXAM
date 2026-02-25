@@ -128,7 +128,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 
                   {isSelected && (
                     <motion.div
-                      layoutId="active-bg"
+                      layoutId={`question-active-bg-${question.id}`}
                       className="absolute inset-0 rounded-xl bg-indigo-600 -z-10"
                       transition={{ type: 'tween', ease: 'easeOut', duration: 0.4 }}
                     />

@@ -110,30 +110,27 @@ export default function ReflectionPage() {
                 maxLength={MAX_CHARACTERS}
                 disabled={isSubmitting}
                 rows={6}
-                className={`w-full rounded-md border-2 border-border bg-background p-4 text-sm placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:bg-muted disabled:opacity-50 ${
-                  isFull ? 'border-amber-500/50' : 'hover:border-border/80'
-                }`}
+                className={`w-full rounded-md border-2 border-border bg-background p-4 text-sm placeholder:text-muted-foreground/60 transition-colors focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:bg-muted disabled:opacity-50 ${isFull ? 'border-amber-500/50' : 'hover:border-border/80'
+                  }`}
               />
 
               <div className="mt-3 flex items-center justify-between text-sm">
                 <span
-                  className={`transition-colors ${
-                    isNearLimit ? 'font-medium text-amber-600' : 'text-muted-foreground'
-                  }`}
+                  className={`transition-colors ${isNearLimit ? 'font-medium text-amber-600' : 'text-muted-foreground'
+                    }`}
                 >
                   {characterCount} / {MAX_CHARACTERS} characters
                 </span>
                 {characterCount > 0 && (
                   <div className="h-2 w-24 overflow-hidden rounded-full bg-muted">
                     <motion.div
-                      layoutId="progress-bar"
+                      layoutId="reflection-progress-bar"
                       initial={{ width: 0 }}
                       animate={{
                         width: `${(characterCount / MAX_CHARACTERS) * 100}%`,
                       }}
-                      className={`h-full transition-colors ${
-                        isNearLimit ? 'bg-amber-500' : 'bg-primary'
-                      }`}
+                      className={`h-full transition-colors ${isNearLimit ? 'bg-amber-500' : 'bg-primary'
+                        }`}
                     />
                   </div>
                 )}

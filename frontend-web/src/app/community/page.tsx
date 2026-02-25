@@ -182,7 +182,7 @@ export default function CommunityDashboard() {
                 {tab === 'overview' ? 'Overview' : 'Mission Control'}
                 {activeTab === tab && (
                   <motion.div
-                    layoutId="activeTab"
+                    layoutId="community-page-active-tab"
                     className="absolute inset-0 bg-white dark:bg-slate-900 rounded-full shadow-sm z-[-1]"
                     transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
                   />

@@ -140,7 +140,7 @@ export function FloatingNavbar() {
                 <AnimatePresence mode="popLayout">
                   {(isActive || isHovered) && (
                     <motion.div
-                      layoutId="navbar-glide-pill"
+                      layoutId="floating-navbar-glide-pill"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}

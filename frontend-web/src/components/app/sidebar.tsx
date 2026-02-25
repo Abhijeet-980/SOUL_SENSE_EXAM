@@ -229,7 +229,7 @@ export function Sidebar() {
                       >
                         {active && (
                           <motion.div
-                            layoutId="activeTabMobile"
+                            layoutId="sidebar-mobile-active-tab"
                             className="absolute left-0 w-[3px] h-5 bg-primary rounded-r-full"
                             transition={{ type: 'tween', ease: 'easeOut', duration: 0.3 }}
                           />
@@ -376,7 +376,7 @@ export function Sidebar() {
                           {/* Active Indicator Line */}
                           {active && (
                             <motion.div
-                              layoutId="activeTab"
+                              layoutId="sidebar-active-tab"
                               className="absolute left-0 w-[3px] h-5 bg-primary rounded-r-full"
                               transition={{ type: 'tween', ease: 'easeOut', duration: 0.3 }}
                             />

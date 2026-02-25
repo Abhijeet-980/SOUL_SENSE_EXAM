@@ -24,11 +24,11 @@ const navItems = [
 export function BottomNavigation() {
   const pathname = usePathname();
   const { light } = useHapticFeedback();
-  
+
   const handleNavClick = () => {
     light();
   };
-  
+
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 md:hidden"
@@ -39,7 +39,7 @@ export function BottomNavigation() {
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
-            
+
             return (
               <Link
                 key={item.name}
@@ -53,7 +53,7 @@ export function BottomNavigation() {
               >
                 {isActive && (
                   <motion.div
-                    layoutId="bottom-nav-indicator"
+                    layoutId="mobile-bottom-nav-indicator"
                     className="absolute inset-0 bg-primary/10 rounded-lg"
                     initial={false}
                     transition={{ type: 'spring', stiffness: 500, damping: 35 }}
@@ -75,13 +75,13 @@ export function BottomNavigation() {
 export function MobileFab() {
   const [isExpanded, setIsExpanded] = React.useState(false);
   const { light, medium } = useHapticFeedback();
-  
+
   const actions = [
     { name: 'New Entry', href: '/journal/new', icon: FileText },
     { name: 'Take Test', href: '/exam', icon: Brain },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
-  
+
   return (
     <div className="fixed bottom-20 right-4 z-40 md:hidden">
       <div className="relative">
@@ -114,7 +114,7 @@ export function MobileFab() {
             ))}
           </motion.div>
         )}
-        
+
         <button
           onClick={() => {
             medium();

@@ -51,11 +51,11 @@ export const MobileQuestionCard: React.FC<MobileQuestionCardProps> = ({
   const [direction, setDirection] = useState(0);
   const { isMobile } = useBreakpoint();
   const { light, medium } = useHapticFeedback();
-  
+
   const options = question.options?.length
     ? question.options
     : [1, 2, 3, 4, 5].map((v) => ({ value: v, label: LIKERT_LABELS[v] }));
-  
+
   const handleSwipeLeft = useCallback(() => {
     if (!disabled && selectedValue !== undefined && onNext) {
       setDirection(1);
@@ -63,7 +63,7 @@ export const MobileQuestionCard: React.FC<MobileQuestionCardProps> = ({
       onNext();
     }
   }, [disabled, selectedValue, onNext, medium]);
-  
+
   const handleSwipeRight = useCallback(() => {
     if (!disabled && canGoBack && onPrevious) {
       setDirection(-1);
@@ -71,16 +71,16 @@ export const MobileQuestionCard: React.FC<MobileQuestionCardProps> = ({
       onPrevious();
     }
   }, [disabled, canGoBack, onPrevious, medium]);
-  
+
   const swipeRef = useSwipe({
     onSwipeLeft: handleSwipeLeft,
     onSwipeRight: handleSwipeRight,
     threshold: 75,
   });
-  
+
   const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (disabled) return;
-    
+
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
       const nextIndex = (index + 1) % options.length;
       optionsRef.current[nextIndex]?.focus();
@@ -93,12 +93,12 @@ export const MobileQuestionCard: React.FC<MobileQuestionCardProps> = ({
       light();
     }
   };
-  
+
   const handleSelect = (value: number) => {
     onSelect(value);
     light();
   };
-  
+
   const variants = {
     enter: (direction: number) => ({
       x: direction > 0 ? 300 : -300,
@@ -113,7 +113,7 @@ export const MobileQuestionCard: React.FC<MobileQuestionCardProps> = ({
       opacity: 0,
     }),
   };
-  
+
   return (
     <div ref={swipeRef as React.RefObject<HTMLDivElement>} className="w-full touch-pan-y">
       <AnimatePresence mode="wait" custom={direction}>
@@ -140,7 +140,7 @@ export const MobileQuestionCard: React.FC<MobileQuestionCardProps> = ({
                 </span>
               )}
             </CardHeader>
-            
+
             <CardContent className="pt-4 pb-6 px-4 md:pt-6 md:pb-8 md:px-6">
               <h2
                 id={`question-${question.id}`}
@@ -149,7 +149,7 @@ export const MobileQuestionCard: React.FC<MobileQuestionCardProps> = ({
                 {question.text}
               </h2>
             </CardContent>
-            
+
             <CardFooter className="flex flex-col space-y-4 pt-2 pb-6 px-4 md:pt-4 md:pb-8 md:px-6">
               <div
                 role="radiogroup"
@@ -161,7 +161,7 @@ export const MobileQuestionCard: React.FC<MobileQuestionCardProps> = ({
               >
                 {options.map((option, idx) => {
                   const isSelected = selectedValue === option.value;
-                  
+
                   return (
                     <button
                       key={option.value}
@@ -202,10 +202,10 @@ export const MobileQuestionCard: React.FC<MobileQuestionCardProps> = ({
                           {isMobile ? LIKERT_SHORT_LABELS[option.value] : option.label}
                         </span>
                       </div>
-                      
+
                       {isSelected && (
                         <motion.div
-                          layoutId="active-option-bg"
+                          layoutId={`mobile-question-active-bg-${question.id}`}
                           className="absolute inset-0 rounded-xl bg-indigo-600 -z-10"
                           transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
                         />
@@ -214,7 +214,7 @@ export const MobileQuestionCard: React.FC<MobileQuestionCardProps> = ({
                   );
                 })}
               </div>
-              
+
               {isMobile && (onPrevious || onNext) && (
                 <div className="flex items-center justify-between w-full pt-4">
                   <button
@@ -235,7 +235,7 @@ export const MobileQuestionCard: React.FC<MobileQuestionCardProps> = ({
                     <ChevronLeft className="h-5 w-5" />
                     <span className="text-sm font-medium">Previous</span>
                   </button>
-                  
+
                   <button
                     onClick={() => {
                       if (selectedValue !== undefined && onNext) {
@@ -260,7 +260,7 @@ export const MobileQuestionCard: React.FC<MobileQuestionCardProps> = ({
           </Card>
         </motion.div>
       </AnimatePresence>
-      
+
       <div className="text-center mt-4 text-xs text-slate-400 dark:text-slate-500 md:hidden">
         Swipe to navigate
       </div>
