@@ -218,7 +218,7 @@ export function GoodFirstIssues({ data }: GoodFirstIssuesProps) {
 
             {/* The Glider */}
             <motion.div
-              layoutId="carousel-glider"
+              layoutId="good-first-issues-glider"
               className="absolute h-1.5 w-1.5 bg-blue-500 rounded-full z-10"
               initial={false}
               animate={{

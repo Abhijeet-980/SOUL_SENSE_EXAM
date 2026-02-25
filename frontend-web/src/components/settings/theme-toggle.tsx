@@ -148,7 +148,7 @@ export function ThemeToggle({ value, onChange, className }: ThemeToggleProps) {
                 <div className="absolute inset-y-1 left-1 right-1 pointer-events-none">
                     <AnimatePresence>
                         <motion.span
-                            layoutId="theme-toggle-pill"
+                            layoutId="theme-toggle-segmented-pill"
                             className={cn(
                                 'absolute top-0 bottom-0 rounded-lg',
                                 'bg-background shadow-sm border border-border/40'
