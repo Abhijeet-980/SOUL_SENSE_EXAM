@@ -1234,3 +1234,41 @@ class GamificationSummary(BaseModel):
 class DashboardStatisticsResponse(BaseModel):
     """Response for dashboard statistics with historical trends."""
     historical_trends: List[EQScorePoint]
+
+
+# ============================================================================
+# Audit Logging Schemas
+# ============================================================================
+
+class AuditLogResponse(BaseModel):
+    """Response schema for individual audit log entries."""
+    id: int
+    event_id: str
+    timestamp: datetime
+    event_type: str
+    severity: str
+    username: Optional[str]
+    user_id: Optional[int]
+    ip_address: Optional[str]
+    user_agent: Optional[str]
+    resource_type: Optional[str]
+    resource_id: Optional[str]
+    action: Optional[str]
+    outcome: str
+    details: Optional[str]
+    error_message: Optional[str]
+
+    model_config = ConfigDict(from_attributes=True)
+
+class AuditLogListResponse(BaseModel):
+    """Response schema for paginated audit log lists."""
+    logs: List[AuditLogResponse]
+    total_count: int
+    page: int
+    per_page: int
+
+class AuditExportResponse(BaseModel):
+    """Response schema for audit log exports."""
+    data: str
+    format: str
+    timestamp: datetime
