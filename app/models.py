@@ -228,6 +228,7 @@ class UserSettings(Base):
 
     # Crisis support settings (Integration with emotional support features)
     crisis_support_preference = Column(Boolean, default=True)
+    crisis_mode_enabled = Column(Boolean, default=False)  # Enable crisis intervention routing (Issue #930)
 
     # Advanced Analytics Privacy Settings (Feature #804)
     analytics_enabled = Column(Boolean, default=False)  # Master switch for analytics

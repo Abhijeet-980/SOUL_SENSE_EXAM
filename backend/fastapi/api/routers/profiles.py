@@ -20,6 +20,9 @@ from ..schemas import (
     # Data Consent
     DataConsentUpdate,
     DataConsentResponse,
+    # Crisis Settings
+    CrisisSettingsUpdate,
+    CrisisSettingsResponse,
     # Medical Profile
     MedicalProfileCreate,
     MedicalProfileUpdate,
@@ -181,6 +184,52 @@ async def update_consent(
     return DataConsentResponse(
         consent_ml_training=settings.consent_ml_training,
         consent_aggregated_research=settings.consent_aggregated_research
+    )
+
+
+# ============================================================================
+# Crisis Settings Endpoints (Issue #930)
+# ============================================================================
+
+@router.get("/crisis_settings", response_model=CrisisSettingsResponse, summary="Get Crisis Settings")
+async def get_crisis_settings(
+    current_user: Annotated[User, Depends(get_current_user)],
+    profile_service: Annotated[ProfileService, Depends(get_profile_service)]
+):
+    """
+    Get the current user's crisis settings.
+    
+    **Authentication Required**
+    """
+    settings = profile_service.get_user_settings(current_user.id)
+    if not settings:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User settings not found."
+        )
+    return CrisisSettingsResponse(
+        crisis_mode_enabled=settings.crisis_mode_enabled
+    )
+
+
+@router.patch("/crisis_settings", response_model=CrisisSettingsResponse, summary="Update Crisis Settings")
+async def update_crisis_settings(
+    crisis_data: CrisisSettingsUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    profile_service: Annotated[ProfileService, Depends(get_profile_service)]
+):
+    """
+    Update the current user's crisis settings.
+    
+    **Authentication Required**
+    """
+    settings = profile_service.update_user_settings(
+        user_id=current_user.id,
+        settings_data=crisis_data.model_dump()
+    )
+    return CrisisSettingsResponse(
+        crisis_mode_enabled=settings.crisis_mode_enabled
     )
 
 

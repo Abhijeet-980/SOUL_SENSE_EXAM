@@ -447,6 +447,7 @@ class UserSettingsCreate(BaseModel):
     data_usage_consent: bool = False
     emergency_disclaimer_accepted: bool = False
     crisis_support_preference: bool = True
+    crisis_mode_enabled: bool = False  # Enable crisis intervention routing (Issue #930)
     
     # Data Usage Consent (Issue #929)
     consent_ml_training: bool = False
@@ -473,6 +474,7 @@ class UserSettingsUpdate(BaseModel):
     data_usage_consent: Optional[bool] = None
     emergency_disclaimer_accepted: Optional[bool] = None
     crisis_support_preference: Optional[bool] = None
+    crisis_mode_enabled: Optional[bool] = None  # Enable crisis intervention routing (Issue #930)
     
     # Data Usage Consent (Issue #929)
     consent_ml_training: Optional[bool] = None
@@ -501,6 +503,7 @@ class UserSettingsResponse(BaseModel):
     data_usage_consent: Optional[bool] = None
     emergency_disclaimer_accepted: Optional[bool] = None
     crisis_support_preference: Optional[bool] = None
+    crisis_mode_enabled: Optional[bool] = None  # Enable crisis intervention routing (Issue #930)
     
     # Data Usage Consent (Issue #929)
     consent_ml_training: Optional[bool] = None
@@ -525,6 +528,20 @@ class DataConsentResponse(BaseModel):
     """Schema for data consent response."""
     consent_ml_training: bool
     consent_aggregated_research: bool
+
+
+# ============================================================================
+# Crisis Settings Schemas (Issue #930)
+# ============================================================================
+
+class CrisisSettingsUpdate(BaseModel):
+    """Schema for updating crisis settings."""
+    crisis_mode_enabled: bool
+
+
+class CrisisSettingsResponse(BaseModel):
+    """Schema for crisis settings response."""
+    crisis_mode_enabled: bool
 
 
 # ============================================================================
