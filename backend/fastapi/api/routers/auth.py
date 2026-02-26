@@ -25,7 +25,8 @@ router = APIRouter()
 settings = get_settings()
 
 @router.get("/captcha", response_model=CaptchaResponse)
-async def get_captcha():
+@limiter.limit("100/minute")
+async def get_captcha(request: Request):
     """Generate a new CAPTCHA."""
     session_id = secrets.token_urlsafe(16)
     code = captcha_service.generate_captcha(session_id)
@@ -92,6 +93,7 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
 availability_limiter_cache = TTLCache(maxsize=1000, ttl=60)
 
 @router.get("/check-username", response_model=UsernameAvailabilityResponse)
+@limiter.limit("20/minute")
 async def check_username_availability(
     username: str,
     request: Request,
@@ -101,35 +103,18 @@ async def check_username_availability(
     Check if a username is available.
     Rate limited to 20 requests per minute per IP.
     """
-    client_ip = get_real_ip(request)
-    count = availability_limiter_cache.get(client_ip, 0)
-    if count >= 20:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many availability checks. Please wait a minute."
-        )
-    availability_limiter_cache[client_ip] = count + 1
-    
     available, message = auth_service.check_username_available(username)
     return UsernameAvailabilityResponse(available=available, message=message)
 
 
 @router.post("/register", response_model=None, responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}})
+@limiter.limit("10/minute")
 async def register(
     request: Request,
     user: UserCreate, 
     auth_service: AuthService = Depends()
 ):
-    from ..middleware.rate_limiter import registration_limiter
-    # Rate limit by IP
-    real_ip = get_real_ip(request)
-    is_limited, wait_time = registration_limiter.is_rate_limited(real_ip)
-    if is_limited:
-        raise RateLimitException(
-            message=f"Too many registration attempts. Please try again in {wait_time}s.",
-            wait_seconds=wait_time
-        )
-
+    """Register a new user. Rate limited to 10 requests per minute per IP/user."""
     success, new_user, message = auth_service.register_user(user)
     
     if not success:
@@ -143,13 +128,14 @@ async def register(
 
 
 @router.post("/login", response_model=Token, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}, 202: {"model": TwoFactorAuthRequiredResponse}})
+@limiter.limit("10/minute")
 async def login(
     response: Response,
     login_request: LoginRequest, 
     request: Request,
     auth_service: AuthService = Depends()
 ):
-    from ..middleware.rate_limiter import login_limiter
+    """Login endpoint. Rate limited to 10 requests per minute per IP/user."""
     ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "Unknown")
 
@@ -158,22 +144,6 @@ async def login(
          raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The CAPTCHA validation failed. Please refresh the CAPTCHA and try again."
-        )
-
-    # 2. Rate Limit by IP
-    is_limited, wait_time = login_limiter.is_rate_limited(ip)
-    if is_limited:
-         raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Too many login attempts. Please try again in {wait_time}s."
-        )
-
-    # 3. Rate Limit by Username (Identifier)
-    is_limited, wait_time = login_limiter.is_rate_limited(f"login_{login_request.identifier}")
-    if is_limited:
-         raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Account temporarily restricted due to multiple login attempts. Please try again in {wait_time}s."
         )
 
     user = auth_service.authenticate_user(login_request.identifier, login_request.password, ip_address=ip, user_agent=user_agent)

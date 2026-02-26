@@ -4,7 +4,7 @@ Compatibility layer for tests and legacy imports.
 Core models have been refactored elsewhere.
 """
 
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Text, create_engine, event, Index, text, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Text, create_engine, event, Index, text, DateTime, CheckConstraint
 from sqlalchemy.orm import relationship, declarative_base, Session
 from sqlalchemy.engine import Engine, Connection
 from typing import List, Optional, Any, Dict, Tuple, Union
@@ -300,6 +300,7 @@ class Response(Base):
     user = relationship("User", back_populates="responses")
     
     __table_args__ = (
+        CheckConstraint('response_value >= 1 AND response_value <= 5', name='ck_response_value_range'),
         Index('idx_response_question_timestamp', 'question_id', 'timestamp'),
         Index('idx_response_user_timestamp', 'user_id', 'timestamp'),
         Index('idx_response_agegroup_timestamp', 'detailed_age_group', 'timestamp'),

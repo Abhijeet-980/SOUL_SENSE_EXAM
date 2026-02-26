@@ -6,10 +6,11 @@ Provides authenticated CRUD endpoints for user management.
 
 from typing import Annotated, List, Dict
 from sqlalchemy.orm import Session
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
 import os
 import shutil
 from pathlib import Path
+from ..utils.limiter import limiter
 
 from ..schemas import (
     UserResponse,
@@ -54,7 +55,9 @@ def get_profile_service():
 # ============================================================================
 
 @router.get("/me", response_model=UserResponse, summary="Get Current User")
+@limiter.limit("100/minute")
 async def get_current_user_info(
+    request: Request,
     current_user: Annotated[User, Depends(get_current_user)]
 ):
     """
@@ -71,7 +74,9 @@ async def get_current_user_info(
 
 
 @router.get("/me/detail", response_model=UserDetail, summary="Get Current User Details")
+@limiter.limit("100/minute")
 async def get_current_user_details(
+    request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     user_service: Annotated[UserService, Depends(get_user_service)]
 ):
@@ -86,7 +91,9 @@ async def get_current_user_details(
 
 
 @router.get("/me/complete", response_model=CompleteProfileResponse, summary="Get Complete Profile")
+@limiter.limit("100/minute")
 async def get_complete_user_profile(
+    request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     profile_service: Annotated[ProfileService, Depends(get_profile_service)]
 ):
