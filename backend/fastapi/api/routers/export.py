@@ -3,9 +3,14 @@ Enhanced Export Router with backward compatibility and new features.
 
 This router maintains backward compatibility with v1 endpoints while adding
 advanced export features from ExportServiceV2.
+
+Async Export Flow (Background Tasks):
+1. POST /api/v1/reports/export/async → Returns 202 with job_id
+2. GET /api/v1/tasks/{job_id} → Poll for completion
+3. GET /api/v1/reports/export/{export_id}/download → Download when ready
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, BackgroundTasks, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -16,7 +21,8 @@ import os
 from ..services.db_service import get_db
 from ..services.export_service import ExportService as ExportServiceV1
 from ..services.export_service_v2 import ExportServiceV2
-from ..models import User, ExportRecord
+from ..services.background_task_service import BackgroundTaskService, TaskStatus, TaskType
+from ..models import User, ExportRecord, BackgroundJob
 from .auth import get_current_user
 
 router = APIRouter()
@@ -138,6 +144,202 @@ async def export_pdf_direct(
             status_code=500,
             detail="Failed to generate your PDF report. Please try again."
         )
+
+
+# ============================================================================
+# ASYNC EXPORT ENDPOINTS (Background Task Queue)
+# ============================================================================
+
+def _execute_async_export(
+    user_id: int,
+    username: str,
+    format: str,
+    options: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Background task function for generating exports asynchronously.
+    
+    This function is executed by BackgroundTaskService.execute_task
+    in a separate thread/context with its own database session.
+    """
+    from ..services.db_service import SessionLocal
+    
+    with SessionLocal() as db:
+        # Fetch user again in the new session
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise ValueError(f"User {user_id} not found")
+        
+        filepath, export_id = ExportServiceV2.generate_export(
+            db, user, format, options
+        )
+        
+        return {
+            "filepath": filepath,
+            "export_id": export_id,
+            "format": format,
+            "filename": os.path.basename(filepath),
+            "download_url": f"/api/v1/reports/export/{export_id}/download"
+        }
+
+
+@router.post("/async", status_code=status.HTTP_202_ACCEPTED)
+async def create_async_export(
+    background_tasks: BackgroundTasks,
+    format: str = Body(..., embed=True, description="Export format: json, csv, xml, html, pdf"),
+    options: Optional[Dict[str, Any]] = Body(None, embed=True, description="Export options"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Create an export asynchronously using background tasks.
+    
+    This endpoint immediately returns **HTTP 202 Accepted** with a job_id.
+    The export is generated in the background without blocking the HTTP response.
+    
+    **Workflow:**
+    1. Call this endpoint to start the export
+    2. Poll `GET /api/v1/tasks/{job_id}` to check progress
+    3. When status is "completed", download from the provided URL
+    
+    **Request Body:**
+    ```json
+    {
+        "format": "pdf",
+        "options": {
+            "data_types": ["profile", "journal", "assessments"],
+            "encrypt": false
+        }
+    }
+    ```
+    
+    **Supported formats:** json, csv, xml, html, pdf
+    
+    **Returns:**
+    - job_id: Unique identifier for tracking the task
+    - status: "processing" (always 202 Accepted)
+    - poll_url: Endpoint to check task status
+    """
+    # Rate limiting
+    _check_rate_limit(current_user.id)
+    
+    # Check if user has too many pending tasks
+    pending_count = BackgroundTaskService.get_pending_tasks_count(db, current_user.id)
+    if pending_count >= 5:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many pending exports. Please wait for existing exports to complete."
+        )
+    
+    # Validate format
+    format_lower = format.lower()
+    if format_lower not in ExportServiceV2.SUPPORTED_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format: {format}. Supported: {', '.join(ExportServiceV2.SUPPORTED_FORMATS)}"
+        )
+    
+    # Determine task type based on format
+    task_type_map = {
+        "pdf": TaskType.EXPORT_PDF,
+        "csv": TaskType.EXPORT_CSV,
+        "json": TaskType.EXPORT_JSON,
+        "xml": TaskType.EXPORT_XML,
+        "html": TaskType.EXPORT_HTML,
+    }
+    task_type = task_type_map.get(format_lower, TaskType.EXPORT_JSON)
+    
+    # Prepare options with defaults
+    export_options = options or {}
+    if 'data_types' not in export_options:
+        export_options['data_types'] = list(ExportServiceV2.DATA_TYPES)
+    
+    # Validate data types
+    invalid_types = set(export_options.get('data_types', [])) - ExportServiceV2.DATA_TYPES
+    if invalid_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid data types: {', '.join(invalid_types)}. Valid types: {', '.join(ExportServiceV2.DATA_TYPES)}"
+        )
+    
+    # Validate encryption options
+    if export_options.get('encrypt', False) and not export_options.get('password'):
+        raise HTTPException(
+            status_code=400,
+            detail="Password is required when encryption is enabled."
+        )
+    
+    # Create background task record
+    task = BackgroundTaskService.create_task(
+        db=db,
+        user_id=current_user.id,
+        task_type=task_type,
+        params={"format": format_lower, "options": export_options}
+    )
+    
+    # Schedule background execution
+    background_tasks.add_task(
+        BackgroundTaskService.execute_task,
+        task.job_id,
+        _execute_async_export,
+        current_user.id,
+        current_user.username,
+        format_lower,
+        export_options
+    )
+    
+    logger.info(f"Async export started for user {current_user.username}, job_id: {task.job_id}")
+    
+    return {
+        "job_id": task.job_id,
+        "status": "processing",
+        "message": "Export started. Poll the status endpoint for updates.",
+        "poll_url": f"/api/v1/tasks/{task.job_id}",
+        "format": format_lower
+    }
+
+
+@router.post("/async/pdf", status_code=status.HTTP_202_ACCEPTED)
+async def create_async_pdf_export(
+    background_tasks: BackgroundTasks,
+    include_charts: bool = Body(True, embed=True, description="Include charts and visualizations"),
+    data_types: Optional[List[str]] = Body(None, embed=True, description="Data types to include"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a PDF report asynchronously.
+    
+    This is a convenience endpoint for PDF exports with simplified options.
+    Returns **HTTP 202 Accepted** immediately.
+    
+    **Recommended for:**
+    - Large reports with charts
+    - Multiple data types
+    - When instant response is required in the UI
+    
+    **Example:**
+    ```json
+    {
+        "include_charts": true,
+        "data_types": ["profile", "journal", "assessments", "scores"]
+    }
+    ```
+    """
+    options = {
+        "data_types": data_types or list(ExportServiceV2.DATA_TYPES),
+        "include_metadata": True,
+        "include_charts": include_charts
+    }
+    
+    # Forward to the generic async export endpoint
+    return await create_async_export(
+        background_tasks=background_tasks,
+        format="pdf",
+        options=options,
+        current_user=current_user,
+        db=db
+    )
 
 
 @router.post("/v2")

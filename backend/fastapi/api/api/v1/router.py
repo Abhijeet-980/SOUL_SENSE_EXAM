@@ -4,7 +4,7 @@ from ...routers import (
     auth, users, profiles, assessments, 
     questions, analytics, journal, health,
     settings_sync, community, contact, exams, export, deep_dive,
-    gamification, audit
+    gamification, audit, tasks
 )
 
 api_router = APIRouter()
@@ -28,4 +28,5 @@ api_router.include_router(export.router, prefix="/reports/export", tags=["Export
 api_router.include_router(deep_dive.router, prefix="/deep-dive", tags=["Deep Dive"])
 api_router.include_router(gamification.router, prefix="/gamification", tags=["Gamification"])
 api_router.include_router(audit.router, prefix="/audit", tags=["Audit"])
+api_router.include_router(tasks.router, prefix="/tasks", tags=["Background Tasks"])
 
