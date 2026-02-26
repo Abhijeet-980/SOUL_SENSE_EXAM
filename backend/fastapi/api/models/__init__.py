@@ -57,6 +57,9 @@ class User(Base):
     achievements = relationship("UserAchievement", back_populates="user", cascade="all, delete-orphan")
     streaks = relationship("UserStreak", back_populates="user", cascade="all, delete-orphan")
     xp_stats = relationship("UserXP", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    
+    # Background Tasks
+    background_jobs = relationship("BackgroundJob", back_populates="user", cascade="all, delete-orphan")
 
 class LoginAttempt(Base):
     """Track login attempts for security auditing and persistent locking.
@@ -727,6 +730,57 @@ class UserChallenge(Base):
     
     user = relationship("User")
     challenge = relationship("Challenge")
+
+
+# ==================== BACKGROUND TASK MODELS ====================
+
+class BackgroundJob(Base):
+    """
+    Track background job execution status for async task processing.
+    
+    This model enables:
+    - Decoupling heavy operations from HTTP request/response cycles
+    - Status polling for long-running tasks
+    - Task failure tracking and debugging
+    - User-specific job history
+    """
+    __tablename__ = 'background_jobs'
+    __table_args__ = (
+        Index('idx_background_jobs_user_status', 'user_id', 'status'),
+        Index('idx_background_jobs_created', 'created_at'),
+    )
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(String(36), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    task_type = Column(String(50), nullable=False)  # export_pdf, send_email, etc.
+    status = Column(String(20), default='pending', nullable=False, index=True)
+    progress = Column(Integer, default=0)  # 0-100 percentage
+    params = Column(Text, nullable=True)  # JSON string of task parameters
+    result = Column(Text, nullable=True)  # JSON string of task result
+    error_message = Column(Text, nullable=True)  # Error details if failed
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)  # When task started processing
+    completed_at = Column(DateTime, nullable=True)  # When task finished
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    user = relationship("User", back_populates="background_jobs")
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        import json
+        return {
+            "job_id": self.job_id,
+            "task_type": self.task_type,
+            "status": self.status,
+            "progress": self.progress,
+            "result": json.loads(self.result) if self.result else None,
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
 
 # Initialize logger
 logging.basicConfig(level=logging.INFO)
