@@ -196,6 +196,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           name: result.username || loginData.username.split('@')[0],
           username: result.username,
           created_at: result.created_at,
+          onboarding_completed: result.onboarding_completed,
         },
         token: result.access_token,
         expiresAt: getExpiryTimestamp(),
@@ -248,10 +249,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           name: result.username || 'User',
           username: result.username,
           created_at: result.created_at,
+          onboarding_completed: result.onboarding_completed,
         },
         token: result.access_token,
         expiresAt: getExpiryTimestamp(),
-      };
+      }
 
       saveSession(session, rememberMe);
       setUser(session.user);

@@ -12,6 +12,7 @@ export interface UserSession {
     username?: string;
     name?: string;
     created_at?: string;
+    onboarding_completed?: boolean;
   };
   token: string;
   expiresAt: number;

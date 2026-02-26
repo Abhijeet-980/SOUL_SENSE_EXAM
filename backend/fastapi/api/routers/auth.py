@@ -219,7 +219,8 @@ async def login(
                 "code": "MULTIPLE_SESSIONS_ACTIVE",
                 "message": "Your account is active on another device or browser."
             }] if has_multiple_sessions else []
-        )
+        ),
+        onboarding_completed=user.onboarding_completed or False
     )
 
 
@@ -270,7 +271,8 @@ async def verify_2fa(
                 "code": "MULTIPLE_SESSIONS_ACTIVE",
                 "message": "Your account is active on another device or browser."
             }] if has_multiple_sessions else []
-        )
+        ),
+        onboarding_completed=user.onboarding_completed or False
     )
 
 

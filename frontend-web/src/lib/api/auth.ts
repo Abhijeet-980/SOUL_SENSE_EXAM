@@ -15,6 +15,7 @@ export const authApi = {
     id?: number;
     created_at?: string;
     warnings?: any[];
+    onboarding_completed?: boolean;
   }> {
     return apiClient('/auth/login', {
       method: 'POST',
@@ -36,6 +37,7 @@ export const authApi = {
     username?: string;
     id?: number;
     created_at?: string;
+    onboarding_completed?: boolean;
   }> {
     return apiClient('/auth/login/2fa', {
       method: 'POST',
