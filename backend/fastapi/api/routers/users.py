@@ -6,10 +6,11 @@ Provides authenticated CRUD endpoints for user management.
 
 from typing import Annotated, List, Dict
 from sqlalchemy.orm import Session
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
 import os
 import shutil
 from pathlib import Path
+from ..utils.limiter import limiter
 
 from ..schemas import (
     UserResponse,

@@ -10,7 +10,8 @@ Provides authenticated CRUD endpoints for all user profile types:
 """
 
 from typing import Annotated
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Request
+from ..utils.limiter import limiter
 
 from ..schemas import (
     # User Settings

@@ -4,8 +4,9 @@ import logging
 import traceback
 import uuid
 import time
+from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 # Triggering reload for new community routes
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -19,6 +20,8 @@ from slowapi.errors import RateLimitExceeded
 
 # Load and validate settings on import
 settings = get_settings_instance()
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+FAVICON_PATH = STATIC_DIR / "favicon.svg"
 
 
 @asynccontextmanager
@@ -201,12 +204,18 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
 
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        return FileResponse(FAVICON_PATH, media_type="image/svg+xml")
+
     # Attach slowapi limiter
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    # Performance Monitoring Middleware (inner-most for accurate timing)
-    app.add_middleware(PerformanceMonitoringMiddleware)
+    # Request Logging Middleware (inner-most for full request lifecycle tracking)
+    # Provides: Request IDs, JSON logging, PII protection, X-Request-ID headers
+    from .middleware.logging_middleware import RequestLoggingMiddleware
+    app.add_middleware(RequestLoggingMiddleware)
 
     # GZip compression middleware for response optimization
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
@@ -230,7 +239,7 @@ def create_app() -> FastAPI:
         allow_credentials=allow_credentials,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
-        expose_headers=["X-API-Version"],
+        expose_headers=["X-API-Version", "X-Request-ID", "X-Process-Time"],  # Expose request ID for frontend tracing
         max_age=3600,  # Cache preflight requests for 1 hour
     )
     
