@@ -62,7 +62,9 @@ def get_profile_service():
 # ============================================================================
 
 @router.get("/settings", response_model=UserSettingsResponse, summary="Get User Settings")
+@limiter.limit("100/minute")
 async def get_settings(
+    request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     profile_service: Annotated[ProfileService, Depends(get_profile_service)]
 ):
@@ -82,7 +84,9 @@ async def get_settings(
 
 
 @router.post("/settings", response_model=UserSettingsResponse, status_code=status.HTTP_201_CREATED, summary="Create User Settings")
+@limiter.limit("10/minute")
 async def create_settings(
+    request: Request,
     settings_data: UserSettingsCreate,
     current_user: Annotated[User, Depends(get_current_user)],
     profile_service: Annotated[ProfileService, Depends(get_profile_service)]

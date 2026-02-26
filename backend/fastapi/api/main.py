@@ -47,6 +47,26 @@ async def lifespan(app: FastAPI):
             from sqlalchemy import text
             db.execute(text("SELECT 1"))
             print("[OK] Database connectivity verified")
+        
+        # Initialize Redis for rate limiting
+        try:
+            import redis.asyncio as redis
+            redis_client = redis.from_url(
+                settings.redis_url,
+                encoding="utf-8",
+                decode_responses=True
+            )
+            # Test Redis connectivity
+            await redis_client.ping()
+            app.state.redis_client = redis_client
+            
+            # Configure slowapi limiter with Redis storage
+            limiter._storage_uri = settings.redis_url
+            print(f"[OK] Redis connected for rate limiting: {settings.redis_host}:{settings.redis_port}")
+        except Exception as e:
+            logger.warning(f"Redis initialization failed: {e}")
+            print(f"[WARNING] Redis not available, rate limiting will use in-memory fallback: {e}")
+            # SlowAPI will automatically fall back to in-memory storage if Redis is unavailable
             
         # Initialize analytics scheduler
         try:
@@ -107,6 +127,15 @@ async def lifespan(app: FastAPI):
         logger.info("Stopping analytics scheduler...")
         app.state.analytics_scheduler.stop()
         logger.info("Analytics scheduler stopped successfully")
+    
+    # Close Redis connection
+    if hasattr(app.state, 'redis_client'):
+        logger.info("Closing Redis connection...")
+        try:
+            await app.state.redis_client.close()
+            logger.info("Redis connection closed successfully")
+        except Exception as e:
+            logger.error(f"Error closing Redis connection: {e}")
     
     # Dispose database engine if needed
     try:

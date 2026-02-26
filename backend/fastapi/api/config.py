@@ -87,6 +87,19 @@ class BaseAppSettings(BaseSettings):
         description="List of trusted proxy IP addresses"
     )
 
+    # Redis Configuration (for rate limiting and caching)
+    redis_host: str = Field(default="localhost", description="Redis host")
+    redis_port: int = Field(default=6379, ge=1, le=65535, description="Redis port")
+    redis_db: int = Field(default=0, ge=0, description="Redis database number")
+    redis_password: Optional[str] = Field(default=None, description="Redis password")
+
+    @property
+    def redis_url(self) -> str:
+        """Construct Redis URL from configuration."""
+        if self.redis_password:
+            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
+
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:
