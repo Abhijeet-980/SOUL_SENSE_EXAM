@@ -224,6 +224,12 @@ def create_app() -> FastAPI:
     from .middleware.security import SecurityHeadersMiddleware
     app.add_middleware(SecurityHeadersMiddleware)
 
+    # ETag Middleware for HTTP caching optimization
+    # Adds ETag headers to static resources (questions, prompts, translations)
+    # Returns 304 Not Modified when content hasn't changed, saving bandwidth
+    from .middleware.etag_middleware import ETagMiddleware
+    app.add_middleware(ETagMiddleware)
+
     # CORS middleware
     # In debug mode, allow all origins for easier development
     if settings.debug:
@@ -239,7 +245,7 @@ def create_app() -> FastAPI:
         allow_credentials=allow_credentials,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
-        expose_headers=["X-API-Version", "X-Request-ID", "X-Process-Time"],  # Expose request ID for frontend tracing
+        expose_headers=["X-API-Version", "X-Request-ID", "X-Process-Time", "ETag"],  # Expose request ID for frontend tracing
         max_age=3600,  # Cache preflight requests for 1 hour
     )
     
