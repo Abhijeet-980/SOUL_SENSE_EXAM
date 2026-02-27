@@ -435,3 +435,264 @@ class AnalyticsService:
             'calculated_at': datetime.now(UTC).isoformat(),
             'period': f'conversion_{conversion_period_days}d_retention_{retention_period_days}d_arpu_{arpu_period_days}d'
         }
+
+
+# ============================================================================
+# Privacy & Consent Methods (Issue #982)
+# ============================================================================
+
+    @staticmethod
+    def track_consent_event(
+        db: Session,
+        anonymous_id: str,
+        event_type: str,
+        consent_type: str,
+        consent_version: str,
+        event_data: Optional[Dict] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> ConsentEvent:
+        """
+        Track a consent event (consent_given or consent_revoked).
+
+        Args:
+            db: Database session
+            anonymous_id: Client-generated anonymous ID
+            event_type: 'consent_given' or 'consent_revoked'
+            consent_type: Type of consent (analytics, marketing, research)
+            consent_version: Version of consent terms
+            event_data: Additional metadata
+            ip_address: Client IP address
+            user_agent: Client user agent
+
+        Returns:
+            Created ConsentEvent
+        """
+        import json
+
+        # Serialize event_data to JSON
+        data_payload = json.dumps(event_data) if event_data else None
+
+        event = ConsentEvent(
+            anonymous_id=anonymous_id,
+            event_type=event_type,
+            consent_type=consent_type,
+            consent_version=consent_version,
+            event_data=data_payload,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            timestamp=datetime.utcnow()
+        )
+
+        db.add(event)
+        db.commit()
+        db.refresh(event)
+
+        # Update or create user consent status
+        AnalyticsService._update_user_consent_status(
+            db, anonymous_id, event_type, consent_type, consent_version,
+            ip_address, user_agent
+        )
+
+        return event
+
+    @staticmethod
+    def _update_user_consent_status(
+        db: Session,
+        anonymous_id: str,
+        event_type: str,
+        consent_type: str,
+        consent_version: str,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> None:
+        """
+        Update the user's current consent status based on consent event.
+
+        Args:
+            db: Database session
+            anonymous_id: Client-generated anonymous ID
+            event_type: 'consent_given' or 'consent_revoked'
+            consent_type: Type of consent
+            consent_version: Version of consent terms
+            ip_address: Client IP address
+            user_agent: Client user agent
+        """
+        # Find existing consent record
+        consent = db.query(UserConsent).filter(
+            UserConsent.anonymous_id == anonymous_id,
+            UserConsent.consent_type == consent_type
+        ).first()
+
+        now = datetime.utcnow()
+        consent_granted = (event_type == 'consent_given')
+
+        if consent:
+            # Update existing record
+            consent.consent_granted = consent_granted
+            consent.consent_version = consent_version
+            if consent_granted:
+                consent.granted_at = now
+                consent.revoked_at = None
+            else:
+                consent.revoked_at = now
+            consent.ip_address = ip_address
+            consent.user_agent = user_agent
+            consent.updated_at = now
+        else:
+            # Create new consent record
+            consent = UserConsent(
+                anonymous_id=anonymous_id,
+                consent_type=consent_type,
+                consent_granted=consent_granted,
+                consent_version=consent_version,
+                granted_at=now if consent_granted else None,
+                revoked_at=now if not consent_granted else None,
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+            db.add(consent)
+
+        db.commit()
+
+    @staticmethod
+    def check_analytics_consent(db: Session, anonymous_id: str) -> Dict[str, Any]:
+        """
+        Check if user has consented to analytics tracking.
+
+        Args:
+            db: Database session
+            anonymous_id: Client-generated anonymous ID
+
+        Returns:
+            Dictionary with consent status information
+        """
+        consent = db.query(UserConsent).filter(
+            UserConsent.anonymous_id == anonymous_id,
+            UserConsent.consent_type == 'analytics',
+            UserConsent.consent_granted == True
+        ).first()
+
+        if consent:
+            return {
+                'analytics_consent_given': True,
+                'consent_version': consent.consent_version,
+                'last_updated': consent.updated_at.isoformat() if consent.updated_at else None
+            }
+        else:
+            return {
+                'analytics_consent_given': False,
+                'consent_version': None,
+                'last_updated': None
+            }
+
+    @staticmethod
+    def get_consent_status(db: Session, anonymous_id: str) -> Dict:
+        """
+        Get comprehensive consent status for a user.
+
+        Args:
+            db: Database session
+            anonymous_id: Client-generated anonymous ID
+
+        Returns:
+            Dictionary with current consent status and history
+        """
+        # Get current consent statuses
+        consents = db.query(UserConsent).filter(
+            UserConsent.anonymous_id == anonymous_id
+        ).all()
+
+        consent_status = {
+            'analytics_consent': False,
+            'marketing_consent': False,
+            'research_consent': False,
+            'consent_version': '1.0',  # Default version
+            'last_updated': None
+        }
+
+        for consent in consents:
+            if consent.consent_type == 'analytics':
+                consent_status['analytics_consent'] = consent.consent_granted
+            elif consent.consent_type == 'marketing':
+                consent_status['marketing_consent'] = consent.consent_granted
+            elif consent.consent_type == 'research':
+                consent_status['research_consent'] = consent.consent_granted
+
+            # Update version and last_updated if more recent
+            if consent.updated_at and (
+                consent_status['last_updated'] is None or
+                consent.updated_at > consent_status['last_updated']
+            ):
+                consent_status['consent_version'] = consent.consent_version
+                consent_status['last_updated'] = consent.updated_at
+
+        # Get consent event history
+        events = db.query(ConsentEvent).filter(
+            ConsentEvent.anonymous_id == anonymous_id
+        ).order_by(ConsentEvent.timestamp.desc()).limit(50).all()
+
+        consent_status['consent_history'] = [event.to_dict() for event in events]
+
+        # Set default last_updated if no consents exist
+        if consent_status['last_updated'] is None:
+            consent_status['last_updated'] = datetime.utcnow().isoformat()
+        else:
+            consent_status['last_updated'] = consent_status['last_updated'].isoformat()
+
+        return consent_status
+
+    @staticmethod
+    def update_consent_preferences(
+        db: Session,
+        anonymous_id: str,
+        analytics_consent: Optional[bool] = None,
+        marketing_consent: Optional[bool] = None,
+        research_consent: Optional[bool] = None,
+        consent_version: str = '1.0',
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> Dict:
+        """
+        Update user consent preferences.
+
+        Args:
+            db: Database session
+            anonymous_id: Client-generated anonymous ID
+            analytics_consent: New analytics consent status
+            marketing_consent: New marketing consent status
+            research_consent: New research consent status
+            consent_version: Version of consent terms
+            ip_address: Client IP address
+            user_agent: Client user agent
+
+        Returns:
+            Updated consent status
+        """
+        consent_updates = []
+
+        if analytics_consent is not None:
+            event_type = 'consent_given' if analytics_consent else 'consent_revoked'
+            AnalyticsService.track_consent_event(
+                db, anonymous_id, event_type, 'analytics', consent_version,
+                None, ip_address, user_agent
+            )
+            consent_updates.append(('analytics', analytics_consent))
+
+        if marketing_consent is not None:
+            event_type = 'consent_given' if marketing_consent else 'consent_revoked'
+            AnalyticsService.track_consent_event(
+                db, anonymous_id, event_type, 'marketing', consent_version,
+                None, ip_address, user_agent
+            )
+            consent_updates.append(('marketing', marketing_consent))
+
+        if research_consent is not None:
+            event_type = 'consent_given' if research_consent else 'consent_revoked'
+            AnalyticsService.track_consent_event(
+                db, anonymous_id, event_type, 'research', consent_version,
+                None, ip_address, user_agent
+            )
+            consent_updates.append(('research', research_consent))
+
+        return AnalyticsService.get_consent_status(db, anonymous_id)

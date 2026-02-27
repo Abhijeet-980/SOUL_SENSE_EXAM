@@ -1,13 +1,13 @@
 from . import (
     health, assessments, auth, users, profiles, analytics, 
     questions, journal, settings_sync, community, contact, 
-    exams, export, deep_dive, gamification, audit, tasks
+    exams, export, deep_dive, gamification, audit, tasks, consent
 )
 
 __all__ = [
     "health", "assessments", "auth", "users", "profiles", 
     "analytics", "questions", "journal", "settings_sync", 
     "community", "contact", "exams", "export", "deep_dive",
-    "gamification", "audit", "tasks"
+    "gamification", "audit", "tasks", "consent"
 ]
 

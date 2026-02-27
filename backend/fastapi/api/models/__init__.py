@@ -779,6 +779,90 @@ class BackgroundJob(Base):
         }
 
 
+# ============================================================================
+# Privacy & Consent Models (Issue #982)
+# ============================================================================
+
+class ConsentEvent(Base):
+    """
+    Track user consent events for privacy compliance.
+    
+    Records consent_given and consent_revoked events to ensure
+    analytics and data collection only occur with proper consent.
+    """
+    __tablename__ = 'consent_events'
+    __table_args__ = (
+        Index('idx_consent_user_timestamp', 'anonymous_id', 'timestamp'),
+        Index('idx_consent_type_timestamp', 'consent_type', 'timestamp'),
+    )
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    anonymous_id = Column(String(255), nullable=False, index=True)  # Client-generated anonymous ID
+    event_type = Column(String(50), nullable=False, index=True)  # consent_given, consent_revoked
+    consent_type = Column(String(50), nullable=False, index=True)  # analytics, marketing, research
+    consent_version = Column(String(20), nullable=False)  # Version of consent terms
+    event_data = Column(Text, nullable=True)  # JSON string of additional metadata
+    ip_address = Column(String(45), nullable=True)  # IPv4/IPv6 address
+    user_agent = Column(Text, nullable=True)  # Browser/client user agent
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        import json
+        return {
+            "id": self.id,
+            "anonymous_id": self.anonymous_id,
+            "event_type": self.event_type,
+            "consent_type": self.consent_type,
+            "consent_version": self.consent_version,
+            "event_data": json.loads(self.event_data) if self.event_data else None,
+            "ip_address": self.ip_address,
+            "user_agent": self.user_agent,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+        }
+
+
+class UserConsent(Base):
+    """
+    Store current consent status for users.
+    
+    Tracks the current state of user consents to enable
+    consent validation before analytics collection.
+    """
+    __tablename__ = 'user_consents'
+    __table_args__ = (
+        Index('idx_user_consent_type', 'anonymous_id', 'consent_type', unique=True),
+    )
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    anonymous_id = Column(String(255), nullable=False, index=True)
+    consent_type = Column(String(50), nullable=False, index=True)  # analytics, marketing, research
+    consent_granted = Column(Boolean, nullable=False, default=False)
+    consent_version = Column(String(20), nullable=False)
+    granted_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "anonymous_id": self.anonymous_id,
+            "consent_type": self.consent_type,
+            "consent_granted": self.consent_granted,
+            "consent_version": self.consent_version,
+            "granted_at": self.granted_at.isoformat() if self.granted_at else None,
+            "revoked_at": self.revoked_at.isoformat() if self.revoked_at else None,
+            "ip_address": self.ip_address,
+            "user_agent": self.user_agent,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 # Initialize logger
 logging.basicConfig(level=logging.INFO)
 # End of models
