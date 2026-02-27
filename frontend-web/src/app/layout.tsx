@@ -5,6 +5,7 @@ import { ThemeProvider, NavbarController, BottomNavigation } from '@/components/
 import { ToastProvider } from '@/components/ui';
 import { NetworkErrorBanner } from '@/components/common';
 import { AuthProvider } from '@/hooks/useAuth';
+import QueryProvider from '@/components/providers/QueryProvider';
 import { WebVitalsMonitor } from '@/components/monitoring';
 import { SkipLinks } from '@/components/accessibility';
 import { OfflineBanner } from '@/components/offline';
@@ -97,15 +98,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           <SkipLinks />
           <ToastProvider>
-            <AuthProvider>
-              <OfflineBanner />
-              <NetworkErrorBanner />
-              <NavbarController />
-              <div id="main-content" role="main" tabIndex={-1}>
-                {children}
-              </div>
-              <BottomNavigation />
-            </AuthProvider>
+            <QueryProvider>
+              <AuthProvider>
+                <OfflineBanner />
+                <NetworkErrorBanner />
+                <NavbarController />
+                <div id="main-content" role="main" tabIndex={-1}>
+                  {children}
+                </div>
+                <BottomNavigation />
+              </AuthProvider>
+            </QueryProvider>
           </ToastProvider>
         </ThemeProvider>
         <script

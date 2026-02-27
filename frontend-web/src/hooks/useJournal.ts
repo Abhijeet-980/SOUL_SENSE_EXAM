@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api/client';
 
 export interface JournalEntry {
   id: number;
@@ -10,193 +11,134 @@ export interface JournalEntry {
   sentiment_score: number;
   created_at: string;
   updated_at: string;
+  timestamp: string; // Add timestamp as it's used for keyset pagination
 }
+
 export interface JournalQueryParams {
-  page?: number;
-  per_page?: number;
-  start_date?: string;
-  end_date?: string;
-  mood_min?: number;
-  mood_max?: number;
+  limit?: number;
+  cursor?: string;
+  startDate?: string;
+  endDate?: string;
+  moodMin?: number;
+  moodMax?: number;
   tags?: string[];
   search?: string;
 }
-interface JournalResponse {
-  entries: JournalEntry[];
-  total: number;
-  page: number;
-  per_page: number;
+
+interface JournalCursorResponse {
+  data: JournalEntry[];
+  next_cursor: string | null;
+  has_more: boolean;
 }
 
-const API_BASE = '/api/v1/journal';
+const API_BASE = '/journal'; // apiClient prepends the rest
 
-export function useJournal(initialParams: JournalQueryParams = {}) {
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [entry, setEntry] = useState<JournalEntry | null>(null);
-  const [total, setTotal] = useState(0);
-  const [params, setParams] = useState<JournalQueryParams>(initialParams);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export function useJournal(filters: JournalQueryParams = {}) {
+  const queryClient = useQueryClient();
 
-  //build query string
-  const buildQueryString = (params: JournalQueryParams) => {
+  // Helper to build query string
+  const buildQueryString = (params: Record<string, any>) => {
     const query = new URLSearchParams();
-
-    (Object.keys(params) as (keyof JournalQueryParams)[]).forEach((key) => {
-      const value = params[key];
-      if (value === undefined || value === null) return;
-
-      if (key === 'tags' && Array.isArray(value)) {
-        query.append('tags', value.join(','));
-      } else {
-        query.append(key, String(value));
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        if (Array.isArray(value)) {
+          if (value.length > 0) query.append(key, value.join(','));
+        } else {
+          query.append(key, String(value));
+        }
       }
     });
     return query.toString();
   };
-  //Fetch list
-  const fetchEntries = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
 
-    try {
+  // Infinite Scroll Query
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: ['journals', filters],
+    queryFn: async ({ pageParam = null }) => {
+      const params: any = {
+        limit: filters.limit || 25,
+        cursor: pageParam as string | null,
+      };
+
+      if (filters.startDate) params.start_date = filters.startDate;
+      if (filters.endDate) params.end_date = filters.endDate;
+      if (filters.search) params.search = filters.search;
+      if (filters.tags && filters.tags.length > 0) params.tags = filters.tags;
+
       const queryString = buildQueryString(params);
-      const res = await fetch(`${API_BASE}?${queryString}`);
-      if (!res.ok) throw new Error('Failed to fetch entries');
+      return apiClient<JournalCursorResponse>(`${API_BASE}/?${queryString}`);
+    },
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    initialPageParam: null as string | null,
+    staleTime: 30000, // 30 seconds
+  });
 
-      const data: JournalResponse = await res.json();
-      setEntries(data.entries);
-      setTotal(data.total);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [params]);
+  // Flatten entries from all pages
+  const entries = data?.pages.flatMap((page) => page.data) ?? [];
 
-  //Fetch single entry
+  // Mutations
+  const createMutation = useMutation({
+    mutationFn: async (newEntry: any) => {
+      return apiClient.post(API_BASE + '/', newEntry);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['journals'] });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: number; updates: any }) => {
+      return apiClient.put(`${API_BASE}/${id}`, updates);
+    },
+    onSuccess: (updatedData: any) => {
+      queryClient.invalidateQueries({ queryKey: ['journals'] });
+      queryClient.setQueryData(['journal', updatedData.id], updatedData);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiClient.delete(`${API_BASE}/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['journals'] });
+    },
+  });
+
+  // Single Entry Fetch (standard query)
   const fetchEntry = async (id: number) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      //const queryString = buildQueryString(params);
-      const res = await fetch(`${API_BASE}/${id}`);
-      if (!res.ok) throw new Error('Failed to fetch entry');
-
-      const data = await res.json();
-      setEntry(data);
-      //setTotal(data.total);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
+    return queryClient.fetchQuery({
+      queryKey: ['journal', id],
+      queryFn: async () => {
+        return apiClient(`${API_BASE}/${id}`);
+      }
+    });
   };
-  //create entry
-  const createEntry = async (newEntry: Partial<JournalEntry>) => {
-    const tempId = Date.now();
 
-    const optimisticEntry: JournalEntry = {
-      id: tempId,
-      content: newEntry.content || '',
-      mood_rating: newEntry.mood_rating || 0,
-      energy_level: newEntry.energy_level || 0,
-      stress_level: newEntry.stress_level || 0,
-      tags: newEntry.tags || [],
-      sentiment_score: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    setEntries((prev: JournalEntry[]) => [optimisticEntry, ...prev]);
-
-    try {
-      const res = await fetch(API_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newEntry),
-      });
-      if (!res.ok) throw new Error('Failed to create entry');
-
-      const saved = await res.json();
-
-      setEntries((prev: JournalEntry[]) =>
-        prev.map((e: JournalEntry) => (e.id === tempId ? saved : e))
-      );
-      return saved;
-    } catch (err: any) {
-      setEntries((prev: JournalEntry[]) => prev.filter((e) => e.id !== tempId));
-      setError(err.message);
-      throw err;
-    }
-  };
-  //update entry
-  const updateEntry = async (id: number, updates: Partial<JournalEntry>) => {
-    const previous = entries;
-
-    setEntries((prev: JournalEntry[]) =>
-      prev.map((e: JournalEntry) => (e.id === id ? { ...e, ...updates } : e))
-    );
-
-    try {
-      const res = await fetch(`${API_BASE}/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      if (!res.ok) throw new Error('Failed to update entry');
-
-      const updated = await res.json();
-
-      setEntries((prev: JournalEntry[]) =>
-        prev.map((e: JournalEntry) => (e.id === id ? updated : e))
-      );
-      return updated;
-    } catch (err: any) {
-      setEntries(previous);
-      setError(err.message);
-      throw err;
-    }
-  };
-  //delete entry
-  const deleteEntry = async (id: number) => {
-    const previous = entries;
-
-    setEntries((prev: JournalEntry[]) => prev.filter((e) => e.id !== id));
-    try {
-      const res = await fetch(`${API_BASE}/${id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) throw new Error('Failed to delete entry');
-    } catch (err: any) {
-      setEntries(previous);
-      setError(err.message);
-      throw err;
-    }
-  };
-  useEffect(() => {
-    fetchEntries();
-  }, [fetchEntries]);
   return {
     entries,
-    entry,
-    total,
-    page: params.page || 1,
-    per_page: params.per_page || 10,
-    totalPages: Math.ceil(total / (params.per_page || 10)),
-    hasNextPage: (params.page || 1) * (params.per_page || 10) < total,
-    hasPrevPage: (params.page || 1) > 1,
     isLoading,
-    error,
-    setParams,
-    setPage: (p: number) => setParams((prev) => ({ ...prev, page: p })),
-    setFilters: (f: Partial<JournalQueryParams>) =>
-      setParams((prev) => ({ ...prev, ...f, page: 1 })),
-    refetch: fetchEntries,
-    loadMore: () => setParams((prev) => ({ ...prev, page: (prev.page || 1) + 1 })),
+    isError,
+    error: error instanceof Error ? error.message : 'Unknown error',
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    refetch,
+    loadMore: fetchNextPage,
+    createEntry: createMutation.mutateAsync,
+    updateEntry: (id: number, updates: any) =>
+      updateMutation.mutateAsync({ id, updates }),
+    deleteEntry: deleteMutation.mutateAsync,
     fetchEntry,
-    createEntry,
-    updateEntry,
-    deleteEntry,
+    total: entries.length,
   };
 }

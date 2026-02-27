@@ -204,6 +204,71 @@ class JournalService:
             
         return entry
 
+    def get_entries_cursor(
+        self,
+        current_user: User,
+        limit: int = 20,
+        cursor: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> Tuple[List[JournalEntry], Optional[str], bool]:
+        """Get journal entries using keyset (cursor) pagination for high performance."""
+        
+        # Cap limit at 100
+        limit = min(limit, 100)
+        
+        query = self.db.query(JournalEntry).filter(
+            JournalEntry.user_id == current_user.id,
+            JournalEntry.is_deleted == False
+        )
+        
+        # Date filtering
+        if start_date:
+            query = query.filter(JournalEntry.entry_date >= start_date)
+        if end_date:
+            query = query.filter(JournalEntry.entry_date <= end_date)
+
+        # Apply Keyset Pagination (Cursor)
+        if cursor:
+            try:
+                # Format: timestamp|id for tie-breaking
+                if "|" in cursor:
+                    cursor_ts, cursor_id = cursor.split("|")
+                    query = query.filter(
+                        or_(
+                            JournalEntry.timestamp < cursor_ts,
+                            and_(
+                                JournalEntry.timestamp == cursor_ts,
+                                JournalEntry.id < int(cursor_id)
+                            )
+                        )
+                    )
+                else:
+                    # Fallback for simple timestamp cursor
+                    query = query.filter(JournalEntry.timestamp < cursor)
+            except (ValueError, IndexError):
+                pass # Gracefully ignore malformed cursors
+        
+        # Fetch limit + 1 to determine if has_more
+        entries = query.order_by(
+            JournalEntry.timestamp.desc(),
+            JournalEntry.id.desc()
+        ).limit(limit + 1).all()
+        
+        has_more = len(entries) > limit
+        if has_more:
+            entries = entries[:limit]
+            last_entry = entries[-1]
+            next_cursor = f"{last_entry.timestamp}|{last_entry.id}"
+        else:
+            next_cursor = None
+        
+        # Attach dynamic fields
+        for entry in entries:
+            entry.reading_time_mins = round(entry.word_count / 200, 2)
+        
+        return entries, next_cursor, has_more
+
     def get_entries(
         self,
         current_user: User,
