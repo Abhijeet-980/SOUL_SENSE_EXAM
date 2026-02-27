@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime, UTC
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
 from api.services.exam_service import ExamService
 from api.schemas import ExamResponseCreate, ExamResultCreate
 from api.root_models import User, Score, Response
@@ -135,6 +136,72 @@ class TestExamService:
         assert result == mock_score_instance
         # When encryption is not available, reflection text should be passed as plain text
         # This is verified by the Score constructor call
+
+    @patch('api.services.exam_service.QuestionService')
+    def test_save_score_validation_complete(self, mock_question_service):
+        """Test that save_score succeeds when all questions are answered."""
+        
+        mock_db = MagicMock(spec=Session)
+        mock_user = MagicMock(spec=User)
+        mock_user.id = 1
+        mock_user.username = "testuser"
+
+        # Mock questions for age 25
+        mock_questions = [MagicMock(), MagicMock(), MagicMock()]  # 3 questions
+        mock_question_service.get_questions_by_age.return_value = mock_questions
+
+        # Mock responses count (3 responses = complete)
+        mock_response_query = MagicMock()
+        mock_response_query.filter.return_value = mock_response_query
+        mock_response_query.count.return_value = 3
+        mock_db.query.return_value = mock_response_query
+
+        mock_data = MagicMock()
+        mock_data.age = 25
+        mock_data.total_score = 75
+        mock_data.sentiment_score = 0.8
+        mock_data.reflection_text = "Test reflection"
+        mock_data.is_rushed = False
+        mock_data.is_inconsistent = False
+        mock_data.detailed_age_group = "young_adult"
+
+        with patch('api.services.exam_service.Score') as mock_score_class, \
+             patch('api.services.exam_service.CRYPTO_AVAILABLE', False), \
+             patch('api.services.exam_service.GamificationService'):
+            
+            mock_score_instance = MagicMock()
+            mock_score_class.return_value = mock_score_instance
+
+            result = ExamService.save_score(mock_db, mock_user, "session123", mock_data)
+
+            assert result == mock_score_instance
+
+    @patch('api.services.exam_service.QuestionService')
+    def test_save_score_validation_incomplete(self, mock_question_service):
+        """Test that save_score fails when questions are unanswered."""
+        mock_db = MagicMock(spec=Session)
+        mock_user = MagicMock(spec=User)
+        mock_user.id = 1
+        mock_user.username = "testuser"
+
+        # Mock questions for age 25
+        mock_questions = [MagicMock(), MagicMock(), MagicMock()]  # 3 questions
+        mock_question_service.get_questions_by_age.return_value = mock_questions
+
+        # Mock responses count (2 responses = incomplete)
+        mock_response_query = MagicMock()
+        mock_response_query.filter.return_value = mock_response_query
+        mock_response_query.count.return_value = 2
+        mock_db.query.return_value = mock_response_query
+
+        mock_data = MagicMock()
+        mock_data.age = 25
+
+        with pytest.raises(HTTPException) as exc_info:
+            ExamService.save_score(mock_db, mock_user, "session123", mock_data)
+
+        assert exc_info.value.status_code == 400
+        assert "1 question(s) unanswered" in exc_info.value.detail
 
     def test_get_history_success(self):
         """Test successful history retrieval."""

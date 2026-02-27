@@ -4,6 +4,7 @@ import '@/styles/globals.css';
 import { ThemeProvider, NavbarController, BottomNavigation } from '@/components/layout';
 import { NetworkErrorBanner } from '@/components/common';
 import { AuthProvider } from '@/hooks/useAuth';
+import QueryProvider from '@/components/providers/QueryProvider';
 import { WebVitalsMonitor } from '@/components/monitoring';
 import { SkipLinks } from '@/components/accessibility';
 import { OfflineBanner } from '@/components/offline';
@@ -90,6 +91,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning>
         <WebVitalsMonitor />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <SkipLinks />
+          <ToastProvider>
+            <QueryProvider>
+              <AuthProvider>
+                <OfflineBanner />
+                <NetworkErrorBanner />
+                <NavbarController />
+                <div id="main-content" role="main" tabIndex={-1}>
+                  {children}
+                </div>
+                <BottomNavigation />
+              </AuthProvider>
+            </QueryProvider>
+          </ToastProvider>
+        </ThemeProvider>
         <Providers>
           <ThemeProvider
             attribute="class"
