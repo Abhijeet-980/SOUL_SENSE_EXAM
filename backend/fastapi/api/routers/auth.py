@@ -108,13 +108,13 @@ async def check_username_availability(
 
 
 @router.post("/register", response_model=None, responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}})
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 async def register(
     request: Request,
-    user: UserCreate, 
+    user: UserCreate,
     auth_service: AuthService = Depends()
 ):
-    """Register a new user. Rate limited to 10 requests per minute per IP/user."""
+    """Register a new user. Rate limited to 5 requests per minute per IP/user."""
     success, new_user, message = auth_service.register_user(user)
     
     if not success:
@@ -128,14 +128,14 @@ async def register(
 
 
 @router.post("/login", response_model=Token, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}, 202: {"model": TwoFactorAuthRequiredResponse}})
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 async def login(
     response: Response,
-    login_request: LoginRequest, 
+    login_request: LoginRequest,
     request: Request,
     auth_service: AuthService = Depends()
 ):
-    """Login endpoint. Rate limited to 10 requests per minute per IP/user."""
+    """Login endpoint. Rate limited to 5 requests per minute per IP/user."""
     ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "Unknown")
 
@@ -350,6 +350,7 @@ async def initiate_password_reset(
 
 
 @router.post("/password-reset/complete")
+@limiter.limit("3/minute")
 async def complete_password_reset(
     request: PasswordResetComplete,
     req_obj: Request, # Need Request object for IP
@@ -358,6 +359,7 @@ async def complete_password_reset(
     from ..middleware.rate_limiter import password_reset_limiter
     """
     Verify OTP and set new password.
+    Rate limited to 3 requests per minute per IP/user.
     """
     # Rate limit by IP for OTP attempts
     real_ip = get_real_ip(req_obj)
@@ -435,7 +437,7 @@ async def disable_2fa(
 # ============================================================================
 
 @router.post("/oauth/login", response_model=Token, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 async def oauth_login(
     response: Response,
     request: Request,
@@ -443,7 +445,7 @@ async def oauth_login(
     access_token: Optional[str] = Form(None, description="Access token from OAuth provider"),
     auth_service: AuthService = Depends()
 ):
-    """Login with OAuth token (e.g., from Auth0)."""
+    """Login with OAuth token (e.g., from Auth0). Rate limited to 5 requests per minute per IP/user."""
     # Verify the token with the OAuth provider
     # For Auth0, verify the JWT
     # This is a placeholder - implement actual verification
