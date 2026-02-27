@@ -1,9 +1,10 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from ..services.db_service import get_db
 from ..services.deep_dive_service import DeepDiveService
+from backend.fastapi.app.core import NotFoundError
 from ..schemas import (
     DeepDiveType, 
     DeepDiveQuestion, 
@@ -42,7 +43,7 @@ async def get_questions(
     try:
         return DeepDiveService.get_questions(assessment_type, count)
     except Exception:
-        raise HTTPException(status_code=404, detail="Assessment type not found")
+        raise NotFoundError(resource="Assessment type", resource_id=assessment_type)
 
 @router.post("/submit", response_model=DeepDiveResultResponse)
 async def submit_deep_dive(

@@ -1,6 +1,6 @@
 """API router for exam write operations."""
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from ..services.db_service import get_db
 from ..services.exam_service import ExamService
@@ -8,6 +8,7 @@ from ..services.results_service import AssessmentResultsService
 from ..schemas import ExamResponseCreate, ExamResultCreate, AssessmentResponse, AssessmentListResponse, DetailedExamResult
 from .auth import get_current_user
 from ..models import User
+from backend.fastapi.app.core import NotFoundError, InternalServerError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +36,10 @@ async def save_response(
     try:
         success = ExamService.save_response(db, current_user, session_id, response_data)
         if not success:
-            raise HTTPException(status_code=500, detail="Failed to save response")
+            raise InternalServerError(message="Failed to save response")
         return {"status": "success"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise InternalServerError(message="Failed to save response", details=[{"error": str(e)}])
 
 @router.post("/{session_id}/complete", response_model=AssessmentResponse)
 async def complete_exam(
@@ -54,7 +55,7 @@ async def complete_exam(
         score = ExamService.save_score(db, current_user, session_id, result_data)
         return AssessmentResponse.model_validate(score)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise InternalServerError(message="Failed to save exam results", details=[{"error": str(e)}])
 
 @router.get("/history", response_model=AssessmentListResponse)
 async def get_exam_history(
@@ -77,7 +78,7 @@ async def get_exam_history(
             page_size=page_size
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise InternalServerError(message="Failed to retrieve exam history", details=[{"error": str(e)}])
 
 @router.get("/{id}/results", response_model=DetailedExamResult)
 async def get_detailed_results(
@@ -91,10 +92,14 @@ async def get_detailed_results(
     try:
         result = AssessmentResultsService.get_detailed_results(db, id, current_user.id)
         if not result:
-            raise HTTPException(status_code=404, detail="Assessment not found or access denied")
+            raise NotFoundError(
+                resource="Assessment",
+                resource_id=str(id),
+                details=[{"message": "Assessment not found or access denied"}]
+            )
         return result
-    except HTTPException:
+    except NotFoundError:
         raise
     except Exception as e:
         logger.error(f"Error fetching detailed results for assessment {id}: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise InternalServerError(message="Failed to retrieve assessment results")

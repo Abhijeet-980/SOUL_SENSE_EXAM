@@ -12,6 +12,7 @@ Provides authenticated CRUD endpoints for all user profile types:
 from typing import Annotated
 from fastapi import APIRouter, Depends, status, Request
 from ..utils.limiter import limiter
+from backend.fastapi.app.core import NotFoundError
 
 from ..schemas import (
     # User Settings
@@ -76,10 +77,9 @@ async def get_settings(
     """
     settings = profile_service.get_user_settings(current_user.id)
     if not settings:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User settings not found. Create them first."
+        raise NotFoundError(
+            resource="User settings",
+            details=[{"message": "Create settings first using POST /profiles/settings"}]
         )
     return settings
 
@@ -160,11 +160,7 @@ async def get_consent(
     """
     settings = profile_service.get_user_settings(current_user.id)
     if not settings:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User settings not found."
-        )
+        raise NotFoundError(resource="User settings")
     return DataConsentResponse(
         consent_ml_training=settings.consent_ml_training,
         consent_aggregated_research=settings.consent_aggregated_research
@@ -208,11 +204,7 @@ async def get_crisis_settings(
     """
     settings = profile_service.get_user_settings(current_user.id)
     if not settings:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User settings not found."
-        )
+        raise NotFoundError(resource="User settings")
     return CrisisSettingsResponse(
         crisis_mode_enabled=settings.crisis_mode_enabled
     )
@@ -254,10 +246,9 @@ async def get_medical_profile(
     """
     profile = profile_service.get_medical_profile(current_user.id)
     if not profile:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Medical profile not found. Create it first."
+        raise NotFoundError(
+            resource="Medical profile",
+            details=[{"message": "Create medical profile first using POST /profiles/medical"}]
         )
     return profile
 
@@ -340,10 +331,9 @@ async def get_personal_profile(
     """
     profile = profile_service.get_personal_profile(current_user.id)
     if not profile:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Personal profile not found. Create it first."
+        raise NotFoundError(
+            resource="Personal profile",
+            details=[{"message": "Create personal profile first using POST /profiles/personal"}]
         )
     return profile
 
@@ -432,10 +422,9 @@ async def get_strengths(
     """
     strengths = profile_service.get_user_strengths(current_user.id)
     if not strengths:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User strengths not found. Create them first."
+        raise NotFoundError(
+            resource="User strengths",
+            details=[{"message": "Create strengths first using POST /profiles/strengths"}]
         )
     return strengths
 
@@ -517,10 +506,9 @@ async def get_emotional_patterns(
     """
     patterns = profile_service.get_emotional_patterns(current_user.id)
     if not patterns:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Emotional patterns not found. Create them first."
+        raise NotFoundError(
+            resource="Emotional patterns",
+            details=[{"message": "Create emotional patterns first using POST /profiles/emotional-patterns"}]
         )
     return patterns
 

@@ -6,7 +6,7 @@ Provides authenticated CRUD endpoints for user management.
 
 from typing import Annotated, List, Dict
 from sqlalchemy.orm import Session
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
+from fastapi import APIRouter, Depends, status, UploadFile, File, Request
 import os
 import shutil
 from pathlib import Path
@@ -28,6 +28,7 @@ from ..services.profile_service import ProfileService
 from ..routers.auth import get_current_user
 from ..services.db_service import get_db
 from ..models import User
+from backend.fastapi.app.core import NotFoundError, ValidationError, InternalServerError
 
 router = APIRouter(tags=["Users"])
 
@@ -227,10 +228,7 @@ async def get_user(
     """
     user = user_service.get_user_by_id(user_id)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+        raise NotFoundError(resource="User", resource_id=str(user_id))
     
     return UserResponse(
         id=user.id,
@@ -348,9 +346,9 @@ async def upload_user_avatar(
     # Validate file type
     allowed_types = ["image/png", "image/jpeg", "image/jpg"]
     if file.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid file type. Only PNG, JPG, and JPEG files are allowed."
+        raise ValidationError(
+            message="Invalid file type. Only PNG, JPG, and JPEG files are allowed.",
+            details=[{"field": "file", "error": "Invalid file type"}]
         )
 
     # Validate file size (5MB limit)
@@ -359,9 +357,9 @@ async def upload_user_avatar(
     file_size = len(content)
 
     if file_size > 5 * 1024 * 1024:  # 5MB
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File too large. Maximum size is 5MB."
+        raise ValidationError(
+            message="File too large. Maximum size is 5MB.",
+            details=[{"field": "file", "error": "File size exceeds 5MB limit"}]
         )
 
     # Create avatars directory if it doesn't exist
@@ -378,9 +376,9 @@ async def upload_user_avatar(
         with open(avatar_path, "wb") as buffer:
             buffer.write(content)
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save avatar file: {str(e)}"
+        raise InternalServerError(
+            message="Failed to save avatar file",
+            details=[{"error": str(e)}]
         )
 
     # Update user's personal profile with avatar path
@@ -403,9 +401,9 @@ async def upload_user_avatar(
         # Clean up file if database update fails
         if avatar_path.exists():
             avatar_path.unlink()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update profile: {str(e)}"
+        raise InternalServerError(
+            message="Failed to update profile",
+            details=[{"error": str(e)}]
         )
 
     return AvatarUploadResponse(
