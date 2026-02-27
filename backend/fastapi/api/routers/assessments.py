@@ -1,8 +1,9 @@
 """API router for assessment endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from ..services.db_service import get_db, AssessmentService
+from backend.fastapi.app.core import NotFoundError
 from ..schemas import (
     AssessmentListResponse,
     AssessmentResponse,
@@ -81,7 +82,7 @@ async def get_assessment(
     assessment = AssessmentService.get_assessment_by_id(db=db, assessment_id=assessment_id)
     
     if not assessment:
-        raise HTTPException(status_code=404, detail="Assessment not found")
+        raise NotFoundError(resource="Assessment", resource_id=str(assessment_id))
     
     # Get response count
     responses = AssessmentService.get_assessment_responses(db=db, assessment_id=assessment_id)

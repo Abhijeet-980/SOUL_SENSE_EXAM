@@ -1,6 +1,6 @@
 from datetime import timedelta
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, BackgroundTasks
+from fastapi import APIRouter, Depends, status, Request, Response, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 
@@ -10,12 +10,20 @@ from ..services.db_service import get_db
 from ..services.auth_service import AuthService
 from ..services.captcha_service import captcha_service
 from ..utils.network import get_real_ip
-from ..constants.errors import ErrorCode
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
-from ..exceptions import AuthException
 from ..models import User
-from ..exceptions import AuthException, APIException, RateLimitException
 from ..utils.limiter import limiter
+from backend.fastapi.app.core import (
+    AuthenticationError,
+    AuthorizationError,
+    InvalidCredentialsError,
+    TokenExpiredError,
+    ValidationError,
+    NotFoundError,
+    RateLimitError,
+    ResourceAlreadyExistsError,
+    BusinessLogicError
+)
 # Rate limiters imported inline within routes to avoid potential circular/timing issues
 from sqlalchemy.orm import Session
 from cachetools import TTLCache
@@ -45,11 +53,6 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
     Get current user from JWT token.
     This remains in the router/dependency layer as it couples HTTP security with logic.
     """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
     try:
         # Pydantic schema validation for TokenData could be used here
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.jwt_algorithm])
@@ -58,33 +61,30 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
         from ..root_models import TokenRevocation
         revoked = db.query(TokenRevocation).filter(TokenRevocation.token_str == token).first()
         if revoked:
-            raise credentials_exception
+            raise TokenExpiredError("Token has been revoked")
 
         username: str = payload.get("sub")
         if not username:
-            raise credentials_exception
+            raise InvalidCredentialsError()
     except JWTError:
-        raise credentials_exception
+        raise InvalidCredentialsError()
 
     user = db.query(User).filter(User.username == username).first()
     if user is None:
-        raise credentials_exception
+        raise InvalidCredentialsError()
     
     # Set user_id in request state for rate limiting and auditing
     request.state.user_id = user.id
     # Check if user is active
     if not getattr(user, 'is_active', True):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
+        raise BusinessLogicError(
+            message="User account is inactive",
+            code="INACTIVE_ACCOUNT"
         )
     
     # Check if user is deleted
     if getattr(user, 'is_deleted', False) or getattr(user, 'deleted_at', None) is not None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is deleted"
-        )
+        raise AuthorizationError(message="User account is deleted")
     
     return user
 
@@ -118,9 +118,9 @@ async def register(
     success, new_user, message = auth_service.register_user(user)
     
     if not success:
-         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=message
+        raise BusinessLogicError(
+            message=message,
+            code="REGISTRATION_FAILED"
         )
          
     # Always return a generic success message to prevent enumeration
@@ -141,9 +141,9 @@ async def login(
 
     # 1. Start with CAPTCHA Validation (Before Rate Limiting to prevent spam cheapness)
     if not captcha_service.validate_captcha(login_request.session_id, login_request.captcha_input):
-         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The CAPTCHA validation failed. Please refresh the CAPTCHA and try again."
+        raise ValidationError(
+            message="The CAPTCHA validation failed. Please refresh the CAPTCHA and try again.",
+            details=[{"field": "captcha_input", "error": "Invalid CAPTCHA"}]
         )
 
     user = auth_service.authenticate_user(login_request.identifier, login_request.password, ip_address=ip, user_agent=user_agent)
@@ -255,9 +255,9 @@ async def refresh(
 ):
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
-        raise AuthException(
-            code=ErrorCode.AUTH_INVALID_TOKEN,
-            message="Refresh token missing"
+        raise AuthenticationError(
+            message="Refresh token missing",
+            code="REFRESH_TOKEN_MISSING"
         )
         
     access_token, new_refresh_token = auth_service.refresh_access_token(refresh_token)
@@ -326,7 +326,7 @@ async def initiate_password_reset(
     real_ip = get_real_ip(request)
     is_limited, wait_time = password_reset_limiter.is_rate_limited(real_ip)
     if is_limited:
-        raise RateLimitException(
+        raise RateLimitError(
             message=f"Too many reset requests. Please try again in {wait_time}s.",
             wait_seconds=wait_time
         )
@@ -334,7 +334,7 @@ async def initiate_password_reset(
     # Rate limit by Email
     is_limited, wait_time = password_reset_limiter.is_rate_limited(f"reset_{reset_data.email}")
     if is_limited:
-        raise RateLimitException(
+        raise RateLimitError(
             message=f"Multiple requests for this email. Please try again in {wait_time}s.",
             wait_seconds=wait_time
         )
@@ -342,9 +342,9 @@ async def initiate_password_reset(
     success, message = await auth_service.initiate_password_reset(reset_data.email, background_tasks)
     if not success:
         # Rate limit or server error
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=message
+        raise BusinessLogicError(
+            message=message,
+            code="PASSWORD_RESET_FAILED"
         )
     return {"message": message}
 
@@ -363,7 +363,7 @@ async def complete_password_reset(
     real_ip = get_real_ip(req_obj)
     is_limited, wait_time = password_reset_limiter.is_rate_limited(real_ip)
     if is_limited:
-         raise RateLimitException(
+        raise RateLimitError(
             message=f"Too many attempts. Please try again in {wait_time}s.",
             wait_seconds=wait_time
         )
@@ -374,9 +374,9 @@ async def complete_password_reset(
         request.new_password
     )
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=message
+        raise ValidationError(
+            message=message,
+            details=[{"field": "otp_code", "error": "Invalid or expired OTP"}]
         )
     return {"message": message}
 
@@ -391,7 +391,10 @@ async def initiate_2fa_setup(
     """Send OTP to verify email before enabling 2FA."""
     if auth_service.send_2fa_setup_otp(current_user):
         return {"message": "OTP sent to your email"}
-    raise HTTPException(status_code=400, detail="Could not send OTP. Check email configuration.")
+    raise BusinessLogicError(
+        message="Could not send OTP. Check email configuration.",
+        code="OTP_SEND_FAILED"
+    )
 
 
 @router.post("/2fa/enable")
@@ -405,7 +408,10 @@ async def enable_2fa(
     """Enable 2FA after verifying OTP."""
     if auth_service.enable_2fa(current_user.id, confirm_request.code):
         return {"message": "2FA enabled successfully"}
-    raise HTTPException(status_code=400, detail="Invalid code")
+    raise ValidationError(
+        message="Invalid verification code",
+        details=[{"field": "code", "error": "Invalid or expired verification code"}]
+    )
 
 
 @router.post("/2fa/disable")
@@ -418,4 +424,7 @@ async def disable_2fa(
     """Disable 2FA."""
     if auth_service.disable_2fa(current_user.id):
         return {"message": "2FA disabled"}
-    raise HTTPException(status_code=400, detail="Action failed")
+    raise BusinessLogicError(
+        message="Failed to disable 2FA",
+        code="2FA_DISABLE_FAILED"
+    )

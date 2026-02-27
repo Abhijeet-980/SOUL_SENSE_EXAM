@@ -13,7 +13,7 @@ Endpoints:
 """
 
 from typing import Annotated, List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
 from ..schemas import (
     SyncSettingCreate,
@@ -27,6 +27,7 @@ from ..services.settings_sync_service import SettingsSyncService
 from ..routers.auth import get_current_user
 from ..services.db_service import get_db
 from ..models import User
+from backend.fastapi.app.core import NotFoundError, ConflictError
 
 router = APIRouter(tags=["Settings Sync"])
 
@@ -84,10 +85,7 @@ async def get_setting(
     """
     setting = service.get_setting(current_user.id, key)
     if not setting:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Setting '{key}' not found"
-        )
+        raise NotFoundError(resource="Setting", resource_id=key)
     
     return SyncSettingResponse(
         key=setting.key,
@@ -131,14 +129,14 @@ async def upsert_setting(
     
     if not success:
         # Return 409 Conflict with current value
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "message": error,
+        raise ConflictError(
+            message=error or "Setting version conflict",
+            code="SETTING_VERSION_CONFLICT",
+            details=[{
                 "key": key,
                 "current_version": setting.version,
                 "current_value": setting.value
-            }
+            }]
         )
     
     return SyncSettingResponse(
@@ -165,10 +163,7 @@ async def delete_setting(
     """
     deleted = service.delete_setting(current_user.id, key)
     if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Setting '{key}' not found"
-        )
+        raise NotFoundError(resource="Setting", resource_id=key)
     return None
 
 

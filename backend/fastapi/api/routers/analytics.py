@@ -1,11 +1,12 @@
 """Analytics API router - Aggregated, non-sensitive data only."""
-from fastapi import APIRouter, Depends, Query, Request, HTTPException
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel
 import logging
 from ..services.db_service import get_db
 from ..services.analytics_service import AnalyticsService
+from backend.fastapi.app.core import AuthorizationError, InternalServerError
 from ..schemas import (
     AnalyticsSummary,
     TrendAnalytics,
@@ -300,9 +301,9 @@ async def get_user_patterns(
     """
     # Check privacy settings
     if not current_user.settings or not current_user.settings.pattern_analysis_enabled:
-        raise HTTPException(
-            status_code=403,
-            detail="Pattern analysis is disabled in your privacy settings. Please enable it in your account settings to use this feature."
+        raise AuthorizationError(
+            message="Pattern analysis is disabled in your privacy settings. Please enable it in your account settings to use this feature.",
+            code="PRIVACY_SETTING_DISABLED"
         )
 
     from ..ml.pattern_recognition import PatternRecognitionService
@@ -341,9 +342,9 @@ async def get_user_correlations(
     """
     # Check privacy settings
     if not current_user.settings or not current_user.settings.correlation_analysis_enabled:
-        raise HTTPException(
-            status_code=403,
-            detail="Correlation analysis is disabled in your privacy settings. Please enable it in your account settings to use this feature."
+        raise AuthorizationError(
+            message="Correlation analysis is disabled in your privacy settings. Please enable it in your account settings to use this feature.",
+            code="PRIVACY_SETTING_DISABLED"
         )
 
     from ..ml.analytics_service import AnalyticsService
@@ -387,9 +388,9 @@ async def get_user_forecast(
     """
     # Check privacy settings
     if not current_user.settings or not current_user.settings.forecast_enabled:
-        raise HTTPException(
-            status_code=403,
-            detail="Forecast analysis is disabled in your privacy settings. Please enable it in your account settings to use this feature."
+        raise AuthorizationError(
+            message="Forecast analysis is disabled in your privacy settings. Please enable it in your account settings to use this feature.",
+            code="PRIVACY_SETTING_DISABLED"
         )
 
     from ..ml.analytics_service import AnalyticsService
@@ -427,9 +428,9 @@ async def get_user_benchmarks(
     """
     # Check privacy settings
     if not current_user.settings or not current_user.settings.benchmark_sharing_enabled:
-        raise HTTPException(
-            status_code=403,
-            detail="Benchmark sharing is disabled in your privacy settings. Please enable it in your account settings to use this feature."
+        raise AuthorizationError(
+            message="Benchmark sharing is disabled in your privacy settings. Please enable it in your account settings to use this feature.",
+            code="PRIVACY_SETTING_DISABLED"
         )
 
     from ..ml.analytics_service import AnalyticsService
@@ -464,9 +465,9 @@ async def get_user_recommendations(current_user: User = Depends(get_current_user
     """
     # Check privacy settings
     if not current_user.settings or not current_user.settings.recommendation_engine_enabled:
-        raise HTTPException(
-            status_code=403,
-            detail="Recommendation engine is disabled in your privacy settings. Please enable it in your account settings to use this feature."
+        raise AuthorizationError(
+            message="Recommendation engine is disabled in your privacy settings. Please enable it in your account settings to use this feature.",
+            code="PRIVACY_SETTING_DISABLED"
         )
 
     from ..ml.analytics_service import AnalyticsService
@@ -578,7 +579,7 @@ async def track_web_vitals(
 
     except Exception as e:
         logger.error(f"Error tracking Web Vitals: {e}")
-        raise HTTPException(status_code=500, detail="Failed to track metric")
+        raise InternalServerError(message="Failed to track metric")
 
 
 @router.post("/performance-summary", status_code=201)
@@ -605,4 +606,4 @@ async def track_performance_summary(
 
     except Exception as e:
         logger.error(f"Error tracking performance summary: {e}")
-        raise HTTPException(status_code=500, detail="Failed to track summary")
+        raise InternalServerError(message="Failed to track summary")

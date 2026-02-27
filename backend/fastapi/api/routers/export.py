@@ -10,7 +10,7 @@ Async Export Flow (Background Tasks):
 3. GET /api/v1/reports/export/{export_id}/download → Download when ready
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Body, BackgroundTasks, status
+from fastapi import APIRouter, Depends, Query, Body, BackgroundTasks, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -24,6 +24,13 @@ from ..services.export_service_v2 import ExportServiceV2
 from ..services.background_task_service import BackgroundTaskService, TaskStatus, TaskType
 from ..models import User, ExportRecord, BackgroundJob
 from .auth import get_current_user
+from backend.fastapi.app.core import (
+    NotFoundError,
+    ValidationError,
+    AuthorizationError,
+    InternalServerError,
+    RateLimitError
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -51,9 +58,9 @@ def _check_rate_limit(user_id: int) -> None:
     # Check current count
     current_count = len(_export_rate_limits.get(user_id, []))
     if current_count >= MAX_REQUESTS_PER_HOUR:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Rate limit exceeded. Maximum {MAX_REQUESTS_PER_HOUR} exports per hour."
+        raise RateLimitError(
+            message=f"Rate limit exceeded. Maximum {MAX_REQUESTS_PER_HOUR} exports per hour.",
+            wait_seconds=3600
         )
 
     # Add current request
@@ -99,10 +106,10 @@ async def generate_export(
         }
 
     except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
+        raise ValidationError(message=str(ve))
     except Exception as e:
         logger.error(f"Export failed for {current_user.username}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate export.")
+        raise InternalServerError(message="Failed to generate export")
 
 
 # ============================================================================
@@ -140,9 +147,8 @@ async def export_pdf_direct(
         
     except Exception as e:
         logger.error(f"Instant PDF export failed for {current_user.username}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to generate your PDF report. Please try again."
+        raise InternalServerError(
+            message="Failed to generate your PDF report. Please try again."
         )
 
 
@@ -226,17 +232,17 @@ async def create_async_export(
     # Check if user has too many pending tasks
     pending_count = BackgroundTaskService.get_pending_tasks_count(db, current_user.id)
     if pending_count >= 5:
-        raise HTTPException(
-            status_code=429,
-            detail="Too many pending exports. Please wait for existing exports to complete."
+        raise RateLimitError(
+            message="Too many pending exports. Please wait for existing exports to complete.",
+            wait_seconds=60
         )
     
     # Validate format
     format_lower = format.lower()
     if format_lower not in ExportServiceV2.SUPPORTED_FORMATS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported format: {format}. Supported: {', '.join(ExportServiceV2.SUPPORTED_FORMATS)}"
+        raise ValidationError(
+            message=f"Unsupported format: {format}",
+            details=[{"field": "format", "supported_formats": list(ExportServiceV2.SUPPORTED_FORMATS)}]
         )
     
     # Determine task type based on format
@@ -257,16 +263,16 @@ async def create_async_export(
     # Validate data types
     invalid_types = set(export_options.get('data_types', [])) - ExportServiceV2.DATA_TYPES
     if invalid_types:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid data types: {', '.join(invalid_types)}. Valid types: {', '.join(ExportServiceV2.DATA_TYPES)}"
+        raise ValidationError(
+            message=f"Invalid data types: {', '.join(invalid_types)}",
+            details=[{"field": "data_types", "valid_types": list(ExportServiceV2.DATA_TYPES)}]
         )
     
     # Validate encryption options
     if export_options.get('encrypt', False) and not export_options.get('password'):
-        raise HTTPException(
-            status_code=400,
-            detail="Password is required when encryption is enabled."
+        raise ValidationError(
+            message="Password is required when encryption is enabled",
+            details=[{"field": "password", "error": "Password required for encryption"}]
         )
     
     # Create background task record
@@ -383,9 +389,9 @@ async def create_export_v2(
     # Validate format
     format_lower = format.lower()
     if format_lower not in ExportServiceV2.SUPPORTED_FORMATS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported format: {format}. Supported: {', '.join(ExportServiceV2.SUPPORTED_FORMATS)}"
+        raise ValidationError(
+            message=f"Unsupported format: {format}",
+            details=[{"field": "format", "supported_formats": list(ExportServiceV2.SUPPORTED_FORMATS)}]
         )
 
     # Prepare options with defaults
@@ -396,16 +402,16 @@ async def create_export_v2(
     # Validate data types
     invalid_types = set(export_options['data_types']) - ExportServiceV2.DATA_TYPES
     if invalid_types:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid data types: {', '.join(invalid_types)}. Valid types: {', '.join(ExportServiceV2.DATA_TYPES)}"
+        raise ValidationError(
+            message=f"Invalid data types: {', '.join(invalid_types)}",
+            details=[{"field": "data_types", "valid_types": list(ExportServiceV2.DATA_TYPES)}]
         )
 
     # Validate encryption options
     if export_options.get('encrypt', False) and not export_options.get('password'):
-        raise HTTPException(
-            status_code=400,
-            detail="Password is required when encryption is enabled."
+        raise ValidationError(
+            message="Password is required when encryption is enabled",
+            details=[{"field": "password", "error": "Password required for encryption"}]
         )
 
     try:
@@ -428,12 +434,11 @@ async def create_export_v2(
         }
 
     except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
+        raise ValidationError(message=str(ve))
     except Exception as e:
         logger.error(f"Export failed for {current_user.username}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to generate export. Please try again or contact support."
+        raise InternalServerError(
+            message="Failed to generate export. Please try again or contact support."
         )
 
 
@@ -456,10 +461,7 @@ async def list_exports_v2(
 
     except Exception as e:
         logger.error(f"Failed to list exports for {current_user.username}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to retrieve export history."
-        )
+        raise InternalServerError(message="Failed to retrieve export history")
 
 
 @router.get("/v2/{export_id}")
@@ -477,9 +479,10 @@ async def get_export_status_v2(
     ).first()
 
     if not export:
-        raise HTTPException(
-            status_code=404,
-            detail="Export not found or you don't have access to it."
+        raise NotFoundError(
+            resource="Export",
+            resource_id=export_id,
+            details=[{"message": "Export not found or you don't have access to it"}]
         )
 
     # Check if expired
@@ -518,9 +521,10 @@ async def delete_export_v2(
         success = ExportServiceV2.delete_export(db, current_user, export_id)
 
         if not success:
-            raise HTTPException(
-                status_code=404,
-                detail="Export not found or you don't have access to it."
+            raise NotFoundError(
+                resource="Export",
+                resource_id=export_id,
+                details=[{"message": "Export not found or you don't have access to it"}]
             )
 
         return {
@@ -528,14 +532,11 @@ async def delete_export_v2(
             "export_id": export_id
         }
 
-    except HTTPException:
+    except NotFoundError:
         raise
     except Exception as e:
         logger.error(f"Failed to delete export {export_id}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to delete export. Please try again."
-        )
+        raise InternalServerError(message="Failed to delete export. Please try again.")
 
 
 @router.get("/formats")
@@ -598,7 +599,7 @@ async def get_export_status(
 
         if export:
             if export.user_id != current_user.id:
-                raise HTTPException(status_code=403, detail="Access denied.")
+                raise AuthorizationError(message="Access denied to this export")
 
             return {
                 "job_id": job_id,
@@ -608,7 +609,7 @@ async def get_export_status(
             }
 
     # Fallback for V1 exports (no database record)
-    raise HTTPException(status_code=404, detail="Job not found.")
+    raise NotFoundError(resource="Export job", resource_id=job_id)
 
 
 @router.get("/{identifier}/download")
@@ -632,12 +633,12 @@ async def download_export(
     if export:
         # V2 export
         if export.user_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Access denied.")
+            raise AuthorizationError(message="Access denied to this export")
 
         if export.expires_at and export.expires_at < datetime.now():
-            raise HTTPException(
-                status_code=410,
-                detail="Export has expired. Please create a new export."
+            raise ValidationError(
+                message="Export has expired. Please create a new export.",
+                details=[{"field": "export_id", "error": "Export expired", "expired_at": export.expires_at.isoformat()}]
             )
 
         filepath = export.file_path
@@ -645,16 +646,16 @@ async def download_export(
     else:
         # V1 export - check if it's a valid filename
         if not ExportServiceV1.validate_export_access(current_user, identifier):
-            raise HTTPException(status_code=403, detail="Access denied to this export file.")
+            raise AuthorizationError(message="Access denied to this export file")
 
         filepath = str(ExportServiceV1.EXPORT_DIR / identifier)
         filename = identifier
 
     # Check if file exists
     if not os.path.exists(filepath):
-        raise HTTPException(
-            status_code=404,
-            detail="Export file not found or expired."
+        raise NotFoundError(
+            resource="Export file",
+            details=[{"message": "Export file not found or expired"}]
         )
 
     # Determine media type

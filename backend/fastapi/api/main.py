@@ -1,12 +1,11 @@
 from fastapi import FastAPI, Request
 import asyncio
 import logging
-import traceback
 import uuid
 import time
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse
 # Triggering reload for new community routes
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -265,42 +264,9 @@ def create_app() -> FastAPI:
     # Register Health endpoints at root level for orchestration
     app.include_router(health_router, tags=["Health"])
 
-    from .exceptions import APIException
-    from .constants.errors import ErrorCode
-
-    @app.exception_handler(APIException)
-    async def api_exception_handler(request: Request, exc: APIException):
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=exc.detail
-        )
-
-    @app.exception_handler(Exception)
-    async def global_exception_handler(request: Request, exc: Exception):
-        logger = logging.getLogger("api.main")
-        
-        if settings.debug:
-            # Safe for local dev: print full traceback to stdout and log error details
-            traceback.print_exc()
-            logger.error(f"Unhandled Exception: {exc}")
-            error_details = {"error": str(exc), "type": type(exc).__name__}
-            message = f"Internal Server Error: {exc}"
-        else:
-            # Production: Log the error safely without stdout pollution, 
-            # preserving traceback in structured logs via exc_info=True
-            logger.error("Internal Server Error occurred", exc_info=True)
-            # strictly zero code artifacts or tracebacks in production response
-            error_details = None
-            message = "Internal Server Error"
-        
-        return JSONResponse(
-            status_code=500,
-            content={
-                "code": ErrorCode.INTERNAL_SERVER_ERROR.value,
-                "message": message,
-                "details": error_details
-            }
-        )
+        # Register standardized exception handlers
+    from backend.fastapi.app.core import register_exception_handlers
+    register_exception_handlers(app)
 
 
     # Root endpoint - version discovery

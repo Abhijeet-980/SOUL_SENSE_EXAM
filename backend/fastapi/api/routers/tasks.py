@@ -11,7 +11,7 @@ All endpoints require authentication and enforce user-level access control.
 
 from datetime import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 import logging
 
@@ -23,6 +23,7 @@ from ..services.background_task_service import (
 )
 from ..models import User, BackgroundJob
 from .auth import get_current_user
+from backend.fastapi.app.core import NotFoundError, ValidationError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -92,9 +93,10 @@ async def get_task_status(
     task = BackgroundTaskService.get_task(db, job_id, user_id=current_user.id)
     
     if not task:
-        raise HTTPException(
-            status_code=404,
-            detail="Task not found or you don't have access to it."
+        raise NotFoundError(
+            resource="Task",
+            resource_id=job_id,
+            details=[{"message": "Task not found or you don't have access to it"}]
         )
     
     return TaskStatusResponse(
@@ -135,9 +137,9 @@ async def list_user_tasks(
         try:
             status_filter = TaskStatus(status)
         except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid status: {status}. Valid values: pending, processing, completed, failed"
+            raise ValidationError(
+                message=f"Invalid status: {status}",
+                details=[{"field": "status", "valid_values": ["pending", "processing", "completed", "failed"]}]
             )
     
     # Validate and convert task type filter
@@ -212,15 +214,16 @@ async def cancel_task(
     task = BackgroundTaskService.get_task(db, job_id, user_id=current_user.id)
     
     if not task:
-        raise HTTPException(
-            status_code=404,
-            detail="Task not found or you don't have access to it."
+        raise NotFoundError(
+            resource="Task",
+            resource_id=job_id,
+            details=[{"message": "Task not found or you don't have access to it"}]
         )
     
     if task.status != TaskStatus.PENDING.value:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot cancel task with status '{task.status}'. Only pending tasks can be cancelled."
+        raise ValidationError(
+            message=f"Cannot cancel task with status '{task.status}'",
+            details=[{"field": "status", "error": "Only pending tasks can be cancelled", "current_status": task.status}]
         )
     
     # Update task to failed with cancellation message
