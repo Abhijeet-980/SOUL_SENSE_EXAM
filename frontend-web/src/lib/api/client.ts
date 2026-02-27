@@ -1,7 +1,7 @@
 import { ApiError } from './errors';
 import { sanitizeError, logError, shouldLogout, isRetryableError } from '../utils/errorHandler';
 import { retryRequest } from '../utils/requestUtils';
-import { getSession, saveSession } from '../utils/sessionStorage';
+import { getSession, saveSession, isTokenExpired } from '../utils/sessionStorage';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
 
@@ -39,7 +39,14 @@ interface RequestOptions extends RequestInit {
 function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
   const session = getSession();
-  return session?.token || null;
+  const token = session?.token || null;
+
+  // If token exists but is expired, return null to force the refresh logic in apiClient
+  if (token && isTokenExpired(token)) {
+    return null;
+  }
+
+  return token;
 }
 
 /**
