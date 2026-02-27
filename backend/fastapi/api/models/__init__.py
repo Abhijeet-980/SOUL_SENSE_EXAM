@@ -62,6 +62,144 @@ class User(Base):
     
     # Background Tasks
     background_jobs = relationship("BackgroundJob", back_populates="user", cascade="all, delete-orphan")
+    survey_submissions = relationship("SurveySubmission", back_populates="user", cascade="all, delete-orphan")
+    
+    # Notifications
+    notification_preferences = relationship("NotificationPreference", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    notification_logs = relationship("NotificationLog", back_populates="user", cascade="all, delete-orphan")
+
+class NotificationPreference(Base):
+    """User preferences for notification channels."""
+    __tablename__ = 'notification_preferences'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
+    email_enabled = Column(Boolean, default=True)
+    push_enabled = Column(Boolean, default=False)
+    in_app_enabled = Column(Boolean, default=True)
+    
+    # Specific alert types
+    marketing_alerts = Column(Boolean, default=False)
+    security_alerts = Column(Boolean, default=True)
+    insight_alerts = Column(Boolean, default=True) # E.g. behavioral insights, weekly recaps
+    reminder_alerts = Column(Boolean, default=True) # E.g. journal reminders
+    
+    user = relationship("User", back_populates="notification_preferences")
+
+class NotificationTemplate(Base):
+    """Jinja2 Templates stored in DB for dynamic text/HTML rendering."""
+    __tablename__ = 'notification_templates'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, unique=True, index=True, nullable=False) # e.g., 'weekly_insight', 'security_login'
+    subject_template = Column(String, nullable=False)
+    body_html_template = Column(Text, nullable=True) # Jinja2 HTML string
+    body_text_template = Column(Text, nullable=True) # Jinja2 Text string
+    language = Column(String, default="en")
+    is_active = Column(Boolean, default=True)
+
+class NotificationLog(Base):
+    """Audit log and delivery tracking for notifications."""
+    __tablename__ = 'notification_logs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=True) # Optional in case of broadcast
+    template_name = Column(String, nullable=False)
+    channel = Column(String, nullable=False) # 'email', 'push', 'in_app'
+    status = Column(String, nullable=False, default="pending") # 'pending', 'sent', 'failed'
+    error_message = Column(Text, nullable=True)
+    sent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    
+    user = relationship("User", back_populates="notification_logs")
+
+
+import enum
+
+class SurveyStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+class QuestionType(str, enum.Enum):
+    MULTIPLE_CHOICE = "multiple_choice"
+    LIKERT = "likert"
+    TEXT = "text"
+    RANGE = "range"
+
+class SurveyTemplate(Base):
+    __tablename__ = 'survey_templates'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String, index=True, nullable=False) # Stable across versions
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    version = Column(Integer, default=1, nullable=False)
+    status = Column(SQLEnum(SurveyStatus, name="survey_status_enum"), default=SurveyStatus.DRAFT, nullable=False)
+    is_active = Column(Boolean, default=False)
+    
+    # Custom scoring DSL
+    # Example: [{"if": {"qid": 1, "val": "A"}, "then": {"anxiety": 5}}]
+    scoring_logic = Column(JSON, nullable=True) 
+    
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    created_by_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+
+    sections = relationship("SurveySection", back_populates="survey", cascade="all, delete-orphan")
+    submissions = relationship("SurveySubmission", back_populates="survey")
+
+class SurveySection(Base):
+    __tablename__ = 'survey_sections'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    survey_id = Column(Integer, ForeignKey('survey_templates.id'), nullable=False)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    order = Column(Integer, default=0)
+    
+    survey = relationship("SurveyTemplate", back_populates="sections")
+    questions = relationship("SurveyQuestion", back_populates="section", cascade="all, delete-orphan")
+
+class SurveyQuestion(Base):
+    __tablename__ = 'survey_questions'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    section_id = Column(Integer, ForeignKey('survey_sections.id'), nullable=False)
+    question_text = Column(Text, nullable=False)
+    question_type = Column(SQLEnum(QuestionType, name="question_type_enum"), nullable=False)
+    options = Column(JSON, nullable=True) # Options list with values/scores
+    is_required = Column(Boolean, default=True)
+    order = Column(Integer, default=0)
+    
+    # Selection logic / branching
+    # Example: {"jump_to": "section_2", "if": "val > 5"}
+    logic_config = Column(JSON, nullable=True) 
+    
+    section = relationship("SurveySection", back_populates="questions")
+    responses = relationship("SurveyResponse", back_populates="question")
+
+class SurveySubmission(Base):
+    __tablename__ = 'survey_submissions'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    survey_id = Column(Integer, ForeignKey('survey_templates.id'), nullable=False)
+    
+    # Metadata & Computed Results
+    total_scores = Column(JSON, nullable=True) # {"anxiety": 12, "resilience": 8}
+    metadata_json = Column(JSON, nullable=True) # e.g. "device", "duration_seconds"
+    
+    started_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    completed_at = Column(DateTime, nullable=True)
+    
+    user = relationship("User", back_populates="survey_submissions")
+    survey = relationship("SurveyTemplate", back_populates="submissions")
+    responses = relationship("SurveyResponse", back_populates="submission", cascade="all, delete-orphan")
+
+class SurveyResponse(Base):
+    __tablename__ = 'survey_responses'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    submission_id = Column(Integer, ForeignKey('survey_submissions.id'), nullable=False)
+    question_id = Column(Integer, ForeignKey('survey_questions.id'), nullable=False)
+    
+    answer_value = Column(Text, nullable=False)
+    
+    submission = relationship("SurveySubmission", back_populates="responses")
+    question = relationship("SurveyQuestion", back_populates="responses")
 
 class LoginAttempt(Base):
     """Track login attempts for security auditing and persistent locking.
