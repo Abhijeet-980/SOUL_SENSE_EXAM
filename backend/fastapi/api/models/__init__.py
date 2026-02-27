@@ -41,6 +41,9 @@ class User(Base):
     is_2fa_enabled = Column(Boolean, default=False, nullable=False)
     last_activity = Column(String, nullable=True) # Track idle time
 
+    # RBAC Roles
+    is_admin = Column(Boolean, default=False, nullable=False)
+    
     settings = relationship("UserSettings", uselist=False, back_populates="user", cascade="all, delete-orphan")
     medical_profile = relationship("MedicalProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
     personal_profile = relationship("PersonalProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")

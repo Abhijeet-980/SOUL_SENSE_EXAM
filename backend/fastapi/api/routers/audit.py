@@ -5,7 +5,7 @@ from datetime import datetime, UTC
 from ..services.db_service import get_db
 from ..services.audit_service import AuditService
 from ..models import User
-from ..routers.auth import get_current_user
+from ..routers.auth import get_current_user, require_admin
 from ..schemas import AuditLogResponse, AuditLogListResponse, AuditExportResponse
 
 router = APIRouter()
@@ -22,16 +22,34 @@ async def get_audit_logs(
     end_date: Optional[datetime] = Query(None, description="End date filter"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Results per page"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Retrieve audit logs with filtering and pagination.
-    Requires admin privileges.
+
+    This endpoint allows administrators to query the system's audit trail with various filters.
+
+    Args:
+        event_type (Optional[str]): Filter by the type of event (e.g., 'auth', 'data_access').
+        username (Optional[str]): Filter by the username of the actor.
+        resource_type (Optional[str]): Filter by the type of resource affected.
+        action (Optional[str]): Filter by the action performed (e.g., 'login', 'delete').
+        outcome (Optional[str]): Filter by the outcome of the event (success/failure).
+        severity (Optional[str]): Filter by event severity (info, warning, error, critical).
+        start_date (Optional[datetime]): Filter logs after this timestamp.
+        end_date (Optional[datetime]): Filter logs before this timestamp.
+        page (int): The page number for pagination (defaults to 1).
+        per_page (int): The number of results per page (defaults to 50, max 100).
+        current_user (User): The authenticated admin user.
+        db (AsyncSession): Database session.
+
+    Returns:
+        AuditLogListResponse: A paginated list of audit logs and total count.
+
+    Raises:
+        HTTPException: 403 Forbidden if the user is not an administrator.
     """
-    # TODO: Add admin role check
-    # if not current_user.is_admin:
-    #     raise HTTPException(status_code=403, detail="Admin access required")
 
     filters = {}
     if event_type:
@@ -68,7 +86,18 @@ async def get_my_activity(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get current user's own audit activity logs.
+    Retrieve the current user's own audit activity logs.
+
+    Allows users to see a history of their own actions within the system for security and transparency.
+
+    Args:
+        page (int): The page number for pagination (defaults to 1).
+        per_page (int): The number of results per page (defaults to 20, max 50).
+        current_user (User): The authenticated user.
+        db (AsyncSession): Database session.
+
+    Returns:
+        AuditLogListResponse: A paginated list of the user's audit logs.
     """
     logs, total_count = await AuditService.get_user_activity(current_user.id, page, per_page, db)
 
@@ -86,16 +115,27 @@ async def export_audit_logs(
     username: Optional[str] = Query(None, description="Filter by username"),
     start_date: Optional[datetime] = Query(None, description="Start date filter"),
     end_date: Optional[datetime] = Query(None, description="End date filter"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Export audit logs in JSON or CSV format.
-    Requires admin privileges.
+    Export audit logs in JSON or CSV format for external analysis or compliance.
+
+    Args:
+        format (str): The desired export format ('json' or 'csv'). Defaults to 'json'.
+        event_type (Optional[str]): Filter by event type.
+        username (Optional[str]): Filter by username.
+        start_date (Optional[datetime]): Start of the date range to export.
+        end_date (Optional[datetime]): End of the date range to export.
+        current_user (User): The authenticated admin user.
+        db (AsyncSession): Database session.
+
+    Returns:
+        AuditExportResponse: The exported log data with timestamp and format.
+
+    Raises:
+        HTTPException: 403 Forbidden if the user is not an administrator.
     """
-    # TODO: Add admin role check
-    # if not current_user.is_admin:
-    #     raise HTTPException(status_code=403, detail="Admin access required")
 
     filters = {}
     if event_type:
@@ -118,16 +158,25 @@ async def export_audit_logs(
 @router.post("/archive")
 async def archive_old_logs(
     retention_days: Optional[int] = Query(90, ge=1, description="Retention period in days"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Archive audit logs older than retention period.
-    Requires admin privileges.
+    Archive audit logs older than the specified retention period.
+
+    Moves old logs to a secondary storage or marks them as archived to optimize active table performance.
+
+    Args:
+        retention_days (Optional[int]): Number of days to keep logs online. Defaults to 90.
+        current_user (User): The authenticated admin user.
+        db (AsyncSession): Database session.
+
+    Returns:
+        Dict[str, Any]: A message confirming the outcome and the count of archived logs.
+
+    Raises:
+        HTTPException: 403 Forbidden if the user is not an administrator.
     """
-    # TODO: Add admin role check
-    # if not current_user.is_admin:
-    #     raise HTTPException(status_code=403, detail="Admin access required")
 
     archived_count = await AuditService.archive_old_logs(retention_days, db)
 
@@ -138,16 +187,24 @@ async def archive_old_logs(
 
 @router.post("/cleanup")
 async def cleanup_expired_logs(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Permanently delete expired audit logs.
-    Requires admin privileges.
+    Permanently delete expired audit logs from the system.
+
+    This action is irrevokable and should be used to maintain database size and comply with data retention policies.
+
+    Args:
+        current_user (User): The authenticated admin user.
+        db (AsyncSession): Database session.
+
+    Returns:
+        Dict[str, Any]: A message confirming the outcome and the count of deleted logs.
+
+    Raises:
+        HTTPException: 403 Forbidden if the user is not an administrator.
     """
-    # TODO: Add admin role check
-    # if not current_user.is_admin:
-    #     raise HTTPException(status_code=403, detail="Admin access required")
 
     deleted_count = await AuditService.cleanup_expired_logs(db)
 

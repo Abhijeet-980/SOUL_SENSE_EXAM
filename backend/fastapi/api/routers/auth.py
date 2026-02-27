@@ -80,6 +80,26 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
     
     return user
 
+async def require_admin(current_user: User = Depends(get_current_user)):
+    """
+    Dependency to check if the current user has administrative privileges.
+    
+    Args:
+        current_user (User): The user object returned by get_current_user.
+        
+    Returns:
+        User: The authenticated administrator.
+        
+    Raises:
+        HTTPException: If the user is not an administrator.
+    """
+    if not getattr(current_user, "is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrative privileges required to access this resource."
+        )
+    return current_user
+
 async def get_auth_service(db: AsyncSession = Depends(get_db)):
     return AuthService(db)
 
@@ -159,7 +179,8 @@ async def login(
                 "message": "Your account is active on another device or browser."
             }] if has_multiple_sessions else []
         ),
-        onboarding_completed=user.onboarding_completed or False
+        onboarding_completed=user.onboarding_completed or False,
+        is_admin=getattr(user, "is_admin", False)
     )
 
 @router.post("/login/2fa", response_model=Token, responses={401: {"model": ErrorResponse}})
@@ -201,7 +222,8 @@ async def verify_2fa(
                 "message": "Your account is active on another device or browser."
             }] if has_multiple_sessions else []
         ),
-        onboarding_completed=user.onboarding_completed or False
+        onboarding_completed=user.onboarding_completed or False,
+        is_admin=getattr(user, "is_admin", False)
     )
 
 @router.post("/refresh", response_model=Token)

@@ -174,6 +174,7 @@ class Token(BaseModel):
     created_at: Optional[datetime] = None
     warnings: Optional[List[Dict[str, str]]] = None
     onboarding_completed: Optional[bool] = None
+    is_admin: Optional[bool] = None
 
 
 class CaptchaResponse(BaseModel):

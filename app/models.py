@@ -43,6 +43,9 @@ class User(Base):
     # Onboarding Status (Issue #933)
     onboarding_completed = Column(Boolean, default=False, nullable=False)
 
+    # RBAC Roles
+    is_admin = Column(Boolean, default=False, nullable=False)
+    
     scores = relationship("Score", back_populates="user", cascade="all, delete-orphan")
     responses = relationship("Response", back_populates="user", cascade="all, delete-orphan")
     settings = relationship("UserSettings", uselist=False, back_populates="user", cascade="all, delete-orphan")
