@@ -44,6 +44,8 @@
         "scroll_depth_50",
         "scroll_depth_75",
         "scroll_depth_100",
+        "screen_enter",
+        "screen_exit",
         "network_error",
         "api_error",
         "validation_error"
@@ -123,6 +125,24 @@
             "scroll_percentage": { "type": "number", "enum": [25, 50, 75, 100] },
             "page_url": { "type": "string" },
             "screen_name": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "screen_name": { "type": "string" },
+            "enter_time": { "type": "string", "format": "date-time" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "screen_name": { "type": "string" },
+            "enter_time": { "type": "string", "format": "date-time" },
+            "exit_time": { "type": "string", "format": "date-time" },
+            "duration_ms": { "type": "number" },
+            "duration_seconds": { "type": "number" },
+            "exit_reason": { "type": "string", "enum": ["navigation", "background", "force_close", "app_close"] }
           },
           "additionalProperties": false
         }

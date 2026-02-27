@@ -26,6 +26,11 @@ public class AnalyticsManager {
     private var sessionStartTime: TimeInterval = 0
     private var isSessionActive = false
 
+    // Screen time tracking properties
+    private var currentScreen: String?
+    private var screenEnterTime: TimeInterval = 0
+    private var screenEnterTimestamp: String?
+
     private init() {
         initializeUserIdentity()
         generateNewSessionId()
@@ -221,6 +226,54 @@ public class AnalyticsManager {
             "scroll_percentage": percentage,
             "screen_name": screenName
         ])
+    }
+
+    /**
+     * Track screen enter for time tracking
+     */
+    public func enterScreen(_ screenName: String) {
+        // Exit current screen if any
+        if currentScreen != nil {
+            exitScreen("navigation")
+        }
+
+        // Enter new screen
+        currentScreen = screenName
+        screenEnterTime = Date().timeIntervalSince1970
+        let dateFormatter = ISO8601DateFormatter()
+        screenEnterTimestamp = dateFormatter.string(from: Date())
+
+        trackEvent(AnalyticsEvents.screenEnter, properties: [
+            "screen_name": screenName,
+            "enter_time": screenEnterTimestamp!
+        ])
+    }
+
+    /**
+     * Track screen exit with duration
+     */
+    public func exitScreen(_ exitReason: String) {
+        guard let screenName = currentScreen, screenEnterTime > 0 else { return }
+
+        let exitTime = Date().timeIntervalSince1970
+        let dateFormatter = ISO8601DateFormatter()
+        let exitTimestamp = dateFormatter.string(from: Date())
+        let durationMs = (exitTime - screenEnterTime) * 1000
+        let durationSeconds = round(exitTime - screenEnterTime)
+
+        trackEvent(AnalyticsEvents.screenExit, properties: [
+            "screen_name": screenName,
+            "enter_time": screenEnterTimestamp!,
+            "exit_time": exitTimestamp,
+            "duration_ms": durationMs,
+            "duration_seconds": durationSeconds,
+            "exit_reason": exitReason
+        ])
+
+        // Reset screen tracking
+        currentScreen = nil
+        screenEnterTime = 0
+        screenEnterTimestamp = nil
     }
 
     private func getAppVersion() -> String {

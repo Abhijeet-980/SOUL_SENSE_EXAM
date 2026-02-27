@@ -152,6 +152,16 @@ public final class AnalyticsEvents {
     public static final String SCROLL_DEPTH_100 = "scroll_depth_100";
 
     // ============================================================================
+    // SCREEN TIME TRACKING EVENTS
+    // ============================================================================
+
+    /** User entered a screen */
+    public static final String SCREEN_ENTER = "screen_enter";
+
+    /** User exited a screen */
+    public static final String SCREEN_EXIT = "screen_exit";
+
+    // ============================================================================
     // ERROR EVENTS
     // ============================================================================
 

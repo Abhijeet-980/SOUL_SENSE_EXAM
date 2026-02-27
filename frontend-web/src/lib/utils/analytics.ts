@@ -56,6 +56,10 @@ export const ANALYTICS_EVENTS = {
   SCROLL_DEPTH_75: 'scroll_depth_75',
   SCROLL_DEPTH_100: 'scroll_depth_100',
 
+  // Screen time tracking events
+  SCREEN_ENTER: 'screen_enter',
+  SCREEN_EXIT: 'screen_exit',
+
   // Error events
   NETWORK_ERROR: 'network_error',
   API_ERROR: 'api_error',
@@ -112,11 +116,17 @@ class AnalyticsManager {
   private isSessionActive: boolean = false;
   private guestUserId: string | null = null;
 
+  // Screen time tracking
+  private currentScreen: string | null = null;
+  private screenEnterTime: number = 0;
+  private screenEnterTimestamp: string = '';
+
   constructor() {
     this.currentSessionId = this.generateSessionId();
     this.initializeUserIdentity();
     this.setupSessionTracking();
     this.setupScrollDepthTracking();
+    this.setupScreenTimeTracking();
   }
 
   private generateSessionId(): string {
@@ -216,6 +226,36 @@ class AnalyticsManager {
     }
   }
 
+  private setupScreenTimeTracking() {
+    // Handle screen exits on page visibility changes and before unload
+    if (typeof document !== 'undefined') {
+      // Handle app background/foreground
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden && this.currentScreen) {
+          // App going to background - exit current screen
+          this.exitScreen('background');
+        } else if (!document.hidden && this.currentScreen) {
+          // App coming to foreground - re-enter current screen
+          this.enterScreen(this.currentScreen);
+        }
+      });
+
+      // Handle page unload (tab close, navigation)
+      window.addEventListener('beforeunload', () => {
+        if (this.currentScreen) {
+          this.exitScreen('force_close');
+        }
+      });
+
+      // Handle browser navigation (back/forward buttons, direct URL changes)
+      window.addEventListener('popstate', () => {
+        if (this.currentScreen) {
+          this.exitScreen('navigation');
+        }
+      });
+    }
+  }
+
   private startSession() {
     if (this.isSessionActive) return;
 
@@ -286,6 +326,9 @@ class AnalyticsManager {
   trackPageView(url: string) {
     if (!this.config.enabled) return;
 
+    // Track screen enter for time tracking
+    this.enterScreen(url);
+
     const event: AnalyticsEvent = {
       event_name: ANALYTICS_EVENTS.SCREEN_VIEW,
       timestamp: new Date().toISOString(),
@@ -346,6 +389,62 @@ class AnalyticsManager {
         page_url: typeof window !== 'undefined' ? window.location.href : undefined
       }
     });
+  }
+
+  private enterScreen(screenName: string) {
+    // Exit current screen if any
+    if (this.currentScreen) {
+      this.exitScreen('navigation');
+    }
+
+    // Enter new screen
+    this.currentScreen = screenName;
+    this.screenEnterTime = Date.now();
+    this.screenEnterTimestamp = new Date().toISOString();
+
+    this.trackEvent({
+      event_name: ANALYTICS_EVENTS.SCREEN_ENTER,
+      timestamp: this.screenEnterTimestamp,
+      user_id: this.currentUserId || undefined,
+      session_id: this.currentSessionId,
+      platform: 'web',
+      app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
+      event_properties: {
+        screen_name: screenName,
+        enter_time: this.screenEnterTimestamp
+      }
+    });
+  }
+
+  private exitScreen(exitReason: 'navigation' | 'background' | 'force_close' | 'app_close') {
+    if (!this.currentScreen || this.screenEnterTime === 0) return;
+
+    const exitTime = Date.now();
+    const exitTimestamp = new Date().toISOString();
+    const durationMs = exitTime - this.screenEnterTime;
+    const durationSeconds = Math.round(durationMs / 1000);
+
+    this.trackEvent({
+      event_name: ANALYTICS_EVENTS.SCREEN_EXIT,
+      timestamp: exitTimestamp,
+      user_id: this.currentUserId || undefined,
+      session_id: this.currentSessionId,
+      platform: 'web',
+      app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
+      event_properties: {
+        screen_name: this.currentScreen,
+        enter_time: this.screenEnterTimestamp,
+        exit_time: exitTimestamp,
+        duration_ms: durationMs,
+        duration_seconds: durationSeconds,
+        exit_reason: exitReason
+      }
+    });
+
+    // Reset screen tracking
+    this.currentScreen = null;
+    this.screenEnterTime = 0;
+    this.screenEnterTimestamp = '';
   }
 
   // Convenience methods for common events

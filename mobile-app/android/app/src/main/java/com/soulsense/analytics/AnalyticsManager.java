@@ -31,6 +31,11 @@ public class AnalyticsManager {
     private long sessionStartTime;
     private boolean isSessionActive = false;
 
+    // Screen time tracking
+    private String currentScreen;
+    private long screenEnterTime;
+    private String screenEnterTimestamp;
+
     private AnalyticsManager(Context context) {
         this.context = context.getApplicationContext();
         this.prefs = this.context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -236,6 +241,54 @@ public class AnalyticsManager {
         properties.put("scroll_percentage", percentage);
         properties.put("screen_name", screenName);
         trackEvent(eventName, properties);
+    }
+
+    /**
+     * Track screen enter for time tracking
+     */
+    public void enterScreen(String screenName) {
+        // Exit current screen if any
+        if (currentScreen != null) {
+            exitScreen("navigation");
+        }
+
+        // Enter new screen
+        currentScreen = screenName;
+        screenEnterTime = System.currentTimeMillis();
+        screenEnterTimestamp = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+            .format(new java.util.Date(screenEnterTime));
+
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("screen_name", screenName);
+        properties.put("enter_time", screenEnterTimestamp);
+        trackEvent(AnalyticsEvents.SCREEN_ENTER, properties);
+    }
+
+    /**
+     * Track screen exit with duration
+     */
+    public void exitScreen(String exitReason) {
+        if (currentScreen == null || screenEnterTime == 0) return;
+
+        long exitTime = System.currentTimeMillis();
+        String exitTimestamp = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+            .format(new java.util.Date(exitTime));
+        long durationMs = exitTime - screenEnterTime;
+        long durationSeconds = Math.round(durationMs / 1000.0);
+
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("screen_name", currentScreen);
+        properties.put("enter_time", screenEnterTimestamp);
+        properties.put("exit_time", exitTimestamp);
+        properties.put("duration_ms", durationMs);
+        properties.put("duration_seconds", durationSeconds);
+        properties.put("exit_reason", exitReason);
+        trackEvent(AnalyticsEvents.SCREEN_EXIT, properties);
+
+        // Reset screen tracking
+        currentScreen = null;
+        screenEnterTime = 0;
+        screenEnterTimestamp = null;
     }
 
     private String getAppVersion() {

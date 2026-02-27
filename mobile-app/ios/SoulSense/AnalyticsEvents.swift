@@ -156,6 +156,16 @@ public final class AnalyticsEvents {
     public static let scrollDepth100 = "scroll_depth_100"
 
     // ============================================================================
+    // SCREEN TIME TRACKING EVENTS
+    // ============================================================================
+
+    /// User entered a screen
+    public static let screenEnter = "screen_enter"
+
+    /// User exited a screen
+    public static let screenExit = "screen_exit"
+
+    // ============================================================================
     // ERROR EVENTS
     // ============================================================================
 
