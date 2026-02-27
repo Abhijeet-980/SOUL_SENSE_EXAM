@@ -414,7 +414,10 @@ class ExportServiceV2:
         end_date: Optional[datetime]
     ) -> List[Dict[str, Any]]:
         """Fetch assessment results."""
-        query = db.query(AssessmentResult).filter(AssessmentResult.user_id == user.id)
+        query = db.query(AssessmentResult).filter(
+            AssessmentResult.user_id == user.id,
+            AssessmentResult.is_deleted == False
+        )
 
         if start_date:
             query = query.filter(AssessmentResult.timestamp >= start_date)

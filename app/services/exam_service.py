@@ -38,7 +38,10 @@ class ExamService:
         try:
             with safe_db_context() as session:
                 session.expire_on_commit = False
-                query = session.query(AssessmentResult).filter(AssessmentResult.user_id == user_id)
+                query = session.query(AssessmentResult).filter(
+                    AssessmentResult.user_id == user_id,
+                    AssessmentResult.is_deleted == False
+                )
                 
                 if result_ids:
                     query = query.filter(AssessmentResult.id.in_(result_ids))

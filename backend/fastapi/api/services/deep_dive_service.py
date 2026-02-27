@@ -175,7 +175,8 @@ class DeepDiveService:
     def get_history(cls, db: Session, user: User) -> List[DeepDiveResultResponse]:
         """Get past deep dive results for the user."""
         results = db.query(AssessmentResult).filter(
-            AssessmentResult.user_id == user.id
+            AssessmentResult.user_id == user.id,
+            AssessmentResult.is_deleted == False
         ).order_by(AssessmentResult.id.desc()).all()
         
         return [

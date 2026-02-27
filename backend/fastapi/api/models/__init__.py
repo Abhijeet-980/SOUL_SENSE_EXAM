@@ -348,7 +348,8 @@ class JournalEntry(Base):
     screen_time_mins = Column(Integer, nullable=True)
     daily_schedule = Column(Text, nullable=True)
     tags = Column(Text, nullable=True)
-    is_deleted = Column(Boolean, default=False)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     privacy_level = Column(String, default="private")
     word_count = Column(Integer, default=0)
 
@@ -393,6 +394,8 @@ class AssessmentResult(Base):
     overall_score = Column(Float, nullable=True)
     details = Column(Text, nullable=False)
     journal_entry_id = Column(Integer, ForeignKey('journal_entries.id'), nullable=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     user = relationship("User")
     __table_args__ = (
         Index('idx_assessment_user_type', 'user_id', 'assessment_type'),

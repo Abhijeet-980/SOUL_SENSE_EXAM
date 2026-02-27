@@ -123,7 +123,8 @@ class GamificationService:
                 thirty_days_ago = (datetime.now(UTC) - timedelta(days=30)).isoformat()
                 count = db.query(JournalEntry).filter(
                     JournalEntry.user_id == user_id,
-                    JournalEntry.timestamp >= thirty_days_ago
+                    JournalEntry.timestamp >= thirty_days_ago,
+                    JournalEntry.is_deleted == False
                 ).count()
                 if count >= 30:
                     met = True
