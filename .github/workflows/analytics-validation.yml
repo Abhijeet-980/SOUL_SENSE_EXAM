@@ -1,0 +1,39 @@
+name: Analytics Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'shared/analytics/**'
+      - 'frontend-web/src/lib/utils/analytics.ts'
+      - 'mobile-app/**/AnalyticsEvents.*'
+      - 'scripts/validate_analytics.js'
+  pull_request:
+    paths:
+      - 'shared/analytics/**'
+      - 'frontend-web/src/lib/utils/analytics.ts'
+      - 'mobile-app/**/AnalyticsEvents.*'
+      - 'scripts/validate_analytics.js'
+
+jobs:
+  validate-analytics:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Validate Analytics Events
+      run: node scripts/validate_analytics.js
+
+    - name: Validate Event Schema
+      run: |
+        if ! jq . shared/analytics/event_schema.json > /dev/null 2>&1; then
+          echo "❌ Invalid JSON in event schema"
+          exit 1
+        fi
+        echo "✅ Event schema is valid JSON"
