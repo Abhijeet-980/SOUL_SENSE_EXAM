@@ -138,6 +138,13 @@ class AnalyticsManager {
   }
 
   private initializeUserIdentity() {
+    // Check if we're in a browser environment (Issue #999: SSR fix)
+    if (typeof window === 'undefined') {
+      this.guestUserId = this.generateGuestId();
+      this.currentUserId = this.guestUserId;
+      return;
+    }
+
     // Check if we have a stored guest ID
     const storedGuestId = localStorage.getItem('analytics_guest_id');
     if (storedGuestId) {
@@ -351,7 +358,7 @@ class AnalyticsManager {
   // User identity management
   setUserId(userId: string) {
     // Clear guest ID when user logs in
-    if (this.currentUserId === this.guestUserId) {
+    if (this.currentUserId === this.guestUserId && typeof window !== 'undefined') {
       localStorage.removeItem('analytics_guest_id');
       this.guestUserId = null;
     }

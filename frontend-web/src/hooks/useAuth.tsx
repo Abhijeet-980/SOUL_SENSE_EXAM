@@ -17,6 +17,9 @@ import {
   clearSession,
   getExpiryTimestamp,
   isTokenExpired,
+  updateLastActivity,
+  clearLastActivity,
+  isSessionTimedOut,
 } from '@/lib/utils/sessionStorage';
 import { authApi } from '@/lib/api/auth';
 import { Loader } from '@/components/ui';
@@ -98,6 +101,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               const isPersistent = !!localStorage.getItem('soul_sense_auth_session');
               saveSession(session, isPersistent);
               setUser(session.user);
+              updateLastActivity(); // Update activity on token refresh (Issue #999)
               console.log('Auth: Proactive refresh successful.');
             } catch (refreshError) {
               console.warn('Auth: Proactive refresh failed. Logging out:', refreshError);
@@ -110,24 +114,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           } else {
             // Critical: Verify the session isn't using the stale 'current' fallback
             if (session.user.id === 'current') {
-              console.error('Critical Auth Sync Error: Stale "current" ID fallback found in stored session.');
+              console.error(
+                'Critical Auth Sync Error: Stale "current" ID fallback found in stored session.'
+              );
+              toast.error('Authentication session corrupted. Please log in again.');
               clearSession();
-              setUser(null);
+              if (isMounted) setUser(null);
               router.push('/login');
             } else {
-              setUser(session.user);
+              if (isMounted) setUser(session.user);
             }
-          // Critical: Verify the session isn't using the stale 'current' fallback
-          if (session.user.id === 'current') {
-            console.error(
-              'Critical Auth Sync Error: Stale "current" ID fallback found in stored session.'
-            );
-            toast.error('Authentication session corrupted. Please log in again.');
-            clearSession();
-            if (isMounted) setUser(null);
-            router.push('/login');
-          } else {
-            if (isMounted) setUser(session.user);
           }
         }
 
@@ -239,6 +235,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
 
       saveSession(session, rememberMe);
+      updateLastActivity(); // Track activity on login (Issue #999)
       setUser(session.user);
 
       if (shouldRedirect) {
@@ -367,6 +364,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       // Always clear local session even if backend call fails
       clearSession();
+      clearLastActivity(); // Clear activity tracking on logout (Issue #999)
       setUser(null);
       router.push('/login');
     }
