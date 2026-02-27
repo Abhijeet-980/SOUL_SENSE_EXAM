@@ -120,7 +120,8 @@ class UserAnalyticsService:
         
         entries = db.query(JournalEntry).filter(
             JournalEntry.user_id == user_id,
-            JournalEntry.entry_date >= cutoff_str
+            JournalEntry.entry_date >= cutoff_str,
+            JournalEntry.is_deleted == False
         ).order_by(JournalEntry.entry_date.asc()).all()
         
         points = []

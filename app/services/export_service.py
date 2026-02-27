@@ -182,7 +182,10 @@ class ExportService:
                 } for s in scores_query.all()]
                 
                 # Assessment Results
-                assess_query = session.query(AssessmentResult).filter(AssessmentResult.user_id == user_id)
+                assess_query = session.query(AssessmentResult).filter(
+                    AssessmentResult.user_id == user_id,
+                    AssessmentResult.is_deleted == False
+                )
                 if start_date: assess_query = assess_query.filter(AssessmentResult.timestamp >= start_date)
                 if end_date: assess_query = assess_query.filter(AssessmentResult.timestamp <= end_date)
                 
