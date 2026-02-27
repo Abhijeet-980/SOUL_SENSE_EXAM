@@ -358,14 +358,89 @@ async def disable_2fa(
 async def oauth_login(
     response: Response,
     request: Request,
-    id_token: str = Form(..., description="ID token from OAuth provider"),
+    provider: str = Form(..., description="OAuth provider (google, github, apple)"),
+    id_token: Optional[str] = Form(None, description="ID token from OAuth provider"),
     access_token: Optional[str] = Form(None, description="Access token from OAuth provider"),
     auth_service: AuthService = Depends(get_auth_service)
 ):
+    """
+    Login or register via OAuth provider.
+    """
+    ip = get_real_ip(request)
+    user_agent = request.headers.get("user-agent", "Unknown")
+
     try:
-        user_info = {"sub": "oauth_user", "email": "user@example.com"} # Placeholder
+        user_info = None
+        
+        if provider == "google":
+            if not id_token:
+                raise ValidationError(message="ID token required for Google login", details=[{"field": "id_token", "error": "Missing token"}])
+            
+            # Use httpx to verify token with Google's API to avoid extra dependencies
+            import httpx
+            async with httpx.AsyncClient() as client:
+                res = await client.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token}")
+                if res.status_code != 200:
+                    # In development, allow dummy login if token is "mock_google_token"
+                    if settings.ENVIRONMENT == "development" and id_token == "mock_google_token":
+                        user_info = {"sub": "google_mock_123", "email": "mock_google@example.com", "name": "Mock Google User"}
+                    else:
+                        raise InvalidCredentialsError(message="Invalid Google ID token")
+                else:
+                    id_info = res.json()
+                    # Verify audience matches our client ID (if configured)
+                    if settings.google_client_id and id_info.get("aud") != settings.google_client_id:
+                        raise AuthorizationError(message="Token audience mismatch")
+                    
+                    user_info = {
+                        "sub": id_info["sub"],
+                        "email": id_info.get("email"),
+                        "name": id_info.get("name"),
+                        "picture": id_info.get("picture")
+                    }
+
+        elif provider == "github":
+            if not access_token:
+                raise ValidationError(message="Access token required for Github login", details=[{"field": "access_token", "error": "Missing token"}])
+            
+            import httpx
+            async with httpx.AsyncClient() as client:
+                res = await client.get(
+                    "https://api.github.com/user",
+                    headers={"Authorization": f"token {access_token}"}
+                )
+                if res.status_code != 200:
+                    if settings.ENVIRONMENT == "development" and access_token == "mock_github_token":
+                        user_info = {"sub": "github_mock_123", "email": "mock_github@example.com", "name": "Mock Github User"}
+                    else:
+                        raise InvalidCredentialsError(message="Invalid Github access token")
+                else:
+                    gh_info = res.json()
+                    user_info = {
+                        "sub": str(gh_info["id"]),
+                        "email": gh_info.get("email"),
+                        "name": gh_info.get("name") or gh_info.get("login"),
+                        "picture": gh_info.get("avatar_url")
+                    }
+        
+        elif provider == "apple":
+             # Placeholder for Apple login
+             if settings.ENVIRONMENT == "development" and id_token == "mock_apple_token":
+                 user_info = {"sub": "apple_mock_123", "email": "mock_apple@example.com", "name": "Mock Apple User"}
+             else:
+                 raise BusinessLogicError(message="Apple login not fully implemented yet", code="NOT_IMPLEMENTED")
+        
+        else:
+            raise ValidationError(message=f"Unsupported provider: {provider}", details=[{"field": "provider", "error": "Invalid provider"}])
+
+        if not user_info:
+            raise InvalidCredentialsError(message="Failed to retrieve user information from provider")
+
+        # Get or create local user
         user = await auth_service.get_or_create_oauth_user(user_info)
-        access_token = auth_service.create_access_token(data={"sub": user.username})
+        
+        # Issue tokens
+        new_access_token = auth_service.create_access_token(data={"sub": user.username})
         refresh_token = await auth_service.create_refresh_token(user.id)
         
         response.set_cookie(
@@ -377,16 +452,32 @@ async def oauth_login(
             max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
         )
         
+        # Audit Log
+        from .audit_service import AuditService
+        await AuditService.log_auth_event(
+            'login_oauth',
+            user.username,
+            details={"provider": provider, "status": "success"},
+            ip_address=ip,
+            user_agent=user_agent,
+            db_session=auth_service.db
+        )
+        
         return Token(
-            access_token=access_token,
+            access_token=new_access_token,
             token_type="bearer",
             refresh_token=refresh_token,
             username=user.username,
-            email=user.personal_profile.email if user.personal_profile else None,
+            email=getattr(user.personal_profile, 'email', None) if user.personal_profile else user_info.get("email"),
             id=user.id,
             created_at=user.created_at,
             warnings=[],
-            onboarding_completed=user.onboarding_completed or False
+            onboarding_completed=user.onboarding_completed or False,
+            is_admin=getattr(user, "is_admin", False)
         )
+
     except Exception as e:
-        raise ValidationError(message="Invalid OAuth token", details=[{"field": "id_token", "error": str(e)}])
+        if isinstance(e, (ValidationError, InvalidCredentialsError, AuthorizationError, BusinessLogicError)):
+            raise e
+        logger.error(f"OAuth login failed: {str(e)}")
+        raise BusinessLogicError(message=f"Social login failed: {str(e)}", code="OAUTH_ERROR")

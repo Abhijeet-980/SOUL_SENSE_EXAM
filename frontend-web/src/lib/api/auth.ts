@@ -119,4 +119,30 @@ export const authApi = {
       credentials: 'include',
     });
   },
+  async oauthLogin(data: {
+    provider: string;
+    idToken?: string;
+    accessToken?: string;
+  }): Promise<{
+    access_token: string;
+    email?: string;
+    username?: string;
+    id?: number;
+    created_at?: string;
+    onboarding_completed?: boolean;
+    is_admin?: boolean;
+  }> {
+    const formData = new URLSearchParams();
+    formData.append('provider', data.provider);
+    if (data.idToken) formData.append('id_token', data.idToken);
+    if (data.accessToken) formData.append('access_token', data.accessToken);
+
+    return apiClient('/auth/oauth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+  },
 };

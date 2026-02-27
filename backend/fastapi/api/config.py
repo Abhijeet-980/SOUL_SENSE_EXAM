@@ -83,6 +83,12 @@ class BaseAppSettings(BaseSettings):
     github_repo_owner: str = Field(default="nupurmadaan04", description="GitHub Repository Owner")
     github_repo_name: str = Field(default="SOUL_SENSE_EXAM", description="GitHub Repository Name")
 
+    # OAuth Configuration
+    google_client_id: Optional[str] = Field(default=None, description="Google OAuth Client ID")
+    google_client_secret: Optional[str] = Field(default=None, description="Google OAuth Client Secret")
+    github_client_id: Optional[str] = Field(default=None, description="GitHub OAuth Client ID")
+    github_client_secret: Optional[str] = Field(default=None, description="GitHub OAuth Client Secret")
+
     # CORS Configuration
     # Cookie Security Settings
     cookie_secure: bool = Field(default=False, description="Use Secure flag for cookies (Requires HTTPS)")

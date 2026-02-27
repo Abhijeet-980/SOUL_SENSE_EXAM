@@ -46,6 +46,12 @@ interface AuthContextType {
     redirectTo?: string,
     stayLoadingOnSuccess?: boolean
   ) => Promise<any>;
+  loginOAuth: (
+    data: { provider: string; idToken?: string; accessToken?: string },
+    rememberMe: boolean,
+    shouldRedirect?: boolean,
+    redirectTo?: string
+  ) => Promise<any>;
   logout: () => void;
   setIsLoading: (loading: boolean) => void;
 }
@@ -277,6 +283,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const loginOAuth = async (
+    data: { provider: string; idToken?: string; accessToken?: string },
+    rememberMe: boolean,
+    shouldRedirect = true,
+    redirectTo = '/'
+  ) => {
+    setIsLoading(true);
+    try {
+      const result = await authApi.oauthLogin(data);
+
+      if (!result.id) {
+        throw new Error('Invalid session state: Missing user identifier.');
+      }
+
+      const session: UserSession = {
+        user: {
+          id: result.id.toString(),
+          email: (result.email || '') as string,
+          name: result.username || 'User',
+          username: result.username,
+          created_at: result.created_at,
+          onboarding_completed: result.onboarding_completed,
+        },
+        token: result.access_token,
+        expiresAt: getExpiryTimestamp(),
+      };
+
+      saveSession(session, rememberMe);
+      setUser(session.user);
+
+      if (shouldRedirect) {
+        const finalRedirect = isValidCallbackUrl(redirectTo) ? redirectTo : '/';
+        router.push(finalRedirect);
+      }
+
+      setIsLoading(false);
+      return result;
+    } catch (error) {
+      setIsLoading(false);
+      console.error('OAuth login failed:', error);
+      toast.error('Social login failed. Please try again.');
+      throw error;
+    }
+  };
+
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
@@ -315,6 +366,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isMockMode,
         login,
         login2FA,
+        loginOAuth,
         logout,
         setIsLoading,
       }}
