@@ -3,10 +3,12 @@ import uuid
 from datetime import datetime, UTC
 from typing import List, Tuple
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from ..schemas import ExamResponseCreate, ExamResultCreate
 from ..models import User, Score, Response
 from .db_service import get_db
 from .gamification_service import GamificationService
+from backend.fastapi.app.core import ConflictError
 try:
     from .crypto import EncryptionManager
     CRYPTO_AVAILABLE = True
@@ -32,17 +34,50 @@ class ExamService:
     def save_response(db: Session, user: User, session_id: str, data: ExamResponseCreate):
         """Saves a single question response linked to the user and session."""
         try:
+            # Check if user has already answered this question
+            existing_response = db.query(Response).filter(
+                Response.user_id == user.id,
+                Response.question_id == data.question_id
+            ).first()
+            
+            if existing_response:
+                raise ConflictError(
+                    message="Duplicate response submission",
+                    details=[{
+                        "field": "question_id",
+                        "error": "User has already submitted a response for this question",
+                        "question_id": data.question_id,
+                        "existing_response_id": existing_response.id
+                    }]
+                )
+            
             new_response = Response(
                 username=user.username,
                 question_id=data.question_id,
                 response_value=data.value,
-                age_group=data.age_group,
+                detailed_age_group=data.age_group,
+                user_id=user.id,  # Ensure user_id is set
                 session_id=session_id,
                 timestamp=datetime.now(UTC).isoformat()
             )
             db.add(new_response)
             db.commit()
             return True
+        except IntegrityError as e:
+            # Handle database constraint violations (additional safety net)
+            db.rollback()
+            if "unique constraint" in str(e).lower() or "duplicate" in str(e).lower():
+                raise ConflictError(
+                    message="Duplicate response submission",
+                    details=[{
+                        "field": "question_id",
+                        "error": "User has already submitted a response for this question",
+                        "question_id": data.question_id
+                    }]
+                )
+            else:
+                logger.error(f"Database integrity error for user_id={user.id}: {e}")
+                raise
         except Exception as e:
             logger.error(f"Failed to save response for user_id={user.id}: {e}")
             db.rollback()

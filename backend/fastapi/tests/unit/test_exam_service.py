@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from api.services.exam_service import ExamService
 from api.schemas import ExamResponseCreate, ExamResultCreate
 from api.root_models import User, Score, Response
+from backend.fastapi.app.core import ConflictError
 
 
 class TestExamService:
@@ -48,7 +49,8 @@ class TestExamService:
             username="testuser",
             question_id=1,
             response_value=3,
-            age_group="adult",
+            detailed_age_group="adult",
+            user_id=mock_user.id,
             session_id="session123",
             timestamp=mock_response_class.call_args[1]['timestamp']  # timestamp is dynamic
         )
@@ -70,7 +72,69 @@ class TestExamService:
 
         mock_db.rollback.assert_called_once()
 
-    @patch('api.services.exam_service.Score')
+    @patch('api.services.exam_service.Response')
+    def test_save_response_duplicate_prevention(self, mock_response_class):
+        """Test that duplicate responses for the same user and question are rejected."""
+        mock_db = MagicMock(spec=Session)
+        mock_user = MagicMock(spec=User)
+        mock_user.id = 1
+        mock_user.username = "testuser"
+
+        # Mock existing response in database
+        mock_existing_response = MagicMock(spec=Response)
+        mock_existing_response.id = 123
+        
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.first.return_value = mock_existing_response
+        mock_db.query.return_value = mock_query
+
+        # Mock the schema object
+        mock_data = MagicMock()
+        mock_data.question_id = 1
+        mock_data.value = 3
+        mock_data.age_group = "adult"
+
+        with pytest.raises(ConflictError) as exc_info:
+            ExamService.save_response(mock_db, mock_user, "session123", mock_data)
+
+        assert "Duplicate response submission" in str(exc_info.value)
+        assert exc_info.value.details[0]["question_id"] == 1
+        assert exc_info.value.details[0]["existing_response_id"] == 123
+        
+        # Verify no new response was created or committed
+        mock_response_class.assert_not_called()
+        mock_db.add.assert_not_called()
+        mock_db.commit.assert_not_called()
+
+    @patch('api.services.exam_service.Response')
+    def test_save_response_no_existing_duplicate(self, mock_response_class):
+        """Test that response is saved when no duplicate exists."""
+        mock_db = MagicMock(spec=Session)
+        mock_user = MagicMock(spec=User)
+        mock_user.id = 1
+        mock_user.username = "testuser"
+
+        # Mock no existing response
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.first.return_value = None
+        mock_db.query.return_value = mock_query
+
+        # Mock the schema object
+        mock_data = MagicMock()
+        mock_data.question_id = 1
+        mock_data.value = 3
+        mock_data.age_group = "adult"
+
+        mock_response_instance = MagicMock()
+        mock_response_class.return_value = mock_response_instance
+
+        result = ExamService.save_response(mock_db, mock_user, "session123", mock_data)
+
+        assert result is True
+        mock_db.add.assert_called_once_with(mock_response_instance)
+        mock_db.commit.assert_called_once()
     @patch('api.services.exam_service.EncryptionManager')
     @patch('api.services.exam_service.GamificationService')
     @patch('api.services.exam_service.datetime')
