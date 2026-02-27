@@ -21,7 +21,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
 from app.db import get_session
-from app.models import Score, UserStrengths, UserEmotionalPatterns, User
+from app.models import Score, UserStrengths, UserEmotionalPatterns, User, UserSession
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +77,8 @@ class EQInsightsGenerator:
                 # Get historical scores with user data
                 scores_query = session.query(
                     Score.id, Score.username, Score.total_score, Score.sentiment_score,
-                    Score.age, Score.user_id, Score.timestamp
-                ).filter(Score.user_id.isnot(None)).all()
+                    Score.age, UserSession.user_id, Score.timestamp
+                ).join(UserSession, Score.session_id == UserSession.session_id).filter(UserSession.user_id.isnot(None)).all()
 
                 if len(scores_query) < 10:
                     logger.warning("Insufficient data for training ML model")
@@ -152,8 +152,8 @@ class EQInsightsGenerator:
     def _calculate_score_variance(self, session, user_id: int) -> float:
         """Calculate score variance for a user."""
         try:
-            scores = session.query(Score.total_score).filter(
-                Score.user_id == user_id
+            scores = session.query(Score.total_score).join(UserSession, Score.session_id == UserSession.session_id).filter(
+                UserSession.user_id == user_id
             ).all()
 
             if len(scores) < 2:
@@ -245,8 +245,8 @@ class EQInsightsGenerator:
                 ).first()
 
                 # Get historical scores
-                historical_scores = session.query(Score).filter(
-                    Score.user_id == user_id
+                historical_scores = session.query(Score).join(UserSession, Score.session_id == UserSession.session_id).filter(
+                    UserSession.user_id == user_id
                 ).order_by(Score.timestamp.desc()).limit(5).all()
 
                 # Calculate features

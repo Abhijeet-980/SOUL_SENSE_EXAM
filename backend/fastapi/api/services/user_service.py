@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 
 # Import models from models module
-from ..models import User, UserSettings, MedicalProfile, PersonalProfile, UserStrengths, UserEmotionalPatterns, Score
+from ..models import User, UserSettings, MedicalProfile, PersonalProfile, UserStrengths, UserEmotionalPatterns, Score, UserSession
 import bcrypt
 
 
@@ -256,7 +256,7 @@ class UserService:
             )
 
         # Count total assessments
-        total_assessments = self.db.query(Score).filter(Score.user_id == user_id).count()
+        total_assessments = self.db.query(Score).join(UserSession, Score.session_id == UserSession.session_id).filter(UserSession.user_id == user_id).count()
 
         return {
             "id": user.id,

@@ -40,8 +40,6 @@ class User(Base):
     is_2fa_enabled = Column(Boolean, default=False, nullable=False)
     last_activity = Column(String, nullable=True) # Track idle time
 
-    scores = relationship("Score", back_populates="user", cascade="all, delete-orphan")
-    responses = relationship("Response", back_populates="user", cascade="all, delete-orphan")
     settings = relationship("UserSettings", uselist=False, back_populates="user", cascade="all, delete-orphan")
     medical_profile = relationship("MedicalProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
     personal_profile = relationship("PersonalProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
@@ -277,13 +275,9 @@ class Score(Base):
     is_inconsistent = Column(Boolean, default=False)
     reflection_text = Column(Text, nullable=True)
     timestamp = Column(String, default=lambda: datetime.utcnow().isoformat())
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     session_id = Column(String, nullable=True)
     
-    user = relationship("User", back_populates="scores")
-    
     __table_args__ = (
-        Index('idx_score_user_timestamp', 'user_id', 'timestamp'),
         Index('idx_score_age_score', 'age', 'total_score'),
         Index('idx_score_agegroup_score', 'detailed_age_group', 'total_score'),
     )
@@ -297,15 +291,11 @@ class Response(Base):
     timestamp = Column(String, default=lambda: datetime.utcnow().isoformat())
     age = Column(Integer, nullable=True)
     detailed_age_group = Column(String, nullable=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     session_id = Column(String, nullable=True)
-    
-    user = relationship("User", back_populates="responses")
     
     __table_args__ = (
         CheckConstraint('response_value >= 1 AND response_value <= 5', name='ck_response_value_range'),
         Index('idx_response_question_timestamp', 'question_id', 'timestamp'),
-        Index('idx_response_user_timestamp', 'user_id', 'timestamp'),
         Index('idx_response_agegroup_timestamp', 'detailed_age_group', 'timestamp'),
     )
 

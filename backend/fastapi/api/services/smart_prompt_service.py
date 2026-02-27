@@ -15,7 +15,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
-from ..models import Score, JournalEntry, UserEmotionalPatterns
+from ..models import Score, JournalEntry, UserEmotionalPatterns, UserSession
 
 
 # ============================================================================
@@ -140,8 +140,8 @@ class SmartPromptService:
         }
         
         # 1. Get latest EQ score
-        latest_score = self.db.query(Score).filter(
-            Score.user_id == user_id
+        latest_score = self.db.query(Score).join(UserSession, Score.session_id == UserSession.session_id).filter(
+            UserSession.user_id == user_id
         ).order_by(desc(Score.timestamp)).first()
         
         if latest_score:
