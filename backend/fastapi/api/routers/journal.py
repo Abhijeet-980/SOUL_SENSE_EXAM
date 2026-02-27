@@ -11,11 +11,11 @@ Provides authenticated API endpoints for journal management:
 - AI Journaling prompts
 """
 
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Annotated, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
+from fastapi import APIRouter, Depends, Query, status, Request
 from fastapi.responses import Response as FastApiResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..schemas import (
     JournalCreate,
@@ -39,7 +39,7 @@ from ..utils.limiter import limiter
 router = APIRouter(tags=["Journal"])
 
 
-def get_journal_service(db: Session = Depends(get_db)):
+async def get_journal_service(db: AsyncSession = Depends(get_db)):
     """Dependency to get JournalService."""
     return JournalService(db)
 
@@ -58,16 +58,8 @@ async def create_journal(
 ):
     """
     Create a new journal entry with AI sentiment analysis.
-    
-    **Features:**
-    - Automatic word count tracking
-    - Mood/sentiment analysis
-    - Wellbeing metrics integration
-    - Tagging system
-    
-    **Authentication Required**
     """
-    return journal_service.create_entry(
+    return await journal_service.create_entry(
         current_user=current_user,
         content=journal_data.content,
         tags=journal_data.tags,
@@ -96,10 +88,8 @@ async def list_journals(
 ):
     """
     List user's journal entries with pagination and date filtering.
-    
-    **Authentication Required**
     """
-    entries, total = journal_service.get_entries(
+    entries, total = await journal_service.get_entries(
         current_user=current_user,
         skip=skip,
         limit=limit,
@@ -116,7 +106,7 @@ async def list_journals(
 
 
 # ============================================================================
-# Advanced Features (Static Routes first to avoid conflicts)
+# Advanced Features 
 # ============================================================================
 
 @router.get("/prompts", response_model=JournalPromptsResponse, summary="Get AI Prompts")
@@ -125,7 +115,6 @@ async def list_prompts(
 ):
     """
     Get AI-generated journaling prompts to inspire writing.
-    Categorized by focus areas.
     """
     prompts = get_journal_prompts(category)
     return JournalPromptsResponse(
@@ -137,22 +126,14 @@ async def list_prompts(
 @router.get("/smart-prompts", response_model=SmartPromptsResponse, summary="Get Smart AI Prompts")
 async def get_smart_prompts(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     count: int = Query(3, ge=1, le=5, description="Number of prompts to return")
 ):
     """
     Get AI-personalized journal prompts based on user's emotional context.
-    
-    **Factors considered:**
-    - Recent EQ assessment scores
-    - Journal sentiment trends (last 7 days)
-    - Detected emotional patterns
-    - Time of day
-    
-    **Authentication Required**
     """
     smart_service = SmartPromptService(db)
-    result = smart_service.get_smart_prompts(
+    result = await smart_service.get_smart_prompts(
         user_id=current_user.id,
         count=count
     )
@@ -178,10 +159,8 @@ async def search_journals(
 ):
     """
     Search across journal content, tags, and sentiment scores.
-    
-    **Authentication Required**
     """
-    entries, total = journal_service.search_entries(
+    entries, total = await journal_service.search_entries(
         current_user=current_user,
         query=query,
         tags=tags,
@@ -205,15 +184,9 @@ async def get_analytics(
     journal_service: Annotated[JournalService, Depends(get_journal_service)]
 ):
     """
-    Detailed analytics on journaling patterns:
-    - Sentiment trends
-    - Mood distribution
-    - Wellbeing correlation
-    - Writing frequency
-    
-    **Authentication Required**
+    Detailed analytics on journaling patterns.
     """
-    return journal_service.get_analytics(current_user)
+    return await journal_service.get_analytics(current_user)
 
 
 @router.get("/export", summary="Export Journal Entries")
@@ -226,10 +199,8 @@ async def export_journals(
 ):
     """
     Export all journal entries in JSON or TXT format.
-    
-    **Authentication Required**
     """
-    content = journal_service.export_entries(
+    content = await journal_service.export_entries(
         current_user=current_user,
         format=format,
         start_date=start_date,
@@ -240,7 +211,7 @@ async def export_journals(
     return FastApiResponse(
         content=content,
         media_type=media_type,
-        headers={"Content-Disposition": f"attachment; filename=journal_export_{datetime.utcnow().strftime('%Y%m%d')}.{format}"}
+        headers={"Content-Disposition": f"attachment; filename=journal_export_{datetime.now(UTC).strftime('%Y%m%d')}.{format}"}
     )
 
 
@@ -256,10 +227,8 @@ async def get_journal(
 ):
     """
     Retrieve a specific journal entry by ID.
-    
-    **Authentication Required**
     """
-    return journal_service.get_entry_by_id(journal_id, current_user)
+    return await journal_service.get_entry_by_id(journal_id, current_user)
 
 
 @router.put("/{journal_id}", response_model=JournalResponse, summary="Update Journal Entry")
@@ -271,11 +240,8 @@ async def update_journal(
 ):
     """
     Update an existing journal entry.
-    Sentiment and emotional patterns are re-analyzed if content changes.
-    
-    **Authentication Required**
     """
-    return journal_service.update_entry(
+    return await journal_service.update_entry(
         entry_id=journal_id,
         current_user=current_user,
         **journal_data.model_dump(exclude_unset=True)
@@ -289,11 +255,7 @@ async def delete_journal(
     journal_service: Annotated[JournalService, Depends(get_journal_service)]
 ):
     """
-    Permanently delete a journal entry.
-    
-    **Authentication Required**
+    Mark a journal entry as deleted.
     """
-    journal_service.delete_entry(journal_id, current_user)
+    await journal_service.delete_entry(journal_id, current_user)
     return None
-
-

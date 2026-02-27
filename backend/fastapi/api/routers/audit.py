@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, UTC
 from ..services.db_service import get_db
 from ..services.audit_service import AuditService
 from ..models import User
@@ -23,7 +23,7 @@ async def get_audit_logs(
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, ge=1, le=100, description="Results per page"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Retrieve audit logs with filtering and pagination.
@@ -51,7 +51,7 @@ async def get_audit_logs(
     if end_date:
         filters['end_date'] = end_date
 
-    logs, total_count = AuditService.query_logs(filters, page, per_page, db)
+    logs, total_count = await AuditService.query_logs(filters, page, per_page, db)
 
     return AuditLogListResponse(
         logs=[AuditLogResponse.from_orm(log) for log in logs],
@@ -65,12 +65,12 @@ async def get_my_activity(
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=50, description="Results per page"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get current user's own audit activity logs.
     """
-    logs, total_count = AuditService.get_user_activity(current_user.id, page, per_page, db)
+    logs, total_count = await AuditService.get_user_activity(current_user.id, page, per_page, db)
 
     return AuditLogListResponse(
         logs=[AuditLogResponse.from_orm(log) for log in logs],
@@ -81,13 +81,13 @@ async def get_my_activity(
 
 @router.get("/export", response_model=AuditExportResponse)
 async def export_audit_logs(
-    format: str = Query("json", regex="^(json|csv)$", description="Export format"),
+    format: str = Query("json", description="Export format"),
     event_type: Optional[str] = Query(None, description="Filter by event type"),
     username: Optional[str] = Query(None, description="Filter by username"),
     start_date: Optional[datetime] = Query(None, description="Start date filter"),
     end_date: Optional[datetime] = Query(None, description="End date filter"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Export audit logs in JSON or CSV format.
@@ -107,19 +107,19 @@ async def export_audit_logs(
     if end_date:
         filters['end_date'] = end_date
 
-    exported_data = AuditService.export_logs(filters, format, db)
+    exported_data = await AuditService.export_logs(filters, format, db)
 
     return AuditExportResponse(
         data=exported_data,
         format=format,
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(UTC)
     )
 
 @router.post("/archive")
 async def archive_old_logs(
     retention_days: Optional[int] = Query(90, ge=1, description="Retention period in days"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Archive audit logs older than retention period.
@@ -129,7 +129,7 @@ async def archive_old_logs(
     # if not current_user.is_admin:
     #     raise HTTPException(status_code=403, detail="Admin access required")
 
-    archived_count = AuditService.archive_old_logs(retention_days, db)
+    archived_count = await AuditService.archive_old_logs(retention_days, db)
 
     return {
         "message": f"Archived {archived_count} audit logs",
@@ -139,7 +139,7 @@ async def archive_old_logs(
 @router.post("/cleanup")
 async def cleanup_expired_logs(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Permanently delete expired audit logs.
@@ -149,7 +149,7 @@ async def cleanup_expired_logs(
     # if not current_user.is_admin:
     #     raise HTTPException(status_code=403, detail="Admin access required")
 
-    deleted_count = AuditService.cleanup_expired_logs(db)
+    deleted_count = await AuditService.cleanup_expired_logs(db)
 
     return {
         "message": f"Cleaned up {deleted_count} expired audit logs",
