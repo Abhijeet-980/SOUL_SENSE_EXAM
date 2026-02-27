@@ -29,7 +29,7 @@ class AssessmentResultsService:
             db.query(Response, Question, QuestionCategory)
             .join(Question, Response.question_id == Question.id)
             .join(QuestionCategory, Question.category_id == QuestionCategory.id)
-            .filter(Response.session_id == score.session_id)
+            .filter(Response.session_id == score.session_id, Response.user_id == user_id)
             .all()
         )
 

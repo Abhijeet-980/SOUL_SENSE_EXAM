@@ -37,6 +37,7 @@ class ExamService:
         try:
             new_response = Response(
                 username=user.username,
+                user_id=user.id,
                 question_id=data.question_id,
                 response_value=data.value,
                 age_group=data.age_group,

@@ -46,16 +46,20 @@ class AssessmentService:
         db: Session,
         skip: int = 0,
         limit: int = 10,
+        user_id: Optional[int] = None,
         username: Optional[str] = None,
         age_group: Optional[str] = None
     ) -> Tuple[List[Score], int]:
         """
         Get assessments with pagination and optional filters.
+        When user_id is provided, results are scoped to that user only.
         """
         query = db.query(Score)
         
-        # Apply filters
-        if username:
+        # Apply filters — prefer user_id for session-bound isolation
+        if user_id is not None:
+            query = query.filter(Score.user_id == user_id)
+        elif username:
             query = query.filter(Score.username == username)
         if age_group:
             query = query.filter(Score.detailed_age_group == age_group)
@@ -69,18 +73,30 @@ class AssessmentService:
         return assessments, total
     
     @staticmethod
-    def get_assessment_by_id(db: Session, assessment_id: int) -> Optional[Score]:
-        """Get a single assessment by ID."""
-        return db.query(Score).filter(Score.id == assessment_id).first()
+    def get_assessment_by_id(
+        db: Session, assessment_id: int, user_id: Optional[int] = None
+    ) -> Optional[Score]:
+        """Get a single assessment by ID, optionally scoped to a specific user."""
+        query = db.query(Score).filter(Score.id == assessment_id)
+        if user_id is not None:
+            query = query.filter(Score.user_id == user_id)
+        return query.first()
     
     @staticmethod
-    def get_assessment_stats(db: Session, username: Optional[str] = None) -> dict:
+    def get_assessment_stats(
+        db: Session,
+        user_id: Optional[int] = None,
+        username: Optional[str] = None
+    ) -> dict:
         """
         Get statistical summary of assessments.
+        When user_id is provided, stats are scoped to that user.
         """
         query = db.query(Score)
         
-        if username:
+        if user_id is not None:
+            query = query.filter(Score.user_id == user_id)
+        elif username:
             query = query.filter(Score.username == username)
         
         # Calculate statistics
@@ -93,15 +109,17 @@ class AssessmentService:
         ).first()
         
         # Get age group distribution
-        age_distribution = db.query(
+        age_query = db.query(
             Score.detailed_age_group,
             func.count(Score.id).label('count')
         )
         
-        if username:
-            age_distribution = age_distribution.filter(Score.username == username)
+        if user_id is not None:
+            age_query = age_query.filter(Score.user_id == user_id)
+        elif username:
+            age_query = age_query.filter(Score.username == username)
         
-        age_distribution = age_distribution.group_by(Score.detailed_age_group).all()
+        age_distribution = age_query.group_by(Score.detailed_age_group).all()
         
         return {
             'total_assessments': stats.total or 0,
@@ -115,16 +133,23 @@ class AssessmentService:
         }
     
     @staticmethod
-    def get_assessment_responses(db: Session, assessment_id: int) -> List[Response]:
-        """Get all responses for a specific assessment."""
-        assessment = db.query(Score).filter(Score.id == assessment_id).first()
+    def get_assessment_responses(
+        db: Session, assessment_id: int, user_id: Optional[int] = None
+    ) -> List[Response]:
+        """Get all responses for a specific assessment, scoped to user_id."""
+        query = db.query(Score).filter(Score.id == assessment_id)
+        if user_id is not None:
+            query = query.filter(Score.user_id == user_id)
+        assessment = query.first()
         if not assessment:
             return []
         
-        return db.query(Response).filter(
-            Response.username == assessment.username,
-            Response.timestamp == assessment.timestamp
-        ).all()
+        resp_query = db.query(Response).filter(
+            Response.session_id == assessment.session_id
+        )
+        if user_id is not None:
+            resp_query = resp_query.filter(Response.user_id == user_id)
+        return resp_query.all()
 
 
 class QuestionService:

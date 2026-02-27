@@ -275,7 +275,7 @@ class Score(Base):
     is_inconsistent = Column(Boolean, default=False)
     reflection_text = Column(Text, nullable=True)
     timestamp = Column(String, default=lambda: datetime.utcnow().isoformat())
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     session_id = Column(String, nullable=True)
     
     user = relationship("User", back_populates="scores")
@@ -295,7 +295,7 @@ class Response(Base):
     timestamp = Column(String, default=lambda: datetime.utcnow().isoformat())
     age = Column(Integer, nullable=True)
     detailed_age_group = Column(String, nullable=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     session_id = Column(String, nullable=True)
     
     user = relationship("User", back_populates="responses")
