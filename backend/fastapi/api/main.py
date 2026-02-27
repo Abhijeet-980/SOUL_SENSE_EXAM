@@ -22,6 +22,29 @@ settings = get_settings_instance()
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 FAVICON_PATH = STATIC_DIR / "favicon.svg"
 
+# Initialize FastAPI Cache early (before router imports)
+try:
+    import redis.asyncio as redis
+    redis_client = redis.from_url(
+        settings.redis_url,
+        encoding="utf-8",
+        decode_responses=True
+    )
+    from fastapi_cache import FastAPICache
+    from fastapi_cache.backends.redis import RedisBackend
+    FastAPICache.init(RedisBackend(redis_client), prefix="fastapi-cache")
+    print("[OK] FastAPI Cache initialized with Redis backend")
+except Exception as e:
+    print(f"[WARNING] FastAPI Cache initialization failed: {e}")
+    # Initialize with in-memory backend as fallback
+    try:
+        from fastapi_cache import FastAPICache
+        from fastapi_cache.backends.memory import MemoryBackend
+        FastAPICache.init(MemoryBackend(), prefix="fastapi-cache")
+        print("[OK] FastAPI Cache initialized with in-memory backend")
+    except Exception as e2:
+        print(f"[ERROR] FastAPI Cache fallback initialization failed: {e2}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -65,6 +88,7 @@ async def lifespan(app: FastAPI):
             # Configure slowapi limiter with Redis storage
             limiter._storage_uri = settings.redis_url
             print(f"[OK] Redis connected for rate limiting: {settings.redis_host}:{settings.redis_port}")
+            
         except Exception as e:
             logger.warning(f"Redis initialization failed: {e}")
             print(f"[WARNING] Redis not available, rate limiting will use in-memory fallback: {e}")

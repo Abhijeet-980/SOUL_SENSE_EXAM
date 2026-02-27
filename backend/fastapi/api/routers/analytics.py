@@ -7,6 +7,7 @@ import logging
 from ..services.db_service import get_db
 from ..services.analytics_service import AnalyticsService
 from backend.fastapi.app.core import AuthorizationError, InternalServerError
+from fastapi_cache.decorator import cache
 from ..schemas import (
     AnalyticsSummary,
     TrendAnalytics,
@@ -41,11 +42,13 @@ async def track_event(
 
 
 @router.get("/summary", response_model=AnalyticsSummary, dependencies=[Depends(rate_limit_analytics)])
+@cache(expire=3600)  # Cache for 1 hour - aggregated data changes slowly
 async def get_analytics_summary(db: Session = Depends(get_db)):
     """
     Get overall analytics summary with aggregated data only.
     
     **Rate Limited**: 30 requests per minute per IP
+    **Cached**: 1 hour - returns aggregated statistics only
     
     **Data Privacy**: This endpoint returns ONLY aggregated statistics.
     No individual user data or raw sensitive information is exposed.
@@ -63,6 +66,7 @@ async def get_analytics_summary(db: Session = Depends(get_db)):
 
 
 @router.get("/trends", response_model=TrendAnalytics, dependencies=[Depends(rate_limit_analytics)])
+@cache(expire=1800)  # Cache for 30 minutes - trend data updates moderately
 async def get_trend_analytics(
     period: str = Query('monthly', pattern='^(daily|weekly|monthly)$', description="Time period type"),
     limit: int = Query(12, ge=1, le=24, description="Number of periods to return"),
@@ -72,6 +76,7 @@ async def get_trend_analytics(
     Get trend analytics over time.
     
     **Rate Limited**: 30 requests per minute per IP
+    **Cached**: 30 minutes - returns aggregated time-series data
     
     **Data Privacy**: Returns aggregated time-series data only.
     No individual assessment data or user information.
@@ -89,11 +94,13 @@ async def get_trend_analytics(
 
 
 @router.get("/benchmarks", response_model=list[BenchmarkComparison], dependencies=[Depends(rate_limit_analytics)])
+@cache(expire=3600)  # Cache for 1 hour - benchmark data is stable
 async def get_benchmark_comparison(db: Session = Depends(get_db)):
     """
     Get benchmark comparison data with percentiles.
     
     **Rate Limited**: 30 requests per minute per IP
+    **Cached**: 1 hour - returns percentile-based aggregations
     
     **Data Privacy**: Returns percentile-based aggregations only.
     No individual scores or user data exposed.
@@ -108,11 +115,13 @@ async def get_benchmark_comparison(db: Session = Depends(get_db)):
 
 
 @router.get("/insights", response_model=PopulationInsights, dependencies=[Depends(rate_limit_analytics)])
+@cache(expire=3600)  # Cache for 1 hour - population insights change slowly
 async def get_population_insights(db: Session = Depends(get_db)):
     """
     Get population-level insights.
     
     **Rate Limited**: 30 requests per minute per IP
+    **Cached**: 1 hour - returns population-level aggregations
     
     **Data Privacy**: Returns population-level aggregations only.
     No individual user data or sensitive information.
@@ -127,6 +136,7 @@ async def get_population_insights(db: Session = Depends(get_db)):
     return PopulationInsights(**insights)
 
 @router.get("/statistics", response_model=DashboardStatisticsResponse, dependencies=[Depends(rate_limit_analytics)])
+@cache(expire=1800)  # Cache for 30 minutes - dashboard data updates moderately
 async def get_dashboard_statistics(
     timeframe: str = Query('30d', pattern='^(7d|30d|90d)$', description="Time period for historical data"),
     exam_type: Optional[str] = Query(None, description="Filter by exam type"),
@@ -137,6 +147,7 @@ async def get_dashboard_statistics(
     Get dashboard statistics with historical trends.
     
     **Rate Limited**: 30 requests per minute per IP
+    **Cached**: 30 minutes - returns aggregated historical data
     
     **Data Privacy**: Returns aggregated historical data only.
     No individual user information.
