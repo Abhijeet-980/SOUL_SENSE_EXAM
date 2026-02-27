@@ -10,7 +10,6 @@ import { SkipLinks } from '@/components/accessibility';
 import { OfflineBanner } from '@/components/offline';
 import { SessionTimeoutWarning } from '@/components/SessionTimeoutWarning';
 import { register } from '@/lib/offline';
-import { Providers } from './providers';
 import { Toaster } from 'sonner';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
@@ -99,41 +98,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           disableTransitionOnChange
         >
           <SkipLinks />
-          <ToastProvider>
-            <QueryProvider>
-              <AuthProvider>
-                <OfflineBanner />
-                <NetworkErrorBanner />
-                <NavbarController />
-                <div id="main-content" role="main" tabIndex={-1}>
-                  {children}
-                </div>
-                <BottomNavigation />
-              </AuthProvider>
-            </QueryProvider>
-          </ToastProvider>
-        </ThemeProvider>
-        <Providers>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <SkipLinks />
-            <Toaster
-              position="top-right"
-              richColors
-              closeButton
-              className="z-[9999]"
-              toastOptions={{
-                style: {
-                  background: 'hsl(var(--background))',
-                  border: '1px solid hsl(var(--border))',
-                  color: 'hsl(var(--foreground))',
-                },
-              }}
-            />
+          <Toaster
+            position="top-right"
+            richColors
+            closeButton
+            className="z-[9999]"
+            toastOptions={{
+              style: {
+                background: 'hsl(var(--background))',
+                border: '1px solid hsl(var(--border))',
+                color: 'hsl(var(--foreground))',
+              },
+            }}
+          />
+          <QueryProvider>
             <AuthProvider>
               <SessionTimeoutWarning />
               <OfflineBanner />
@@ -144,8 +122,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
               <BottomNavigation />
             </AuthProvider>
-          </ThemeProvider>
-        </Providers>
+          </QueryProvider>
+        </ThemeProvider>
         <script
           dangerouslySetInnerHTML={{
             __html: `
