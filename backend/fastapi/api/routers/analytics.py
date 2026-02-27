@@ -14,7 +14,11 @@ from ..schemas import (
     BenchmarkComparison,
     PopulationInsights,
     AnalyticsEventCreate,
-    DashboardStatisticsResponse
+    DashboardStatisticsResponse,
+    ConversionRateKPI,
+    RetentionKPI,
+    ARPUKPI,
+    KPISummary
 )
 from ..middleware.rate_limiter import rate_limit_analytics
 
@@ -618,3 +622,108 @@ async def track_performance_summary(
     except Exception as e:
         logger.error(f"Error tracking performance summary: {e}")
         raise InternalServerError(message="Failed to track summary")
+
+
+# ============================================================================
+# KPI & Reporting Endpoints (Issue #981)
+# ============================================================================
+
+@router.get("/kpis/conversion-rate", response_model=ConversionRateKPI, dependencies=[Depends(rate_limit_analytics)])
+@cache(expire=3600)  # Cache for 1 hour - KPI data updates moderately
+async def get_conversion_rate_kpi(
+    period_days: int = Query(30, ge=1, le=365, description="Number of days to calculate conversion rate over"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get Conversion Rate KPI: (signup_completed / signup_started) * 100
+
+    **Rate Limited**: 30 requests per minute per IP
+    **Cached**: 1 hour - KPI calculations are moderately expensive
+
+    **Data Privacy**: Returns aggregated conversion metrics only.
+    No individual user signup data exposed.
+
+    - **period_days**: Time period in days (1-365)
+
+    Returns conversion rate metrics for the specified period.
+    """
+    kpi_data = AnalyticsService.calculate_conversion_rate(db, period_days)
+    return kpi_data
+
+
+@router.get("/kpis/retention-rate", response_model=RetentionKPI, dependencies=[Depends(rate_limit_analytics)])
+@cache(expire=3600)  # Cache for 1 hour - KPI data updates moderately
+async def get_retention_rate_kpi(
+    period_days: int = Query(7, ge=1, le=90, description="Number of days for retention calculation"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get Retention Rate KPI: (day_n_active_users / day_0_users) * 100
+
+    **Rate Limited**: 30 requests per minute per IP
+    **Cached**: 1 hour - KPI calculations are moderately expensive
+
+    **Data Privacy**: Returns aggregated retention metrics only.
+    No individual user activity data exposed.
+
+    - **period_days**: Retention period in days (1-90)
+
+    Returns retention rate metrics for the specified period.
+    """
+    kpi_data = AnalyticsService.calculate_retention_rate(db, period_days)
+    return kpi_data
+
+
+@router.get("/kpis/arpu", response_model=ARPUKPI, dependencies=[Depends(rate_limit_analytics)])
+@cache(expire=3600)  # Cache for 1 hour - KPI data updates moderately
+async def get_arpu_kpi(
+    period_days: int = Query(30, ge=1, le=365, description="Number of days to calculate ARPU over"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get ARPU KPI: (total_revenue / total_active_users)
+
+    **Rate Limited**: 30 requests per minute per IP
+    **Cached**: 1 hour - KPI calculations are moderately expensive
+
+    **Data Privacy**: Returns aggregated revenue metrics only.
+    No individual user financial data exposed.
+
+    - **period_days**: Time period in days (1-365)
+
+    Returns ARPU metrics for the specified period.
+    """
+    kpi_data = AnalyticsService.calculate_arpu(db, period_days)
+    return kpi_data
+
+
+@router.get("/kpis/summary", response_model=KPISummary, dependencies=[Depends(rate_limit_analytics)])
+@cache(expire=1800)  # Cache for 30 minutes - combined KPI data
+async def get_kpi_summary(
+    conversion_period: int = Query(30, ge=1, le=365, description="Days for conversion rate"),
+    retention_period: int = Query(7, ge=1, le=90, description="Days for retention rate"),
+    arpu_period: int = Query(30, ge=1, le=365, description="Days for ARPU"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get combined KPI summary for dashboard reporting.
+
+    **Rate Limited**: 30 requests per minute per IP
+    **Cached**: 30 minutes - Combined KPI calculations
+
+    **Data Privacy**: Returns aggregated KPI metrics only.
+    No individual user data exposed.
+
+    - **conversion_period**: Days for conversion rate calculation
+    - **retention_period**: Days for retention rate calculation
+    - **arpu_period**: Days for ARPU calculation
+
+    Returns all three KPIs in a single response for dashboard efficiency.
+    """
+    kpi_summary = AnalyticsService.get_kpi_summary(
+        db,
+        conversion_period,
+        retention_period,
+        arpu_period
+    )
+    return KPISummary(**kpi_summary)
