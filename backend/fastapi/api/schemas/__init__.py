@@ -1408,3 +1408,42 @@ class OAuthUserInfo(BaseModel):
     name: Optional[str] = None
     given_name: Optional[str] = None
     family_name: Optional[str] = None
+
+
+# ============================================================================
+# KPI & Reporting Schemas (Issue #981)
+# ============================================================================
+
+class ConversionRateKPI(BaseModel):
+    """Conversion Rate KPI: (signup_completed / signup_started) * 100"""
+    signup_started: int = Field(description="Total number of signup attempts started")
+    signup_completed: int = Field(description="Total number of successful signups")
+    conversion_rate: float = Field(description="Conversion rate as percentage (0-100)")
+    period: str = Field(description="Time period for the calculation")
+
+
+class RetentionKPI(BaseModel):
+    """Retention KPI: (day_n_active_users / day_0_users) * 100"""
+    day_0_users: int = Field(description="Number of users active on day 0")
+    day_n_active_users: int = Field(description="Number of users still active on day N")
+    retention_rate: float = Field(description="Retention rate as percentage (0-100)")
+    period_days: int = Field(description="Number of days for retention calculation")
+    period: str = Field(description="Time period for the calculation")
+
+
+class ARPUKPI(BaseModel):
+    """ARPU KPI: (total_revenue / total_active_users)"""
+    total_revenue: float = Field(description="Total revenue in the period")
+    total_active_users: int = Field(description="Total active users in the period")
+    arpu: float = Field(description="Average Revenue Per User")
+    period: str = Field(description="Time period for the calculation")
+    currency: str = Field(default="USD", description="Currency for revenue figures")
+
+
+class KPISummary(BaseModel):
+    """Combined KPI summary for dashboard reporting"""
+    conversion_rate: ConversionRateKPI
+    retention_rate: RetentionKPI
+    arpu: ARPUKPI
+    calculated_at: str = Field(description="ISO 8601 timestamp when KPIs were calculated")
+    period: str = Field(description="Time period these KPIs cover")

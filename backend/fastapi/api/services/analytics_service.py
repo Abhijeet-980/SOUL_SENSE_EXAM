@@ -359,3 +359,169 @@ class AnalyticsService:
             })
         
         return trends
+
+    # ============================================================================
+    # KPI Calculations (Issue #981)
+    # ============================================================================
+
+    @staticmethod
+    def calculate_conversion_rate(
+        db: Session,
+        period_days: int = 30
+    ) -> Dict:
+        """
+        Calculate Conversion Rate KPI: (signup_completed / signup_started) * 100
+
+        Args:
+            db: Database session
+            period_days: Number of days to look back for calculation
+
+        Returns:
+            Dictionary with conversion rate metrics
+        """
+        cutoff_date = datetime.utcnow() - timedelta(days=period_days)
+
+        # Count signup started events (signup_start event)
+        signup_started = db.query(func.count(AnalyticsEvent.id)).filter(
+            AnalyticsEvent.event_name == 'signup_start',
+            AnalyticsEvent.timestamp >= cutoff_date
+        ).scalar() or 0
+
+        # Count signup completed events (signup_success event)
+        signup_completed = db.query(func.count(AnalyticsEvent.id)).filter(
+            AnalyticsEvent.event_name == 'signup_success',
+            AnalyticsEvent.timestamp >= cutoff_date
+        ).scalar() or 0
+
+        # Calculate conversion rate
+        conversion_rate = (signup_completed / signup_started * 100) if signup_started > 0 else 0
+
+        return {
+            'signup_started': signup_started,
+            'signup_completed': signup_completed,
+            'conversion_rate': round(conversion_rate, 2),
+            'period': f'last_{period_days}_days'
+        }
+
+    @staticmethod
+    def calculate_retention_rate(
+        db: Session,
+        period_days: int = 7
+    ) -> Dict:
+        """
+        Calculate Retention Rate KPI: (day_n_active_users / day_0_users) * 100
+
+        Args:
+            db: Database session
+            period_days: Number of days for retention calculation (N in day N)
+
+        Returns:
+            Dictionary with retention rate metrics
+        """
+        today = datetime.utcnow().date()
+        day_0 = today - timedelta(days=period_days)
+        day_n = today
+
+        # Find users active on day 0 (had activity on that day)
+        day_0_users = db.query(func.count(func.distinct(AnalyticsEvent.user_id))).filter(
+            AnalyticsEvent.user_id.isnot(None),
+            func.date(AnalyticsEvent.timestamp) == day_0
+        ).scalar() or 0
+
+        # Find users from day 0 who were also active on day N
+        day_n_active_users = db.query(func.count(func.distinct(AnalyticsEvent.user_id))).filter(
+            AnalyticsEvent.user_id.isnot(None),
+            func.date(AnalyticsEvent.timestamp) == day_0,
+            AnalyticsEvent.user_id.in_(
+                db.query(func.distinct(AnalyticsEvent.user_id)).filter(
+                    func.date(AnalyticsEvent.timestamp) == day_n
+                ).subquery()
+            )
+        ).scalar() or 0
+
+        # Calculate retention rate
+        retention_rate = (day_n_active_users / day_0_users * 100) if day_0_users > 0 else 0
+
+        return {
+            'day_0_users': day_0_users,
+            'day_n_active_users': day_n_active_users,
+            'retention_rate': round(retention_rate, 2),
+            'period_days': period_days,
+            'period': f'{period_days}_day_retention'
+        }
+
+    @staticmethod
+    def calculate_arpu(
+        db: Session,
+        period_days: int = 30
+    ) -> Dict:
+        """
+        Calculate ARPU KPI: (total_revenue / total_active_users)
+
+        Note: This is a placeholder implementation. In a real system,
+        revenue would come from a payments/transactions table.
+
+        Args:
+            db: Database session
+            period_days: Number of days for ARPU calculation
+
+        Returns:
+            Dictionary with ARPU metrics
+        """
+        cutoff_date = datetime.utcnow() - timedelta(days=period_days)
+
+        # Count active users in the period (users with any activity)
+        total_active_users = db.query(func.count(func.distinct(AnalyticsEvent.user_id))).filter(
+            AnalyticsEvent.user_id.isnot(None),
+            AnalyticsEvent.timestamp >= cutoff_date
+        ).scalar() or 0
+
+        # TODO: Replace with actual revenue calculation from payments table
+        # For now, using a placeholder - in production this would query:
+        # - Payment transactions
+        # - Subscription revenue
+        # - One-time purchases
+        # - Refunds (negative revenue)
+        total_revenue = 0.0  # Placeholder - no revenue tracking implemented yet
+
+        # Calculate ARPU
+        arpu = (total_revenue / total_active_users) if total_active_users > 0 else 0
+
+        return {
+            'total_revenue': total_revenue,
+            'total_active_users': total_active_users,
+            'arpu': round(arpu, 2),
+            'period': f'last_{period_days}_days',
+            'currency': 'USD'
+        }
+
+    @staticmethod
+    def get_kpi_summary(
+        db: Session,
+        conversion_period_days: int = 30,
+        retention_period_days: int = 7,
+        arpu_period_days: int = 30
+    ) -> Dict:
+        """
+        Get combined KPI summary for dashboard reporting.
+
+        Args:
+            db: Database session
+            conversion_period_days: Period for conversion rate calculation
+            retention_period_days: Period for retention rate calculation
+            arpu_period_days: Period for ARPU calculation
+
+        Returns:
+            Combined KPI metrics
+        """
+        conversion_rate = AnalyticsService.calculate_conversion_rate(db, conversion_period_days)
+        retention_rate = AnalyticsService.calculate_retention_rate(db, retention_period_days)
+        arpu = AnalyticsService.calculate_arpu(db, arpu_period_days)
+
+        return {
+            'conversion_rate': conversion_rate,
+            'retention_rate': retention_rate,
+            'arpu': arpu,
+            'calculated_at': datetime.utcnow().isoformat(),
+            'period': f'conversion_{conversion_period_days}d_retention_{retention_period_days}d_arpu_{arpu_period_days}d'
+        }
