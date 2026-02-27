@@ -76,8 +76,6 @@ async def get_assessment(
 ):
     """
     Get detailed information for a specific assessment.
-    
-    - **assessment_id**: The ID of the assessment to retrieve
     """
     assessment = await AssessmentService.get_assessment_by_id(db=db, assessment_id=assessment_id)
     
