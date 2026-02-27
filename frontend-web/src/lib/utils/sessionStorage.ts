@@ -19,6 +19,31 @@ export interface UserSession {
 }
 
 /**
+ * Lightweight JWT parser to check if a token is expired
+ * Does not require external libraries to stay edge-runtime compatible
+ */
+export const isTokenExpired = (token: string): boolean => {
+  if (!token) return true;
+  try {
+    let payloadBase64 = token.split('.')[1];
+    if (!payloadBase64) return true;
+
+    // Convert base64url to base64
+    payloadBase64 = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+
+    // Use atob for browser-native base64 decoding
+    const decodedPayload = JSON.parse(atob(payloadBase64));
+    const currentTime = Math.floor(Date.now() / 1000);
+
+    // Return true if current time is past the exp claim
+    return decodedPayload.exp < currentTime;
+  } catch (e) {
+    console.warn('Failed to parse JWT for expiry check:', e);
+    return true; // Malformed tokens are considered fundamentally expired
+  }
+};
+
+/**
  * Save session to storage
  * @param session User session data
  * @param rememberMe Whether to use localStorage (persistent) or sessionStorage (per-tab)
