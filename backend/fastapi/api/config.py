@@ -60,6 +60,16 @@ class BaseAppSettings(BaseSettings):
         description="Database URL"
     )
 
+    @property
+    def async_database_url(self) -> str:
+        """Construct asynchronous database URL."""
+        url = self.database_url
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+asyncpg://")
+        elif url.startswith("sqlite:///"):
+            return url.replace("sqlite:///", "sqlite+aiosqlite:///")
+        return url
+
     # Deletion Grace Period
     deletion_grace_period_days: int = Field(default=30, ge=0, description="Grace period for account deletion in days")
 
