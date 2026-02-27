@@ -61,9 +61,8 @@ export const ANALYTICS_EVENTS = {
   SCREEN_EXIT: 'screen_exit',
 
   // Error events
-  NETWORK_ERROR: 'network_error',
   API_ERROR: 'api_error',
-  VALIDATION_ERROR: 'validation_error',
+  VALIDATION_FAILED: 'validation_failed',
 } as const;
 
 type AnalyticsEventName = typeof ANALYTICS_EVENTS[keyof typeof ANALYTICS_EVENTS];
@@ -127,6 +126,7 @@ class AnalyticsManager {
     this.setupSessionTracking();
     this.setupScrollDepthTracking();
     this.setupScreenTimeTracking();
+    this.setupNetworkInterceptor();
   }
 
   private generateSessionId(): string {
@@ -253,6 +253,54 @@ class AnalyticsManager {
           this.exitScreen('navigation');
         }
       });
+    }
+  }
+
+  private setupNetworkInterceptor() {
+    // Intercept fetch requests for API error tracking
+    if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+      const originalFetch = window.fetch;
+
+      window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const startTime = Date.now();
+        let retryCount = 0;
+
+        // Extract endpoint URL
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+
+        try {
+          const response = await originalFetch(input, init);
+          const latency = Date.now() - startTime;
+
+          // Track API errors (4xx, 5xx status codes)
+          if (!response.ok) {
+            let errorMessage = `HTTP ${response.status}`;
+            try {
+              const errorData = await response.clone().json();
+              if (errorData.message) {
+                errorMessage = errorData.message;
+              }
+            } catch {
+              // If we can't parse the error response, use the status text
+              if (response.statusText) {
+                errorMessage = response.statusText;
+              }
+            }
+
+            this.trackApiError(url, response.status, errorMessage, latency, retryCount);
+          }
+
+          return response;
+        } catch (error) {
+          const latency = Date.now() - startTime;
+          const errorMessage = error instanceof Error ? error.message : 'Network request failed';
+
+          // Track network/timeout errors
+          this.trackApiError(url, 0, errorMessage, latency, retryCount);
+
+          throw error;
+        }
+      };
     }
   }
 
@@ -509,6 +557,39 @@ class AnalyticsManager {
       platform: 'web',
       app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
       event_properties: { error_code: errorCode, error_message: errorMessage }
+    });
+  }
+
+  trackApiError(endpoint: string, responseCode: number, errorMessage: string, latency: number, retryCount: number = 0) {
+    this.trackEvent({
+      event_name: ANALYTICS_EVENTS.API_ERROR,
+      timestamp: new Date().toISOString(),
+      user_id: this.currentUserId || undefined,
+      session_id: this.currentSessionId,
+      platform: 'web',
+      app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
+      event_properties: {
+        endpoint,
+        response_code: responseCode,
+        error_message: errorMessage,
+        latency,
+        retry_count: retryCount
+      }
+    });
+  }
+
+  trackValidationFailure(fieldName: string, reason: string) {
+    this.trackEvent({
+      event_name: ANALYTICS_EVENTS.VALIDATION_FAILED,
+      timestamp: new Date().toISOString(),
+      user_id: this.currentUserId || undefined,
+      session_id: this.currentSessionId,
+      platform: 'web',
+      app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
+      event_properties: {
+        field_name: fieldName,
+        reason
+      }
     });
   }
 

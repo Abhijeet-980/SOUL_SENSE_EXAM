@@ -48,7 +48,8 @@
         "screen_exit",
         "network_error",
         "api_error",
-        "validation_error"
+        "validation_error",
+        "validation_failed"
       ]
     },
     "timestamp": {
@@ -143,6 +144,24 @@
             "duration_ms": { "type": "number" },
             "duration_seconds": { "type": "number" },
             "exit_reason": { "type": "string", "enum": ["navigation", "background", "force_close", "app_close"] }
+          },
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "endpoint": { "type": "string" },
+            "response_code": { "type": "integer" },
+            "error_message": { "type": "string" },
+            "latency": { "type": "number" },
+            "retry_count": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "validation_failed": { "type": "boolean", "enum": [true] },
+            "field_name": { "type": "string" },
+            "reason": { "type": "string" }
           },
           "additionalProperties": false
         }

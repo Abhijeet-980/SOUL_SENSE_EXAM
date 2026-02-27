@@ -276,6 +276,37 @@ public class AnalyticsManager {
         screenEnterTimestamp = nil
     }
 
+    /**
+     * Track API error with detailed information
+     */
+    public func trackApiError(endpoint: String, responseCode: Int, errorMessage: String, latency: TimeInterval, retryCount: Int = 0) {
+        trackEvent(AnalyticsEvents.apiError, properties: [
+            "endpoint": endpoint,
+            "response_code": responseCode,
+            "error_message": errorMessage,
+            "latency": latency,
+            "retry_count": retryCount
+        ])
+    }
+
+    /**
+     * Track client-side validation failure
+     */
+    public func trackValidationFailure(fieldName: String, reason: String) {
+        trackEvent(AnalyticsEvents.validationFailed, properties: [
+            "field_name": fieldName,
+            "reason": reason
+        ])
+    }
+
+    /**
+     * Get network interceptor for automatic API error tracking
+     * Usage: let session = analyticsManager.getNetworkInterceptor().createSession()
+     */
+    public func getNetworkInterceptor() -> AnalyticsNetworkInterceptor {
+        return AnalyticsNetworkInterceptor(analyticsManager: self)
+    }
+
     private func getAppVersion() -> String {
         if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
             return version
