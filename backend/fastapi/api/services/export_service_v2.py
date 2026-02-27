@@ -28,7 +28,7 @@ from ..models import (
     User, Score, JournalEntry, UserSettings,
     PersonalProfile, MedicalProfile, UserStrengths,
     UserEmotionalPatterns, SatisfactionRecord,
-    AssessmentResult, Response, ExportRecord
+    AssessmentResult, Response, ExportRecord, UserSession
 )
 from ..utils.file_validation import sanitize_filename, validate_file_path
 from ..utils.atomic import atomic_write
@@ -386,7 +386,7 @@ class ExportServiceV2:
         end_date: Optional[datetime]
     ) -> List[Dict[str, Any]]:
         """Fetch assessment scores."""
-        query = db.query(Score).filter(Score.user_id == user.id)
+        query = db.query(Score).join(UserSession, Score.session_id == UserSession.session_id).filter(UserSession.user_id == user.id)
 
         if start_date:
             query = query.filter(Score.timestamp >= start_date)
@@ -414,7 +414,10 @@ class ExportServiceV2:
         end_date: Optional[datetime]
     ) -> List[Dict[str, Any]]:
         """Fetch assessment results."""
-        query = db.query(AssessmentResult).filter(AssessmentResult.user_id == user.id)
+        query = db.query(AssessmentResult).filter(
+            AssessmentResult.user_id == user.id,
+            AssessmentResult.is_deleted == False
+        )
 
         if start_date:
             query = query.filter(AssessmentResult.timestamp >= start_date)
@@ -466,7 +469,7 @@ class ExportServiceV2:
         end_date: Optional[datetime]
     ) -> List[Dict[str, Any]]:
         """Fetch question responses."""
-        query = db.query(Response).filter(Response.user_id == user.id)
+        query = db.query(Response).join(UserSession, Response.session_id == UserSession.session_id).filter(UserSession.user_id == user.id)
 
         if start_date:
             query = query.filter(Response.timestamp >= start_date)

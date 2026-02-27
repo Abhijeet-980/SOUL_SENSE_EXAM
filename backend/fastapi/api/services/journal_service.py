@@ -366,6 +366,7 @@ class JournalService:
         entry = self.get_entry_by_id(entry_id, current_user)
         
         entry.is_deleted = True
+        entry.deleted_at = datetime.utcnow()
         self.db.commit()
         
         return True

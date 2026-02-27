@@ -1,5 +1,5 @@
 """API router for question endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
 import sys
@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT_DIR))
 VERSION = "1.0.0"
 
 from ..services.db_service import get_db, QuestionService
+from backend.fastapi.app.core import NotFoundError, ValidationError
 from ..schemas import (
     QuestionResponse,
     QuestionListResponse,
@@ -83,7 +84,10 @@ async def get_questions_by_age(
     Returns questions where min_age <= age <= max_age.
     """
     if age < 10 or age > 120:
-        raise HTTPException(status_code=400, detail="Age must be between 10 and 120")
+        raise ValidationError(
+            message="Age must be between 10 and 120",
+            details=[{"field": "age", "error": "Age out of valid range", "value": age}]
+        )
     
     questions = QuestionService.get_questions_by_age(db=db, age=age, limit=limit)
     
@@ -115,7 +119,7 @@ async def get_category(
     category = QuestionService.get_category_by_id(db=db, category_id=category_id)
     
     if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
+        raise NotFoundError(resource="Category", resource_id=str(category_id))
     
     return QuestionCategoryResponse.model_validate(category)
 
@@ -133,6 +137,6 @@ async def get_question(
     question = QuestionService.get_question_by_id(db=db, question_id=question_id)
     
     if not question:
-        raise HTTPException(status_code=404, detail="Question not found")
+        raise NotFoundError(resource="Question", resource_id=str(question_id))
     
     return QuestionResponse.model_validate(question)

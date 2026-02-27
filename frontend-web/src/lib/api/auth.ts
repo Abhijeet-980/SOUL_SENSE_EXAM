@@ -15,6 +15,7 @@ export const authApi = {
     id?: number;
     created_at?: string;
     warnings?: any[];
+    onboarding_completed?: boolean;
   }> {
     return apiClient('/auth/login', {
       method: 'POST',
@@ -30,15 +31,13 @@ export const authApi = {
     });
   },
 
-  async login2FA(data: {
-    pre_auth_token: string;
-    code: string;
-  }): Promise<{
+  async login2FA(data: { pre_auth_token: string; code: string }): Promise<{
     access_token: string;
     email?: string;
     username?: string;
     id?: number;
     created_at?: string;
+    onboarding_completed?: boolean;
   }> {
     return apiClient('/auth/login/2fa', {
       method: 'POST',
@@ -69,7 +68,7 @@ export const authApi = {
     });
   },
   async getCaptcha(): Promise<{ captcha_code: string; session_id: string }> {
-    return apiClient('/auth/captcha', {
+    return apiClient(`/auth/captcha?t=${Date.now()}`, {
       method: 'GET',
     });
   },

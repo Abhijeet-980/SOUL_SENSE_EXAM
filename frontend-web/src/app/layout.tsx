@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import '@/styles/globals.css';
 import { ThemeProvider, NavbarController, BottomNavigation } from '@/components/layout';
-import { ToastProvider } from '@/components/ui';
 import { NetworkErrorBanner } from '@/components/common';
 import { AuthProvider } from '@/hooks/useAuth';
 import QueryProvider from '@/components/providers/QueryProvider';
@@ -10,6 +9,8 @@ import { WebVitalsMonitor } from '@/components/monitoring';
 import { SkipLinks } from '@/components/accessibility';
 import { OfflineBanner } from '@/components/offline';
 import { register } from '@/lib/offline';
+import { Providers } from './providers';
+import { Toaster } from 'sonner';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
 
@@ -88,7 +89,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning>
         <WebVitalsMonitor />
         <ThemeProvider
           attribute="class"
@@ -111,6 +112,38 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </QueryProvider>
           </ToastProvider>
         </ThemeProvider>
+        <Providers>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <SkipLinks />
+            <Toaster
+              position="top-right"
+              richColors
+              closeButton
+              className="z-[9999]"
+              toastOptions={{
+                style: {
+                  background: 'hsl(var(--background))',
+                  border: '1px solid hsl(var(--border))',
+                  color: 'hsl(var(--foreground))',
+                },
+              }}
+            />
+            <AuthProvider>
+              <OfflineBanner />
+              <NetworkErrorBanner />
+              <NavbarController />
+              <div id="main-content" role="main" tabIndex={-1}>
+                {children}
+              </div>
+              <BottomNavigation />
+            </AuthProvider>
+          </ThemeProvider>
+        </Providers>
         <script
           dangerouslySetInnerHTML={{
             __html: `

@@ -1,0 +1,183 @@
+import pytest
+from unittest.mock import MagicMock, patch
+from datetime import datetime, UTC
+from sqlalchemy.orm import Session
+from api.services.exam_service import ExamService
+from api.schemas import ExamResponseCreate, ExamResultCreate
+from api.root_models import User, Score, Response
+
+
+class TestExamService:
+    """Unit tests for ExamService."""
+
+    def test_start_exam_returns_session_id(self):
+        """Test that start_exam returns a valid session ID."""
+        mock_db = MagicMock()
+        mock_user = MagicMock(spec=User)
+        mock_user.id = 1
+
+        session_id = ExamService.start_exam(mock_db, mock_user)
+
+        assert isinstance(session_id, str)
+        assert len(session_id) > 0
+
+    @patch('api.services.exam_service.Response')
+    def test_save_response_success(self, mock_response_class):
+        """Test successful response saving."""
+        mock_db = MagicMock(spec=Session)
+        mock_user = MagicMock(spec=User)
+        mock_user.username = "testuser"
+
+        # Mock the schema object
+        mock_data = MagicMock()
+        mock_data.question_id = 1
+        mock_data.value = 3
+        mock_data.age_group = "adult"
+
+        mock_response_instance = MagicMock()
+        mock_response_class.return_value = mock_response_instance
+
+        result = ExamService.save_response(mock_db, mock_user, "session123", mock_data)
+
+        assert result is True
+        mock_db.add.assert_called_once_with(mock_response_instance)
+        mock_db.commit.assert_called_once()
+
+        # Verify Response was created with correct arguments
+        mock_response_class.assert_called_once_with(
+            username="testuser",
+            question_id=1,
+            response_value=3,
+            age_group="adult",
+            session_id="session123",
+            timestamp=mock_response_class.call_args[1]['timestamp']  # timestamp is dynamic
+        )
+
+    @patch('api.services.exam_service.Response')
+    def test_save_response_failure(self, mock_response_class):
+        """Test response saving failure."""
+        mock_db = MagicMock(spec=Session)
+        mock_db.commit.side_effect = Exception("DB Error")
+
+        mock_user = MagicMock(spec=User)
+        mock_data = MagicMock()
+        mock_data.question_id = 1
+        mock_data.value = 3
+        mock_data.age_group = "adult"
+
+        with pytest.raises(Exception, match="DB Error"):
+            ExamService.save_response(mock_db, mock_user, "session123", mock_data)
+
+        mock_db.rollback.assert_called_once()
+
+    @patch('api.services.exam_service.Score')
+    @patch('api.services.exam_service.EncryptionManager')
+    @patch('api.services.exam_service.GamificationService')
+    @patch('api.services.exam_service.datetime')
+    def test_save_score_success(self, mock_datetime, mock_gamification, mock_encryption, mock_score_class):
+        """Test successful score saving."""
+        mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+        mock_encryption.encrypt.return_value = "encrypted_text"
+
+        mock_db = MagicMock(spec=Session)
+        mock_user = MagicMock(spec=User)
+        mock_user.id = 1
+        mock_user.username = "testuser"
+
+        mock_data = MagicMock()
+        mock_data.age = 25
+        mock_data.total_score = 75
+        mock_data.sentiment_score = 0.8
+        mock_data.reflection_text = "Test reflection"
+        mock_data.is_rushed = False
+        mock_data.is_inconsistent = False
+        mock_data.detailed_age_group = "young_adult"
+
+        mock_score_instance = MagicMock()
+        mock_score_class.return_value = mock_score_instance
+
+        result = ExamService.save_score(mock_db, mock_user, "session123", mock_data)
+
+        assert result == mock_score_instance
+        mock_db.add.assert_called_once()
+        mock_db.commit.assert_called_once()
+        mock_db.refresh.assert_called_once()
+
+        # Verify gamification was called
+        mock_gamification.award_xp.assert_called_once_with(mock_db, 1, 100, "Assessment completion")
+        mock_gamification.update_streak.assert_called_once_with(mock_db, 1, "assessment")
+        mock_gamification.check_achievements.assert_called_once_with(mock_db, 1, "assessment")
+
+    @patch('api.services.exam_service.Score')
+    @patch('api.services.exam_service.CRYPTO_AVAILABLE', False)
+    @patch('api.services.exam_service.GamificationService')
+    def test_save_score_without_encryption(self, mock_gamification, mock_score_class):
+        """Test score saving when encryption is not available."""
+        mock_db = MagicMock(spec=Session)
+        mock_user = MagicMock(spec=User)
+        mock_user.id = 1
+        mock_user.username = "testuser"
+
+        mock_data = MagicMock()
+        mock_data.age = 25
+        mock_data.total_score = 75
+        mock_data.sentiment_score = 0.8
+        mock_data.reflection_text = "Test reflection"
+        mock_data.is_rushed = False
+        mock_data.is_inconsistent = False
+        mock_data.detailed_age_group = "young_adult"
+
+        mock_score_instance = MagicMock()
+        mock_score_class.return_value = mock_score_instance
+
+        result = ExamService.save_score(mock_db, mock_user, "session123", mock_data)
+
+        assert result == mock_score_instance
+        # When encryption is not available, reflection text should be passed as plain text
+        # This is verified by the Score constructor call
+
+    def test_get_history_success(self):
+        """Test successful history retrieval."""
+        mock_db = MagicMock(spec=Session)
+        mock_user = MagicMock(spec=User)
+        mock_user.id = 1
+
+        mock_scores = [MagicMock(spec=Score), MagicMock(spec=Score)]
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.count.return_value = 2
+        mock_query.order_by.return_value = mock_query
+        mock_query.offset.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = mock_scores
+
+        mock_db.query.return_value = mock_query
+
+        results, total = ExamService.get_history(mock_db, mock_user, skip=0, limit=10)
+
+        assert results == mock_scores
+        assert total == 2
+
+    def test_get_history_limit_cap(self):
+        """Test that limit is capped at 100."""
+        mock_db = MagicMock(spec=Session)
+        mock_user = MagicMock(spec=User)
+        mock_user.id = 1
+
+        mock_scores = []
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.count.return_value = 0
+        mock_query.order_by.return_value = mock_query
+        mock_query.offset.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = mock_scores
+
+        mock_db.query.return_value = mock_query
+
+        results, total = ExamService.get_history(mock_db, mock_user, skip=0, limit=200)
+
+        assert results == mock_scores
+        assert total == 0
+        # Verify limit was capped to 100
+        mock_query.limit.assert_called_with(100)

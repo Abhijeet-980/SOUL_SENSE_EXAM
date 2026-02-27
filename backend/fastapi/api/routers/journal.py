@@ -13,7 +13,7 @@ Provides authenticated API endpoints for journal management:
 
 from datetime import datetime
 from typing import Annotated, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from fastapi.responses import Response as FastApiResponse
 from sqlalchemy.orm import Session
 
@@ -34,6 +34,7 @@ from ..services.smart_prompt_service import SmartPromptService
 from ..services.db_service import get_db
 from ..routers.auth import get_current_user
 from ..models import User
+from ..utils.limiter import limiter
 
 router = APIRouter(tags=["Journal"])
 
@@ -48,7 +49,9 @@ def get_journal_service(db: Session = Depends(get_db)):
 # ============================================================================
 
 @router.post("/", response_model=JournalResponse, status_code=status.HTTP_201_CREATED, summary="Create Journal Entry")
+@limiter.limit("10/minute")
 async def create_journal(
+    request: Request,
     journal_data: JournalCreate,
     current_user: Annotated[User, Depends(get_current_user)],
     journal_service: Annotated[JournalService, Depends(get_journal_service)]
@@ -81,7 +84,10 @@ async def create_journal(
 
 
 @router.get("/", response_model=JournalCursorResponse, summary="List Journal Entries")
+@router.get("/", response_model=JournalListResponse, summary="List Journal Entries")
+@limiter.limit("100/minute")
 async def list_journals(
+    request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     journal_service: Annotated[JournalService, Depends(get_journal_service)],
     cursor: Optional[str] = Query(None, description="ISO format date or timestamp|id tie-breaker"),

@@ -143,13 +143,13 @@ class AuthService:
         self._record_login_attempt(identifier_lower, True, ip_address)
         self.update_last_login(user.id)
         
-        # SoulSense Audit Log
-        AuditService.log_event(
-            user.id,
-            "LOGIN",
+        # Comprehensive Audit Log
+        AuditService.log_auth_event(
+            'login',
+            user.username,
+            details={"method": "password", "outcome": "success"},
             ip_address=ip_address,
             user_agent=user_agent,
-            details={"method": "password", "status": "success"},
             db_session=self.db
         )
 
@@ -679,5 +679,83 @@ class AuthService:
             self.db.rollback()
             logger.error(f"Error in complete_password_reset: {e}")
             return False, f"Internal error: {str(e)}"
+
+    def get_or_create_oauth_user(self, user_info: dict) -> User:
+        """Get or create user from OAuth info."""
+        sub = user_info.get("sub")
+        email = user_info.get("email")
+        name = user_info.get("name")
+        
+        if not sub:
+            raise ValueError("Missing 'sub' in user info")
+        
+        # Try to find existing user by OAuth sub
+        # Assuming we add an oauth_sub field to User model
+        user = self.db.query(User).filter(User.oauth_sub == sub).first()
+        if user:
+            return user
+        
+        # Try to find by email
+        if email:
+            profile = self.db.query(PersonalProfile).filter(PersonalProfile.email == email.lower()).first()
+            if profile:
+                user = self.db.query(User).filter(User.id == profile.user_id).first()
+                if user:
+                    # Link OAuth
+                    user.oauth_sub = sub
+                    self.db.commit()
+                    return user
+        
+        # Create new user
+        username = self.generate_oauth_username(email or sub)
+        first_name, last_name = self.parse_name(name)
+        
+        user = User(
+            username=username,
+            password_hash="",  # No password for OAuth users
+            oauth_sub=sub,
+            created_at=datetime.now(timezone.utc)
+        )
+        self.db.add(user)
+        self.db.flush()  # Get user.id
+        
+        profile = PersonalProfile(
+            user_id=user.id,
+            email=email.lower() if email else None,
+            first_name=first_name,
+            last_name=last_name
+        )
+        self.db.add(profile)
+        self.db.commit()
+        
+        return user
+    
+    def generate_oauth_username(self, email_or_sub: str) -> str:
+        """Generate a unique username for OAuth user."""
+        base = email_or_sub.split("@")[0] if "@" in email_or_sub else email_or_sub
+        base = "".join(c for c in base if c.isalnum() or c == "_").lower()
+        if len(base) < 3:
+            base = "user" + base
+        username = base[:20]
+        
+        # Ensure unique
+        counter = 1
+        original = username
+        while self.db.query(User).filter(User.username == username).first():
+            username = f"{original}{counter}"
+            counter += 1
+            if len(username) > 20:
+                username = username[:20]
+        
+        return username
+    
+    def parse_name(self, name: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        """Parse full name into first and last."""
+        if not name:
+            return None, None
+        parts = name.split()
+        first = parts[0] if parts else None
+        last = " ".join(parts[1:]) if len(parts) > 1 else None
+        return first, last
 
 

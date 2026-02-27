@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Tuple, Dict, Any
 from pathlib import Path
 from sqlalchemy.orm import Session
-from ..models import User, Score
+from ..models import User, Score, UserSession
 from ..utils.file_validation import sanitize_filename, validate_file_path
 from ..utils.atomic import atomic_write
 
@@ -68,7 +68,7 @@ class ExportService:
     @staticmethod
     def _fetch_user_scores(db: Session, user_id: int) -> List[Score]:
         """Fetch all scores for a user."""
-        return db.query(Score).filter(Score.user_id == user_id).order_by(Score.timestamp.desc()).all()
+        return db.query(Score).join(UserSession, Score.session_id == UserSession.session_id).filter(UserSession.user_id == user_id).order_by(Score.timestamp.desc()).all()
 
     @classmethod
     def generate_export(cls, db: Session, user: User, format: str) -> Tuple[str, str]:

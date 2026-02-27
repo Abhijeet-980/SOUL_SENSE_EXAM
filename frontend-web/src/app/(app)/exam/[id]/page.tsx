@@ -56,7 +56,7 @@ export default function ExamPage() {
   // Load questions on mount and set exam ID
   useEffect(() => {
     if (apiQuestions.length > 0 && questions.length === 0) {
-      setQuestions(apiQuestions);
+      setQuestions(apiQuestions, examId);
       setCurrentExamId(examId);
     }
   }, [apiQuestions, questions.length, setQuestions, setCurrentExamId, examId]);

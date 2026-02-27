@@ -4,7 +4,7 @@ Compatibility layer for tests and legacy imports.
 Core models have been refactored elsewhere.
 """
 
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Text, create_engine, event, Index, text, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Text, create_engine, event, Index, text, DateTime, CheckConstraint
 from sqlalchemy.orm import relationship, declarative_base, Session
 from sqlalchemy.engine import Engine, Connection
 from typing import List, Optional, Any, Dict, Tuple, Union
@@ -29,6 +29,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
+    oauth_sub = Column(String, nullable=True, unique=True)  # OAuth subject identifier
     created_at = Column(String, default=lambda: datetime.now(UTC).isoformat())
     last_login = Column(String, nullable=True)
     
@@ -40,8 +41,6 @@ class User(Base):
     is_2fa_enabled = Column(Boolean, default=False, nullable=False)
     last_activity = Column(String, nullable=True) # Track idle time
 
-    scores = relationship("Score", back_populates="user", cascade="all, delete-orphan")
-    responses = relationship("Response", back_populates="user", cascade="all, delete-orphan")
     settings = relationship("UserSettings", uselist=False, back_populates="user", cascade="all, delete-orphan")
     medical_profile = relationship("MedicalProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
     personal_profile = relationship("PersonalProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
@@ -57,6 +56,9 @@ class User(Base):
     achievements = relationship("UserAchievement", back_populates="user", cascade="all, delete-orphan")
     streaks = relationship("UserStreak", back_populates="user", cascade="all, delete-orphan")
     xp_stats = relationship("UserXP", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    
+    # Background Tasks
+    background_jobs = relationship("BackgroundJob", back_populates="user", cascade="all, delete-orphan")
 
 class LoginAttempt(Base):
     """Track login attempts for security auditing and persistent locking.
@@ -91,9 +93,9 @@ class AnalyticsEvent(Base):
     """
     __tablename__ = 'analytics_events'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
     anonymous_id = Column(String, nullable=True, index=True)
-    event_name = Column(String, nullable=False)
+    event_name = Column(String, nullable=False, index=True)
     event_data = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     ip_address = Column(String, nullable=True)
@@ -103,13 +105,14 @@ class OTP(Base):
     """One-Time Passwords for Password Reset and 2FA challenges."""
     __tablename__ = 'otp_codes'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     code_hash = Column(String, nullable=False)
-    purpose = Column(String, nullable=False) # e.g. 'PASSWORD_RESET', '2FA'
-    expires_at = Column(DateTime, nullable=False)
-    is_used = Column(Boolean, default=False)
+    purpose = Column(String, nullable=False, index=True) # e.g. 'PASSWORD_RESET', '2FA'
+    expires_at = Column(DateTime, nullable=False, index=True)
+    is_used = Column(Boolean, default=False, index=True)
     attempts = Column(Integer, default=0)
     is_locked = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     user = relationship("User")
 
 class PasswordHistory(Base):
@@ -118,9 +121,9 @@ class PasswordHistory(Base):
     """
     __tablename__ = 'password_history'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     password_hash = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     user = relationship("User", back_populates="password_history")
 
 class RefreshToken(Base):
@@ -131,12 +134,20 @@ class RefreshToken(Base):
     """
     __tablename__ = 'refresh_tokens'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     token_hash = Column(String, unique=True, index=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=False)
-    is_revoked = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    is_revoked = Column(Boolean, default=False, index=True)
     user = relationship("User", back_populates="refresh_tokens")
+
+class TokenRevocation(Base):
+    """Store revoked access tokens to prevent reuse until they expire."""
+    __tablename__ = 'token_revocations'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token_str = Column(String, index=True, nullable=False)
+    revoked_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
 
 class UserSession(Base):
     """Track user login sessions with unique session IDs"""
@@ -265,14 +276,11 @@ class Score(Base):
     is_rushed = Column(Boolean, default=False)
     is_inconsistent = Column(Boolean, default=False)
     reflection_text = Column(Text, nullable=True)
-    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat())
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
-    session_id = Column(String, nullable=True)
-    
-    user = relationship("User", back_populates="scores")
+    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat(), index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    session_id = Column(String, nullable=True, index=True)
     
     __table_args__ = (
-        Index('idx_score_user_timestamp', 'user_id', 'timestamp'),
         Index('idx_score_age_score', 'age', 'total_score'),
         Index('idx_score_agegroup_score', 'detailed_age_group', 'total_score'),
     )
@@ -283,17 +291,15 @@ class Response(Base):
     username = Column(String, index=True)
     question_id = Column(Integer, index=True)
     response_value = Column(Integer, index=True)
-    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat())
+    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat(), index=True)
     age = Column(Integer, nullable=True)
     detailed_age_group = Column(String, nullable=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
-    session_id = Column(String, nullable=True)
-    
-    user = relationship("User", back_populates="responses")
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    session_id = Column(String, nullable=True, index=True)
     
     __table_args__ = (
+        CheckConstraint('response_value >= 1 AND response_value <= 5', name='ck_response_value_range'),
         Index('idx_response_question_timestamp', 'question_id', 'timestamp'),
-        Index('idx_response_user_timestamp', 'user_id', 'timestamp'),
         Index('idx_response_agegroup_timestamp', 'detailed_age_group', 'timestamp'),
     )
 
@@ -318,15 +324,15 @@ class QuestionCategory(Base):
 class JournalEntry(Base):
     __tablename__ = 'journal_entries'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    username = Column(String, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
     title = Column(String, nullable=True)
     content = Column(Text, nullable=False)
     sentiment_score = Column(Float, default=0.0)
     emotional_patterns = Column(Text, nullable=True) # JSON list
-    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat())
-    entry_date = Column(String, nullable=True) # For legacy/charting
-    category = Column(String, nullable=True)
+    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)
+    entry_date = Column(String, nullable=True, index=True) # For legacy/charting
+    category = Column(String, nullable=True, index=True)
     mood_score = Column(Integer, nullable=True) # 1-10
     sleep_hours = Column(Float, nullable=True)
     sleep_quality = Column(Integer, nullable=True)
@@ -336,8 +342,9 @@ class JournalEntry(Base):
     screen_time_mins = Column(Integer, nullable=True)
     daily_schedule = Column(Text, nullable=True)
     tags = Column(Text, nullable=True)
-    is_deleted = Column(Boolean, default=False)
-    privacy_level = Column(String, default="private")
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    privacy_level = Column(String, default="private", index=True)
     word_count = Column(Integer, default=0)
 
 class SatisfactionRecord(Base):
@@ -375,12 +382,14 @@ class AssessmentResult(Base):
     """
     __tablename__ = 'assessment_results'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     assessment_type = Column(String, nullable=False, index=True)
-    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)
     overall_score = Column(Float, nullable=True)
     details = Column(Text, nullable=False)
-    journal_entry_id = Column(Integer, ForeignKey('journal_entries.id'), nullable=True)
+    journal_entry_id = Column(Integer, ForeignKey('journal_entries.id'), nullable=True, index=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     user = relationship("User")
     __table_args__ = (
         Index('idx_assessment_user_type', 'user_id', 'assessment_type'),
@@ -698,12 +707,12 @@ class Challenge(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=False)
-    challenge_type = Column(String(50)) # weekly, monthly, special
-    start_date = Column(DateTime, nullable=False)
-    end_date = Column(DateTime, nullable=False)
+    challenge_type = Column(String(50), index=True) # weekly, monthly, special
+    start_date = Column(DateTime, nullable=False, index=True)
+    end_date = Column(DateTime, nullable=False, index=True)
     requirements = Column(Text) # JSON string
     reward_xp = Column(Integer, default=200)
-    is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True, index=True)
 
 class UserChallenge(Base):
     """Tracks user participation in challenges."""
@@ -718,6 +727,141 @@ class UserChallenge(Base):
     
     user = relationship("User")
     challenge = relationship("Challenge")
+
+
+# ==================== BACKGROUND TASK MODELS ====================
+
+class BackgroundJob(Base):
+    """
+    Track background job execution status for async task processing.
+    
+    This model enables:
+    - Decoupling heavy operations from HTTP request/response cycles
+    - Status polling for long-running tasks
+    - Task failure tracking and debugging
+    - User-specific job history
+    """
+    __tablename__ = 'background_jobs'
+    __table_args__ = (
+        Index('idx_background_jobs_user_status', 'user_id', 'status'),
+        Index('idx_background_jobs_created', 'created_at'),
+    )
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(String(36), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    task_type = Column(String(50), nullable=False)  # export_pdf, send_email, etc.
+    status = Column(String(20), default='pending', nullable=False, index=True)
+    progress = Column(Integer, default=0)  # 0-100 percentage
+    params = Column(Text, nullable=True)  # JSON string of task parameters
+    result = Column(Text, nullable=True)  # JSON string of task result
+    error_message = Column(Text, nullable=True)  # Error details if failed
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)  # When task started processing
+    completed_at = Column(DateTime, nullable=True)  # When task finished
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    user = relationship("User", back_populates="background_jobs")
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        import json
+        return {
+            "job_id": self.job_id,
+            "task_type": self.task_type,
+            "status": self.status,
+            "progress": self.progress,
+            "result": json.loads(self.result) if self.result else None,
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
+# ============================================================================
+# Privacy & Consent Models (Issue #982)
+# ============================================================================
+
+class ConsentEvent(Base):
+    """
+    Track user consent events for privacy compliance.
+    
+    Records consent_given and consent_revoked events to ensure
+    analytics and data collection only occur with proper consent.
+    """
+    __tablename__ = 'consent_events'
+    __table_args__ = (
+        Index('idx_consent_user_timestamp', 'anonymous_id', 'timestamp'),
+        Index('idx_consent_type_timestamp', 'consent_type', 'timestamp'),
+    )
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    anonymous_id = Column(String(255), nullable=False, index=True)  # Client-generated anonymous ID
+    event_type = Column(String(50), nullable=False, index=True)  # consent_given, consent_revoked
+    consent_type = Column(String(50), nullable=False, index=True)  # analytics, marketing, research
+    consent_version = Column(String(20), nullable=False)  # Version of consent terms
+    event_data = Column(Text, nullable=True)  # JSON string of additional metadata
+    ip_address = Column(String(45), nullable=True)  # IPv4/IPv6 address
+    user_agent = Column(Text, nullable=True)  # Browser/client user agent
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        import json
+        return {
+            "id": self.id,
+            "anonymous_id": self.anonymous_id,
+            "event_type": self.event_type,
+            "consent_type": self.consent_type,
+            "consent_version": self.consent_version,
+            "event_data": json.loads(self.event_data) if self.event_data else None,
+            "ip_address": self.ip_address,
+            "user_agent": self.user_agent,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+        }
+
+
+class UserConsent(Base):
+    """
+    Store current consent status for users.
+    
+    Tracks the current state of user consents to enable
+    consent validation before analytics collection.
+    """
+    __tablename__ = 'user_consents'
+    __table_args__ = (
+        Index('idx_user_consent_type', 'anonymous_id', 'consent_type', unique=True),
+    )
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    anonymous_id = Column(String(255), nullable=False, index=True)
+    consent_type = Column(String(50), nullable=False, index=True)  # analytics, marketing, research
+    consent_granted = Column(Boolean, nullable=False, default=False)
+    consent_version = Column(String(20), nullable=False)
+    granted_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "anonymous_id": self.anonymous_id,
+            "consent_type": self.consent_type,
+            "consent_granted": self.consent_granted,
+            "consent_version": self.consent_version,
+            "granted_at": self.granted_at.isoformat() if self.granted_at else None,
+            "revoked_at": self.revoked_at.isoformat() if self.revoked_at else None,
+            "ip_address": self.ip_address,
+            "user_agent": self.user_agent,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
 
 # Initialize logger
 logging.basicConfig(level=logging.INFO)

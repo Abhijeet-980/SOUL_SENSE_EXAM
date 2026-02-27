@@ -1,7 +1,15 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  ReactNode,
+} from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import {
   UserSession,
   getSession,
@@ -12,6 +20,7 @@ import {
 import { authApi } from '@/lib/api/auth';
 import { Loader } from '@/components/ui';
 import { isValidCallbackUrl } from '@/lib/utils/url';
+import { toast } from '@/lib/toast';
 
 interface AuthContextType {
   user: UserSession['user'] | null;
@@ -48,11 +57,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isMockMode, setIsMockMode] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
 
   const [mounted, setMounted] = useState(false);
+  const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear lingering global loading state when transitioning away from auth pages
+  useEffect(() => {
+    if (mounted && isLoading && !!user && pathname !== '/login' && pathname !== '/register') {
+      setIsLoading(false);
+    }
+  }, [pathname, isLoading, user, mounted]);
 
   useEffect(() => {
+    let isMounted = true;
     setMounted(true);
+
     const initAuth = async () => {
       try {
         // 1. Check if server has restarted
@@ -63,12 +83,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (session) {
           // Critical: Verify the session isn't using the stale 'current' fallback
           if (session.user.id === 'current') {
-            console.error('Critical Auth Sync Error: Stale "current" ID fallback found in stored session.');
+            console.error(
+              'Critical Auth Sync Error: Stale "current" ID fallback found in stored session.'
+            );
+            toast.error('Authentication session corrupted. Please log in again.');
             clearSession();
-            setUser(null);
+            if (isMounted) setUser(null);
             router.push('/login');
           } else {
-            setUser(session.user);
+            if (isMounted) setUser(session.user);
           }
         }
 
@@ -78,12 +101,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.warn('Auth initialization error:', e);
       } finally {
         // Small delay to ensure state propagates
-        const timer = setTimeout(() => setIsLoading(false), 50);
-        return () => clearTimeout(timer);
+        initTimerRef.current = setTimeout(() => {
+          if (isMounted) setIsLoading(false);
+        }, 50);
       }
     };
 
     initAuth();
+
+    return () => {
+      isMounted = false;
+      if (initTimerRef.current !== null) {
+        clearTimeout(initTimerRef.current);
+        initTimerRef.current = null;
+      }
+    };
   }, []);
 
   const checkServerInstance = async () => {
@@ -164,6 +196,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           name: result.username || loginData.username.split('@')[0],
           username: result.username,
           created_at: result.created_at,
+          onboarding_completed: result.onboarding_completed,
         },
         token: result.access_token,
         expiresAt: getExpiryTimestamp(),
@@ -186,6 +219,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       setIsLoading(false);
       console.error('Login failed:', error);
+      toast.error('Login failed. Please check your credentials and try again.');
       throw error;
     }
   };
@@ -215,10 +249,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           name: result.username || 'User',
           username: result.username,
           created_at: result.created_at,
+          onboarding_completed: result.onboarding_completed,
         },
         token: result.access_token,
         expiresAt: getExpiryTimestamp(),
-      };
+      }
 
       saveSession(session, rememberMe);
       setUser(session.user);
@@ -247,6 +282,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await authApi.logout();
     } catch (error) {
       console.error('Logout error:', error);
+      toast.error('Logout failed. Your session may still be active on the server.');
     } finally {
       // Always clear local session even if backend call fails
       clearSession();
