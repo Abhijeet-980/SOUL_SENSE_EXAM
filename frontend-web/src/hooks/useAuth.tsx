@@ -108,24 +108,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           } else {
             // Critical: Verify the session isn't using the stale 'current' fallback
             if (session.user.id === 'current') {
-              console.error('Critical Auth Sync Error: Stale "current" ID fallback found in stored session.');
+              console.error(
+                'Critical Auth Sync Error: Stale "current" ID fallback found in stored session.'
+              );
+              toast.error('Authentication session corrupted. Please log in again.');
               clearSession();
-              setUser(null);
+              if (isMounted) setUser(null);
               router.push('/login');
             } else {
-              setUser(session.user);
+              if (isMounted) setUser(session.user);
             }
-          // Critical: Verify the session isn't using the stale 'current' fallback
-          if (session.user.id === 'current') {
-            console.error(
-              'Critical Auth Sync Error: Stale "current" ID fallback found in stored session.'
-            );
-            toast.error('Authentication session corrupted. Please log in again.');
-            clearSession();
-            if (isMounted) setUser(null);
-            router.push('/login');
-          } else {
-            if (isMounted) setUser(session.user);
           }
         }
 
