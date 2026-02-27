@@ -24,6 +24,11 @@ async def get_assessments(
 ):
     """
     Get a paginated list of assessments.
+
+    - **username**: Optional filter by username
+    - **age_group**: Optional filter by age group (e.g., "18-25", "26-35")
+    - **page**: Page number (starts at 1)
+    - **page_size**: Number of items per page (max 100)
     """
     skip = (page - 1) * page_size
     
@@ -50,6 +55,14 @@ async def get_assessment_stats(
 ):
     """
     Get statistical summary of assessments.
+
+    - **username**: Optional filter to get stats for a specific user
+    
+    Returns aggregate statistics including:
+    - Total number of assessments
+    - Average, highest, and lowest scores
+    - Average sentiment score
+    - Distribution by age group
     """
     stats = await AssessmentService.get_assessment_stats(db=db, username=username)
     
@@ -63,6 +76,8 @@ async def get_assessment(
 ):
     """
     Get detailed information for a specific assessment.
+    
+    - **assessment_id**: The ID of the assessment to retrieve
     """
     assessment = await AssessmentService.get_assessment_by_id(db=db, assessment_id=assessment_id)
     
