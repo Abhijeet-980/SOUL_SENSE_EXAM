@@ -69,7 +69,6 @@ class ExamService:
 
             new_score = Score(
                 username=user.username,
-                user_id=user.id,
                 age=data.age,
                 total_score=data.total_score,
                 sentiment_score=data.sentiment_score,
@@ -104,7 +103,7 @@ class ExamService:
     def get_history(db: Session, user: User, skip: int = 0, limit: int = 10) -> Tuple[List[Score], int]:
         """Retrieves paginated exam history for the specified user."""
         limit = min(limit, 100)  # Guard: cap at 100 to prevent unbounded queries
-        query = db.query(Score).filter(Score.user_id == user.id)
+        query = db.query(Score).join(UserSession, Score.session_id == UserSession.session_id).filter(UserSession.user_id == user.id)
         total = query.count()
         results = query.order_by(Score.timestamp.desc()).offset(skip).limit(limit).all()
         return results, total

@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional, Any, cast
 from sqlalchemy.orm import Session
-from ..models import Score, Response, Question, QuestionCategory
+from ..models import Score, Response, Question, QuestionCategory, UserSession
 from ..schemas import DetailedExamResult, CategoryScore, Recommendation
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ class AssessmentResultsService:
         Security: Strictly filters by user_id to prevent unauthorized access.
         """
         # 1. Fetch the main score record
-        score = db.query(Score).filter(Score.id == assessment_id, Score.user_id == user_id).first()
+        score = db.query(Score).join(UserSession, Score.session_id == UserSession.session_id).filter(Score.id == assessment_id, UserSession.user_id == user_id).first()
         if not score:
             logger.warning(f"Assessment {assessment_id} not found for user_id={user_id}")
             return None

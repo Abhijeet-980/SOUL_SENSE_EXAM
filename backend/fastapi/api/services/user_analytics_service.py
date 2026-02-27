@@ -3,7 +3,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
-from ..models import Score, JournalEntry
+from ..models import Score, JournalEntry, UserSession
 from ..schemas import (
     UserAnalyticsSummary,
     EQScorePoint,
@@ -23,15 +23,15 @@ class UserAnalyticsService:
             func.count(Score.id),
             func.avg(Score.total_score),
             func.max(Score.total_score)
-        ).filter(Score.user_id == user_id).first()
+        ).join(UserSession, Score.session_id == UserSession.session_id).filter(UserSession.user_id == user_id).first()
         
         total_exams = stats[0] or 0
         average_score = float(stats[1]) if stats[1] is not None else 0.0
         best_score = stats[2] or 0
         
         # 2. Latest Score
-        latest_exam = db.query(Score).filter(
-            Score.user_id == user_id
+        latest_exam = db.query(Score).join(UserSession, Score.session_id == UserSession.session_id).filter(
+            UserSession.user_id == user_id
         ).order_by(Score.id.desc()).first()
         
         latest_score = latest_exam.total_score if latest_exam else 0
@@ -43,7 +43,7 @@ class UserAnalyticsService:
             # Check if database supports stddev, otherwise calc in python
             # SQLite doesn't strictly support STDDEV in all versions, 
             # so we fetch scores to be safe and portable.
-            scores = db.query(Score.total_score).filter(Score.user_id == user_id).all()
+            scores = db.query(Score.total_score).join(UserSession, Score.session_id == UserSession.session_id).filter(UserSession.user_id == user_id).all()
             score_values = [s[0] for s in scores]
             
             import statistics
@@ -54,8 +54,8 @@ class UserAnalyticsService:
         # 4. Sentiment Trend (Slope of last 5)
         sentiment_trend = "stable"
         if total_exams >= 3:
-            recent_scores = db.query(Score.total_score).filter(
-                Score.user_id == user_id
+            recent_scores = db.query(Score.total_score).join(UserSession, Score.session_id == UserSession.session_id).filter(
+                UserSession.user_id == user_id
             ).order_by(Score.id.desc()).limit(5).all()
             
             # Reverse to chronological order [oldest ... newest]
@@ -93,8 +93,8 @@ class UserAnalyticsService:
         # Calculate cut-off date
         cutoff = datetime.now(UTC) - timedelta(days=days)
         
-        scores = db.query(Score).filter(
-            Score.user_id == user_id,
+        scores = db.query(Score).join(UserSession, Score.session_id == UserSession.session_id).filter(
+            UserSession.user_id == user_id,
             Score.timestamp >= cutoff.isoformat()
         ).order_by(Score.timestamp.asc()).all()
         

@@ -11,7 +11,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from app.db import safe_db_context
-from app.models import User, JournalEntry, Score, AssessmentResult, SatisfactionRecord
+from app.models import User, JournalEntry, Score, AssessmentResult, SatisfactionRecord, UserSession
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +213,7 @@ class ExportService:
                 
                 # Responses (Individual Answers to Questions) - Can be large
                 from app.models import Response
-                resp_query = session.query(Response).filter(Response.user_id == user_id)
+                resp_query = session.query(Response).join(UserSession, Response.session_id == UserSession.session_id).filter(UserSession.user_id == user_id)
                 if start_date: resp_query = resp_query.filter(Response.timestamp >= start_date)
                 if end_date: resp_query = resp_query.filter(Response.timestamp <= end_date)
                 
