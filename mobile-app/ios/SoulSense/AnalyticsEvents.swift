@@ -177,4 +177,7 @@ public final class AnalyticsEvents {
 
     /// Validation error occurred
     public static let validationError = "validation_error"
+
+    /// Client-side validation failed
+    public static let validationFailed = "validation_failed"
 }

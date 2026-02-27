@@ -173,4 +173,7 @@ public final class AnalyticsEvents {
 
     /** Validation error occurred */
     public static final String VALIDATION_ERROR = "validation_error";
+
+    /** Client-side validation failed */
+    public static final String VALIDATION_FAILED = "validation_failed";
 }

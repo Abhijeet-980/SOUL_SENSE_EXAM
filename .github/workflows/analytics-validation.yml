@@ -33,8 +33,8 @@ jobs:
     - name: Validate Event Schema
       run: |
         if ! jq . shared/analytics/event_schema.json > /dev/null 2>&1; then
-          echo "? Invalid JSON in event schema"
+          echo "❌ Invalid JSON in event schema"
           exit 1
         fi
-        echo "? Event schema is valid JSON"
+        echo "✅ Event schema is valid JSON"
 

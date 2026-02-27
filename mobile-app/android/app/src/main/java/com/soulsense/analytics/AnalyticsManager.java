@@ -291,6 +291,37 @@ public class AnalyticsManager {
         screenEnterTimestamp = null;
     }
 
+    /**
+     * Track API error with detailed information
+     */
+    public void trackApiError(String endpoint, int responseCode, String errorMessage, long latency, int retryCount) {
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("endpoint", endpoint);
+        properties.put("response_code", responseCode);
+        properties.put("error_message", errorMessage);
+        properties.put("latency", latency);
+        properties.put("retry_count", retryCount);
+        trackEvent(AnalyticsEvents.API_ERROR, properties);
+    }
+
+    /**
+     * Track client-side validation failure
+     */
+    public void trackValidationFailure(String fieldName, String reason) {
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("field_name", fieldName);
+        properties.put("reason", reason);
+        trackEvent(AnalyticsEvents.VALIDATION_FAILED, properties);
+    }
+
+    /**
+     * Get network interceptor for automatic API error tracking
+     * Usage: analyticsManager.getNetworkInterceptor().interceptRequest(url, code, message, latency, retryCount);
+     */
+    public AnalyticsInterceptor getNetworkInterceptor() {
+        return new AnalyticsInterceptor(this);
+    }
+
     private String getAppVersion() {
         try {
             // Mock implementation for non-Android environment
