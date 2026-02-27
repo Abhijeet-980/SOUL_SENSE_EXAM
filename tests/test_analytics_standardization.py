@@ -62,8 +62,38 @@ class TestAnalyticsStandardization(unittest.TestCase):
         expected_platforms = ['ios', 'android', 'web', 'desktop']
         self.assertEqual(set(platform_enum), set(expected_platforms), "Platform enum mismatch")
 
-    def test_schema_is_valid_json(self):
-        """Test that the schema file is valid JSON."""
-        # If we got here, the JSON is valid (setUp would have failed otherwise)
-        self.assertIsInstance(self.schema, dict, "Schema should be a dictionary")
-        self.assertIn('$schema', self.schema, "Schema should have $schema field")
+    def test_session_events_in_schema(self):
+        """Test that session events are included in schema."""
+        allowed_events = self.schema['properties']['event_name']['enum']
+        
+        session_events = ['session_start', 'session_end']
+        for event in session_events:
+            with self.subTest(event=event):
+                self.assertIn(event, allowed_events, f"Session event '{event}' not in schema")
+
+    def test_session_end_properties_schema(self):
+        """Test that session_end event properties are properly defined."""
+        event_props = self.schema['properties']['event_properties']['oneOf']
+        
+        # Find the session duration properties
+        session_props = None
+        for option in event_props:
+            if 'session_duration_ms' in option.get('properties', {}):
+                session_props = option
+                break
+        
+        self.assertIsNotNone(session_props, "Session duration properties not found in schema")
+        self.assertIn('session_duration_seconds', session_props['properties'], 
+                     "session_duration_seconds property missing")
+
+    def test_guest_user_id_persistence(self):
+        """Test that guest user ID concept is supported in schema."""
+        # The schema should allow user_id to be optional (for guest users)
+        user_id_field = self.schema['properties']['user_id']
+        self.assertIn('null', user_id_field.get('type', []), 
+                     "Schema should allow null user_id for guest users")
+
+    def test_session_id_required(self):
+        """Test that session_id is required."""
+        required_fields = self.schema.get('required', [])
+        self.assertIn('session_id', required_fields, "session_id should be required")

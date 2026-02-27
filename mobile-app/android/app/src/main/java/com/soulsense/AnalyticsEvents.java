@@ -126,6 +126,16 @@ public final class AnalyticsEvents {
     public static final String DEVICE_ROTATION = "device_rotation";
 
     // ============================================================================
+    // SESSION EVENTS
+    // ============================================================================
+
+    /** Session started */
+    public static final String SESSION_START = "session_start";
+
+    /** Session ended */
+    public static final String SESSION_END = "session_end";
+
+    // ============================================================================
     // ERROR EVENTS
     // ============================================================================
 

@@ -1,0 +1,240 @@
+//
+//  AnalyticsManager.swift
+//  SoulSense
+//
+//  Analytics Manager for iOS
+//  Handles user identity and session tracking
+//
+
+import Foundation
+import UIKit
+
+public class AnalyticsManager {
+
+    private static var instance: AnalyticsManager?
+    private let userDefaults = UserDefaults.standard
+
+    private enum Keys {
+        static let guestUserId = "analytics_guest_id"
+        static let currentUserId = "analytics_current_user_id"
+        static let sessionStartTime = "analytics_session_start_time"
+    }
+
+    private var currentUserId: String
+    private var guestUserId: String
+    private var currentSessionId: String
+    private var sessionStartTime: TimeInterval = 0
+    private var isSessionActive = false
+
+    private init() {
+        initializeUserIdentity()
+        generateNewSessionId()
+        setupSessionTracking()
+    }
+
+    public static func shared() -> AnalyticsManager {
+        if instance == nil {
+            instance = AnalyticsManager()
+        }
+        return instance!
+    }
+
+    private func initializeUserIdentity() {
+        // Load or generate guest ID
+        if let storedGuestId = userDefaults.string(forKey: Keys.guestUserId) {
+            guestUserId = storedGuestId
+        } else {
+            guestUserId = "guest_\(Date().timeIntervalSince1970)_\(UUID().uuidString.prefix(9))"
+            userDefaults.set(guestUserId, forKey: Keys.guestUserId)
+            print("[Analytics] Generated new guest ID: \(guestUserId)")
+        }
+
+        // Load current user ID (or use guest ID)
+        currentUserId = userDefaults.string(forKey: Keys.currentUserId) ?? guestUserId
+    }
+
+    private func generateNewSessionId() {
+        currentSessionId = "session_\(Date().timeIntervalSince1970)_\(UUID().uuidString.prefix(9))"
+    }
+
+    private func setupSessionTracking() {
+        // Track app lifecycle events
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillTerminate),
+            name: UIApplication.willTerminateNotification,
+            object: nil
+        )
+    }
+
+    @objc private func appDidBecomeActive() {
+        startSession()
+    }
+
+    @objc private func appDidEnterBackground() {
+        endSession()
+    }
+
+    @objc private func appWillTerminate() {
+        endSession()
+    }
+
+    // MARK: - Session Management
+
+    public func startSession() {
+        guard !isSessionActive else { return }
+
+        sessionStartTime = Date().timeIntervalSince1970
+        isSessionActive = true
+
+        userDefaults.set(sessionStartTime, forKey: Keys.sessionStartTime)
+
+        // Track session start event
+        trackEvent(AnalyticsEvents.sessionStart, properties: [:])
+
+        print("[Analytics] Session started: \(currentSessionId)")
+    }
+
+    public func endSession() {
+        guard isSessionActive else { return }
+
+        let sessionDuration = Date().timeIntervalSince1970 - sessionStartTime
+        isSessionActive = false
+
+        // Track session end event
+        let properties: [String: Any] = [
+            "session_duration_ms": sessionDuration * 1000,
+            "session_duration_seconds": round(sessionDuration)
+        ]
+        trackEvent(AnalyticsEvents.sessionEnd, properties: properties)
+
+        // Generate new session ID for next session
+        generateNewSessionId()
+
+        print("[Analytics] Session ended. Duration: \(sessionDuration)s")
+    }
+
+    // MARK: - User Identity Management
+
+    public func setUserId(_ userId: String) {
+        if currentUserId == guestUserId {
+            // Clear guest ID from persistent storage when user logs in
+            userDefaults.removeObject(forKey: Keys.guestUserId)
+        }
+
+        currentUserId = userId
+        userDefaults.set(userId, forKey: Keys.currentUserId)
+
+        print("[Analytics] User ID set: \(userId)")
+    }
+
+    public func clearUserId() {
+        currentUserId = guestUserId
+        userDefaults.removeObject(forKey: Keys.currentUserId)
+
+        print("[Analytics] User ID cleared, back to guest mode")
+    }
+
+    public func getCurrentUserId() -> String {
+        return currentUserId
+    }
+
+    public func getGuestUserId() -> String {
+        return guestUserId
+    }
+
+    public func getCurrentSessionId() -> String {
+        return currentSessionId
+    }
+
+    public func isSessionActive() -> Bool {
+        return isSessionActive
+    }
+
+    // MARK: - Event Tracking
+
+    public func trackEvent(_ eventName: String, properties: [String: Any] = [:]) {
+        let event = AnalyticsEvent(
+            eventName: eventName,
+            timestamp: Date().timeIntervalSince1970,
+            userId: currentUserId,
+            sessionId: currentSessionId,
+            platform: "ios",
+            appVersion: getAppVersion(),
+            properties: properties
+        )
+
+        // Send to analytics provider
+        sendToAnalyticsProvider(event)
+    }
+
+    public func trackScreenView(_ screenName: String) {
+        trackEvent(AnalyticsEvents.screenView, properties: ["screen_name": screenName])
+    }
+
+    public func trackButtonClick(_ buttonName: String) {
+        trackEvent(AnalyticsEvents.buttonClick, properties: [
+            "button_name": buttonName,
+            "element_type": "button"
+        ])
+    }
+
+    public func trackLoginSuccess() {
+        trackEvent(AnalyticsEvents.loginSuccess, properties: [:])
+    }
+
+    public func trackLogout() {
+        trackEvent(AnalyticsEvents.logoutButtonClick, properties: [:])
+    }
+
+    private func getAppVersion() -> String {
+        if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+            return version
+        }
+        return "1.0.0"
+    }
+
+    private func sendToAnalyticsProvider(_ event: AnalyticsEvent) {
+        // TODO: Implement actual analytics provider integration
+        // For now, just print the event
+        print("[Analytics] Event: \(event.eventName) - \(event.properties)")
+    }
+}
+
+// MARK: - Analytics Event Model
+
+public struct AnalyticsEvent {
+    public let eventName: String
+    public let timestamp: TimeInterval
+    public let userId: String
+    public let sessionId: String
+    public let platform: String
+    public let appVersion: String
+    public let properties: [String: Any]
+
+    public init(eventName: String, timestamp: TimeInterval, userId: String,
+                sessionId: String, platform: String, appVersion: String,
+                properties: [String: Any]) {
+        self.eventName = eventName
+        self.timestamp = timestamp
+        self.userId = userId
+        self.sessionId = sessionId
+        self.platform = platform
+        self.appVersion = appVersion
+        self.properties = properties
+    }
+}

@@ -38,6 +38,8 @@
         "app_foreground",
         "app_crash",
         "device_rotation",
+        "session_start",
+        "session_end",
         "network_error",
         "api_error",
         "validation_error"
@@ -102,6 +104,13 @@
           "properties": {
             "error_code": { "type": "string" },
             "error_message": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "session_duration_ms": { "type": "number" },
+            "session_duration_seconds": { "type": "number" }
           },
           "additionalProperties": false
         }

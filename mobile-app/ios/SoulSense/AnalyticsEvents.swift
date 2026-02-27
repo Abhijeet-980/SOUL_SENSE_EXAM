@@ -130,6 +130,16 @@ public final class AnalyticsEvents {
     public static let deviceRotation = "device_rotation"
 
     // ============================================================================
+    // SESSION EVENTS
+    // ============================================================================
+
+    /// Session started
+    public static let sessionStart = "session_start"
+
+    /// Session ended
+    public static let sessionEnd = "session_end"
+
+    // ============================================================================
     // ERROR EVENTS
     // ============================================================================
 
