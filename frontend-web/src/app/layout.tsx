@@ -8,6 +8,7 @@ import QueryProvider from '@/components/providers/QueryProvider';
 import { WebVitalsMonitor } from '@/components/monitoring';
 import { SkipLinks } from '@/components/accessibility';
 import { OfflineBanner } from '@/components/offline';
+import { SessionTimeoutWarning } from '@/components/SessionTimeoutWarning';
 import { register } from '@/lib/offline';
 import { Providers } from './providers';
 import { Toaster } from 'sonner';
@@ -134,6 +135,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               }}
             />
             <AuthProvider>
+              <SessionTimeoutWarning />
               <OfflineBanner />
               <NetworkErrorBanner />
               <NavbarController />
