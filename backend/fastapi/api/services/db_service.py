@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy import select, func
 from typing import List, Optional, Tuple, AsyncGenerator
 from datetime import datetime
+import logging
+import traceback
 
 # Import model classes from models module
 from ..models import Base, Score, Response, Question, QuestionCategory

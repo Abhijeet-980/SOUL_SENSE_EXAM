@@ -25,7 +25,7 @@ from .audit_service import AuditService
 
 settings = get_settings()
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("api.auth")
 
 class AuthService:
     def __init__(self, db: AsyncSession):
@@ -333,7 +333,11 @@ class AuthService:
             remaining = int(lockout_duration - elapsed.total_seconds())
 
             if remaining > 0:
-                logger.warning(f"Account locked: {username} ({count} failed attempts, {remaining}s remaining)")
+                logger.warning(f"Account locked", extra={
+                    "username": username,
+                    "failed_attempts": count,
+                    "remaining_seconds": remaining
+                })
                 return True, "Too many failed attempts. Try again later.", remaining
 
         return False, None, 0

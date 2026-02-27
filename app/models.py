@@ -356,8 +356,7 @@ class Response(Base):
     __table_args__ = (
         Index('idx_response_question_timestamp', 'question_id', 'timestamp'),
         Index('idx_response_user_timestamp', 'user_id', 'timestamp'),
-        Index('idx_response_agegroup_timestamp', 'detailed_age_group', 'timestamp'),
-    )
+        Index('idx_response_agegroup_timestamp', 'detailed_age_group', 'timestamp'),        Index('idx_response_user_question', 'user_id', 'question_id', unique=True),  # Unique constraint for user-question pairs    )
 
 class Question(Base):
     __tablename__ = 'question_bank'
