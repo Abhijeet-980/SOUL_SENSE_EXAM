@@ -247,6 +247,11 @@ def create_app() -> FastAPI:
     from .middleware.security import SecurityHeadersMiddleware
     app.add_middleware(SecurityHeadersMiddleware)
 
+    # Consent Validation Middleware for privacy compliance
+    # Blocks analytics data collection without user consent
+    from .middleware.consent_middleware import ConsentValidationMiddleware
+    app.add_middleware(ConsentValidationMiddleware)
+
     # ETag Middleware for HTTP caching optimization
     # Adds ETag headers to static resources (questions, prompts, translations)
     # Returns 304 Not Modified when content hasn't changed, saving bandwidth

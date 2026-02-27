@@ -1447,3 +1447,33 @@ class KPISummary(BaseModel):
     arpu: ARPUKPI
     calculated_at: str = Field(description="ISO 8601 timestamp when KPIs were calculated")
     period: str = Field(description="Time period these KPIs cover")
+
+
+# ============================================================================
+# Privacy & Consent Schemas (Issue #982)
+# ============================================================================
+
+class ConsentEventCreate(BaseModel):
+    """Schema for tracking consent events (consent_given, consent_revoked)."""
+    anonymous_id: str = Field(..., min_length=10, description="Client-generated anonymous ID")
+    event_type: str = Field(..., pattern="^(consent_given|consent_revoked)$", description="Type of consent event")
+    consent_type: str = Field(..., description="Type of consent (analytics, marketing, research, etc.)")
+    consent_version: str = Field(..., description="Version of consent terms")
+    event_data: Optional[Dict[str, Any]] = Field(None, description="Additional consent metadata")
+
+
+class ConsentStatusResponse(BaseModel):
+    """Response schema for user's current consent status."""
+    analytics_consent: bool = Field(description="Whether user has consented to analytics tracking")
+    marketing_consent: bool = Field(description="Whether user has consented to marketing communications")
+    research_consent: bool = Field(description="Whether user has consented to research data usage")
+    consent_version: str = Field(description="Current version of consent terms")
+    last_updated: str = Field(description="ISO 8601 timestamp of last consent update")
+    consent_history: List[Dict[str, Any]] = Field(description="History of consent events")
+
+
+class ConsentUpdateRequest(BaseModel):
+    """Schema for updating user consent preferences."""
+    analytics_consent: Optional[bool] = None
+    marketing_consent: Optional[bool] = None
+    research_consent: Optional[bool] = None
