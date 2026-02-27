@@ -256,7 +256,7 @@ export default function ExamPage() {
   return (
     <>
       {isReviewing ? (
-        <ReviewScreen onSubmit={handleSubmit} isSubmitting={isSubmitting} />
+        <ReviewScreen onSubmit={handleSubmit} isSubmitting={isSubmitting} error={submitError} />
       ) : (
         <div className="container mx-auto px-4 py-8 max-w-4xl">
           {/* Header */}
@@ -315,19 +315,9 @@ export default function ExamPage() {
               onSubmit={handleSubmit}
               onReview={handleReview}
               isSubmitting={isSubmitting}
+              error={submitError}
             />
           </div>
-
-          {/* Submit Error */}
-          {submitError && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg"
-            >
-              <p className="text-destructive text-sm">{submitError}</p>
-            </motion.div>
-          )}
         </div>
       )}
 

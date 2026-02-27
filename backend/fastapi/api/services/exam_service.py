@@ -54,9 +54,13 @@ class ExamService:
     async def save_score(db: AsyncSession, user: User, session_id: str, data: ExamResultCreate):
         """
         Saves the final exam score.
+        Validates that all questions have been answered before saving.
         Encrypts reflection_text if crypto is available.
         """
         try:
+            # Validate that all questions have been answered
+            ExamService._validate_complete_responses(db, user, session_id, data.age)
+            
             # Encrypt reflection text for privacy
             reflection = data.reflection_text
             if CRYPTO_AVAILABLE and reflection:

@@ -16,6 +16,7 @@ import {
   saveSession,
   clearSession,
   getExpiryTimestamp,
+  isTokenExpired,
 } from '@/lib/utils/sessionStorage';
 import { authApi } from '@/lib/api/auth';
 import { Loader } from '@/components/ui';
@@ -81,6 +82,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // 2. Check for existing session
         const session = getSession();
         if (session) {
+          // Client-side expiry check to prevent broken API requests
+          if (isTokenExpired(session.token)) {
+            console.log('Auth: Access token expired. Attempting proactive refresh...');
+            try {
+              const refreshResult = await authApi.refreshToken();
+              session.token = refreshResult.access_token;
+
+              const isPersistent = !!localStorage.getItem('soul_sense_auth_session');
+              saveSession(session, isPersistent);
+              setUser(session.user);
+              console.log('Auth: Proactive refresh successful.');
+            } catch (refreshError) {
+              console.warn('Auth: Proactive refresh failed. Logging out:', refreshError);
+              clearSession();
+              setUser(null);
+              router.push('/login');
+              setIsLoading(false);
+              return;
+            }
+          } else {
+            // Critical: Verify the session isn't using the stale 'current' fallback
+            if (session.user.id === 'current') {
+              console.error('Critical Auth Sync Error: Stale "current" ID fallback found in stored session.');
+              clearSession();
+              setUser(null);
+              router.push('/login');
+            } else {
+              setUser(session.user);
+            }
           // Critical: Verify the session isn't using the stale 'current' fallback
           if (session.user.id === 'current') {
             console.error(
