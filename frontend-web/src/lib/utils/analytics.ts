@@ -46,6 +46,10 @@ export const ANALYTICS_EVENTS = {
   APP_CRASH: 'app_crash',
   DEVICE_ROTATION: 'device_rotation',
 
+  // Session events
+  SESSION_START: 'session_start',
+  SESSION_END: 'session_end',
+
   // Error events
   NETWORK_ERROR: 'network_error',
   API_ERROR: 'api_error',
@@ -96,18 +100,129 @@ function validateEventSchema(event: AnalyticsEvent): boolean {
 
 class AnalyticsManager {
   private config: AnalyticsConfig = { enabled: false };
-  private sessionId: string;
+  private currentUserId: string | null = null;
+  private currentSessionId: string;
+  private sessionStartTime: number = 0;
+  private isSessionActive: boolean = false;
+  private guestUserId: string | null = null;
 
   constructor() {
-    this.sessionId = this.generateSessionId();
+    this.currentSessionId = this.generateSessionId();
+    this.initializeUserIdentity();
+    this.setupSessionTracking();
   }
 
   private generateSessionId(): string {
     return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
+  private generateGuestId(): string {
+    return `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private initializeUserIdentity() {
+    // Check if we have a stored guest ID
+    const storedGuestId = localStorage.getItem('analytics_guest_id');
+    if (storedGuestId) {
+      this.guestUserId = storedGuestId;
+    } else {
+      // Generate new guest ID for first-time users
+      this.guestUserId = this.generateGuestId();
+      localStorage.setItem('analytics_guest_id', this.guestUserId);
+    }
+
+    // Initially use guest ID as user ID
+    this.currentUserId = this.guestUserId;
+  }
+
+  private setupSessionTracking() {
+    // Track app visibility changes for session management
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          this.endSession();
+        } else {
+          this.startSession();
+        }
+      });
+
+      // Handle page unload (tab close, navigation)
+      window.addEventListener('beforeunload', () => {
+        this.endSession();
+      });
+
+      // Handle page load
+      window.addEventListener('load', () => {
+        this.startSession();
+      });
+    }
+  }
+
+  private startSession() {
+    if (this.isSessionActive) return;
+
+    this.sessionStartTime = Date.now();
+    this.isSessionActive = true;
+
+    this.trackEvent({
+      event_name: ANALYTICS_EVENTS.SESSION_START,
+      timestamp: new Date().toISOString(),
+      user_id: this.currentUserId || undefined,
+      session_id: this.currentSessionId,
+      platform: 'web',
+      app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
+      event_properties: {}
+    });
+  }
+
+  private endSession() {
+    if (!this.isSessionActive) return;
+
+    const sessionDuration = Date.now() - this.sessionStartTime;
+    this.isSessionActive = false;
+
+    this.trackEvent({
+      event_name: ANALYTICS_EVENTS.SESSION_END,
+      timestamp: new Date().toISOString(),
+      user_id: this.currentUserId || undefined,
+      session_id: this.currentSessionId,
+      platform: 'web',
+      app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
+      event_properties: {
+        session_duration_ms: sessionDuration,
+        session_duration_seconds: Math.round(sessionDuration / 1000)
+      }
+    });
+
+    // Generate new session ID for next session
+    this.currentSessionId = this.generateSessionId();
+  }
+
   configure(config: AnalyticsConfig) {
     this.config = { ...this.config, ...config };
+  }
+
+  // User identity management
+  setUserId(userId: string) {
+    // Clear guest ID when user logs in
+    if (this.currentUserId === this.guestUserId) {
+      localStorage.removeItem('analytics_guest_id');
+      this.guestUserId = null;
+    }
+
+    this.currentUserId = userId;
+  }
+
+  clearUserId() {
+    this.currentUserId = this.guestUserId;
+  }
+
+  getCurrentUserId(): string | null {
+    return this.currentUserId;
+  }
+
+  getGuestUserId(): string | null {
+    return this.guestUserId;
   }
 
   trackPageView(url: string) {
@@ -116,7 +231,8 @@ class AnalyticsManager {
     const event: AnalyticsEvent = {
       event_name: ANALYTICS_EVENTS.SCREEN_VIEW,
       timestamp: new Date().toISOString(),
-      session_id: this.sessionId,
+      user_id: this.currentUserId || undefined,
+      session_id: this.currentSessionId,
       platform: 'web',
       app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
       event_properties: { screen_name: url }
@@ -127,6 +243,11 @@ class AnalyticsManager {
 
   trackEvent(event: AnalyticsEvent) {
     if (!this.config.enabled) return;
+
+    // Ensure user_id is set if not provided
+    if (!event.user_id && this.currentUserId) {
+      event.user_id = this.currentUserId;
+    }
 
     if (!validateEventSchema(event)) {
       console.error('[Analytics] Event validation failed, not tracking');
@@ -154,7 +275,8 @@ class AnalyticsManager {
     this.trackEvent({
       event_name: ANALYTICS_EVENTS.BUTTON_CLICK,
       timestamp: new Date().toISOString(),
-      session_id: this.sessionId,
+      user_id: this.currentUserId || undefined,
+      session_id: this.currentSessionId,
       platform: 'web',
       app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
       event_properties: { button_name: buttonName, element_type: elementType }
@@ -165,10 +287,35 @@ class AnalyticsManager {
     this.trackEvent({
       event_name: ANALYTICS_EVENTS.SIGNUP_START,
       timestamp: new Date().toISOString(),
-      session_id: this.sessionId,
+      user_id: this.currentUserId || undefined,
+      session_id: this.currentSessionId,
       platform: 'web',
       app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
       event_properties: { method, referral_code: referralCode }
+    });
+  }
+
+  trackLoginSuccess() {
+    this.trackEvent({
+      event_name: ANALYTICS_EVENTS.LOGIN_SUCCESS,
+      timestamp: new Date().toISOString(),
+      user_id: this.currentUserId || undefined,
+      session_id: this.currentSessionId,
+      platform: 'web',
+      app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
+      event_properties: {}
+    });
+  }
+
+  trackLogout() {
+    this.trackEvent({
+      event_name: ANALYTICS_EVENTS.LOGOUT_BUTTON_CLICK,
+      timestamp: new Date().toISOString(),
+      user_id: this.currentUserId || undefined,
+      session_id: this.currentSessionId,
+      platform: 'web',
+      app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
+      event_properties: {}
     });
   }
 
@@ -180,11 +327,21 @@ class AnalyticsManager {
     this.trackEvent({
       event_name: eventName,
       timestamp: new Date().toISOString(),
-      session_id: this.sessionId,
+      user_id: this.currentUserId || undefined,
+      session_id: this.currentSessionId,
       platform: 'web',
       app_version: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
       event_properties: { error_code: errorCode, error_message: errorMessage }
     });
+  }
+
+  // Manual session control (for special cases)
+  forceEndSession() {
+    this.endSession();
+  }
+
+  forceStartSession() {
+    this.startSession();
   }
 }
 
