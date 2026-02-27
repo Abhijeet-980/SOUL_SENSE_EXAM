@@ -90,11 +90,21 @@ async def get_detailed_results(
     """
     try:
         result = AssessmentResultsService.get_detailed_results(db, id, current_user.id)
-        if not result:
-            raise HTTPException(status_code=404, detail="Assessment not found or access denied")
+        if result is None:
+            logger.info(
+                "Assessment result not found",
+                extra={"assessment_id": id, "user_id": current_user.id},
+            )
+            raise HTTPException(
+                status_code=404,
+                detail="No result found. The requested assessment does not exist or has been removed.",
+            )
         return result
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching detailed results for assessment {id}: {e}")
+        logger.error(
+            "Error fetching detailed results",
+            extra={"assessment_id": id, "user_id": current_user.id, "error": str(e)},
+        )
         raise HTTPException(status_code=500, detail="Internal server error")
