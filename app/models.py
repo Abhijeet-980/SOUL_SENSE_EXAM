@@ -125,9 +125,9 @@ class AnalyticsEvent(Base):
     """
     __tablename__ = 'analytics_events'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
     anonymous_id = Column(String, nullable=True, index=True)
-    event_name = Column(String, nullable=False)
+    event_name = Column(String, nullable=False, index=True)
     event_data = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     ip_address = Column(String, nullable=True)
@@ -137,11 +137,11 @@ class OTP(Base):
     """One-Time Passwords for Password Reset and 2FA challenges."""
     __tablename__ = 'otp_codes'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     code_hash = Column(String, nullable=False)
-    purpose = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=False)
+    purpose = Column(String, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
     is_used = Column(Boolean, default=False)
     attempts = Column(Integer, default=0)
     is_locked = Column(Boolean, default=False)
@@ -153,9 +153,9 @@ class PasswordHistory(Base):
     """
     __tablename__ = 'password_history'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     password_hash = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     user = relationship("User", back_populates="password_history")
 
 class RefreshToken(Base):
@@ -166,11 +166,11 @@ class RefreshToken(Base):
     """
     __tablename__ = 'refresh_tokens'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     token_hash = Column(String, unique=True, index=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=False)
-    is_revoked = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    is_revoked = Column(Boolean, default=False, index=True)
     user = relationship("User", back_populates="refresh_tokens")
 
 class UserSession(Base):
@@ -327,9 +327,9 @@ class Score(Base):
     is_rushed = Column(Boolean, default=False)
     is_inconsistent = Column(Boolean, default=False)
     reflection_text = Column(Text, nullable=True)
-    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat())
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
-    session_id = Column(String, nullable=True)
+    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat(), index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    session_id = Column(String, nullable=True, index=True)
     
     user = relationship("User", back_populates="scores")
     
@@ -345,11 +345,11 @@ class Response(Base):
     username = Column(String, index=True)
     question_id = Column(Integer, index=True)
     response_value = Column(Integer, index=True)
-    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat())
+    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat(), index=True)
     age = Column(Integer, nullable=True)
     detailed_age_group = Column(String, nullable=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
-    session_id = Column(String, nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    session_id = Column(String, nullable=True, index=True)
     
     user = relationship("User", back_populates="responses")
     
@@ -380,15 +380,15 @@ class QuestionCategory(Base):
 class JournalEntry(Base):
     __tablename__ = 'journal_entries'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    username = Column(String, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
     title = Column(String, nullable=True)
     content = Column(Text, nullable=False)
     sentiment_score = Column(Float, default=0.0)
     emotional_patterns = Column(Text, nullable=True) # JSON list
-    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat())
-    entry_date = Column(String, nullable=True) # For legacy/charting
-    category = Column(String, nullable=True)
+    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)
+    entry_date = Column(String, nullable=True, index=True) # For legacy/charting
+    category = Column(String, nullable=True, index=True)
     mood_score = Column(Integer, nullable=True) # 1-10
     sleep_hours = Column(Float, nullable=True)
     sleep_quality = Column(Integer, nullable=True)
@@ -398,8 +398,9 @@ class JournalEntry(Base):
     screen_time_mins = Column(Integer, nullable=True)
     daily_schedule = Column(Text, nullable=True)
     tags = Column(Text, nullable=True)
-    is_deleted = Column(Boolean, default=False)
-    privacy_level = Column(String, default="private")
+    is_deleted = Column(Boolean, default=False, index=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    privacy_level = Column(String, default="private", index=True)
     word_count = Column(Integer, default=0)
 
 class SatisfactionRecord(Base):
@@ -437,12 +438,14 @@ class AssessmentResult(Base):
     """
     __tablename__ = 'assessment_results'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     assessment_type = Column(String, nullable=False, index=True)
-    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)
     overall_score = Column(Float, nullable=True)
     details = Column(Text, nullable=False)
-    journal_entry_id = Column(Integer, ForeignKey('journal_entries.id'), nullable=True)
+    journal_entry_id = Column(Integer, ForeignKey('journal_entries.id'), nullable=True, index=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     user = relationship("User")
     __table_args__ = (
         Index('idx_assessment_user_type', 'user_id', 'assessment_type'),
@@ -760,12 +763,12 @@ class Challenge(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=False)
-    challenge_type = Column(String(50)) # weekly, monthly, special
-    start_date = Column(DateTime, nullable=False)
-    end_date = Column(DateTime, nullable=False)
+    challenge_type = Column(String(50), index=True) # weekly, monthly, special
+    start_date = Column(DateTime, nullable=False, index=True)
+    end_date = Column(DateTime, nullable=False, index=True)
     requirements = Column(Text) # JSON string
     reward_xp = Column(Integer, default=200)
-    is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True, index=True)
 
 class UserChallenge(Base):
     """Tracks user participation in challenges."""
