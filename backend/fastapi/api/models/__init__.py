@@ -233,7 +233,6 @@ class AuditLog(Base):
 class AuditSnapshot(Base):
     """Event-sourced compacted version of audit events for fast querying (#1085)."""
     __tablename__ = 'audit_snapshots'
-    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     event_type = Column(String, index=True) # CREATED, UPDATED, DELETED
     entity = Column(String, index=True) # e.g., 'User', 'Score'
@@ -581,12 +580,7 @@ def receive_after_create(target: Any, connection: Connection, **kw: Any) -> None
     """Setup Row-Level Security policies in PostgreSQL"""
     logger.info("Setting up Multi-Tenant isolation policies...")
     if 'postgresql' in connection.engine.name:
-        core_tables = [
-            'users', 'journal_entries', 'scores', 'achievements', 
-            'audit_logs', 'audit_snapshots', 'analytics_events',
-            'assessment_results', 'survey_submissions', 'notification_logs',
-            'satisfaction_records', 'user_xp', 'user_streaks', 'user_achievements'
-        ]
+        core_tables = ['users', 'journal_entries', 'scores', 'achievements']
         for table in core_tables:
             try:
                 connection.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;"))

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from ..services.contact_service import contact_service
-from app.core import NotFoundError, InternalServerError
+from ...app.core import NotFoundError, InternalServerError
 
 router = APIRouter(tags=["Contact"])
 
