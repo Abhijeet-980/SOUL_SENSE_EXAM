@@ -51,7 +51,13 @@ async def rbac_middleware(request: Request, call_next: Callable):
     request.state.user_id = None
 
     # Only protect routes that require authentication
-    exempt_paths = ["/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/captcha", "/api/v1/auth/server-id"]
+    exempt_paths = [
+        "/api/v1/auth/login", 
+        "/api/v1/auth/register", 
+        "/api/v1/auth/captcha", 
+        "/api/v1/auth/server-id",
+        "/api/v1/analytics/events"
+    ]
     if request.url.path.startswith("/api/v1") and request.url.path not in exempt_paths and not request.url.path.startswith("/api/v1/docs"):
         token: str = await oauth2_scheme(request)
         if not token:

@@ -251,6 +251,7 @@ class AnalyticsEvent(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
     anonymous_id = Column(String, nullable=True, index=True)
+    event_type = Column(String, index=True) # E.g. signup, churn, feature_usage
     event_name = Column(String, nullable=False, index=True)
     event_data = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)

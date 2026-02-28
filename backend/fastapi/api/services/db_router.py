@@ -75,7 +75,13 @@ _REDIS_TTL_SECONDS = 5  # how long we consider a write “fresh”
 
 async def _redis_client() -> redis.Redis:
     """Lazy‑init a Redis connection (same URL used by CacheService)."""
-    return redis.from_url(settings.redis_url, decode_responses=True)
+    return redis.from_url(
+        settings.redis_url, 
+        decode_responses=True,
+        socket_timeout=1.0,
+        socket_connect_timeout=1.0,
+        retry_on_timeout=False
+    )
 
 import time
 _RECENT_WRITES = {}
