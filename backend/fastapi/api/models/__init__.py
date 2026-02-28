@@ -4,7 +4,8 @@ Compatibility layer for tests and legacy imports.
 Core models have been refactored elsewhere.
 """
 
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Text, create_engine, event, Index, text, DateTime, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Text, create_engine, event, Index, text, DateTime, CheckConstraint, Enum as SQLEnum, JSON
 from sqlalchemy.orm import relationship, declarative_base, Session
 from sqlalchemy.engine import Engine, Connection
 from typing import List, Optional, Any, Dict, Tuple, Union
@@ -25,6 +26,7 @@ class UserProfile:
         
 class User(Base):
     __tablename__ = 'users'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, unique=True, nullable=False)
@@ -408,6 +410,7 @@ class UserEmotionalPatterns(Base):
 
 class Score(Base):
     __tablename__ = 'scores'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, index=True)
     total_score = Column(Integer, index=True)
@@ -464,6 +467,7 @@ class QuestionCategory(Base):
 
 class JournalEntry(Base):
     __tablename__ = 'journal_entries'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, index=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
@@ -554,6 +558,23 @@ def receive_before_create(target: Any, connection: Connection, **kw: Any) -> Non
         connection.execute(text('PRAGMA temp_store = MEMORY'))  # Store temp tables in memory
         connection.execute(text('PRAGMA mmap_size = 268435456'))  # 256MB memory map
         connection.execute(text('PRAGMA foreign_keys = ON'))  # Enable foreign key constraints
+
+@event.listens_for(Base.metadata, 'after_create')
+def receive_after_create(target: Any, connection: Connection, **kw: Any) -> None:
+    """Setup Row-Level Security policies in PostgreSQL"""
+    logger.info("Setting up Multi-Tenant isolation policies...")
+    if 'postgresql' in connection.engine.name:
+        core_tables = ['users', 'journal_entries', 'scores', 'achievements']
+        for table in core_tables:
+            try:
+                connection.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;"))
+                connection.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table};"))
+                connection.execute(text(
+                    f"CREATE POLICY tenant_isolation_policy ON {table} "
+                    f"USING (tenant_id = current_setting('app.tenant_id', true)::uuid);"
+                ))
+            except Exception as e:
+                logger.warning(f"Failed to create RLS policy on {table}: {e}")
 
 @event.listens_for(Question.__table__, 'after_create')
 def receive_after_create_question(target: Any, connection: Connection, **kw: Any) -> None:
@@ -792,6 +813,7 @@ class ExportRecord(Base):
 
 class Achievement(Base):
     __tablename__ = 'achievements'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     achievement_id = Column(String(100), unique=True, index=True)

@@ -1,8 +1,8 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import Request
-from ..config import get_settings
+from ..config import get_settings_instance, get_settings
 
-settings = get_settings()
+settings = get_settings_instance()
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """

@@ -1,3 +1,4 @@
+import logging
 """
 Journal Service Layer
 
@@ -486,3 +487,20 @@ class JournalService:
         return ""
 
 logger = logging.getLogger(__name__)
+
+def get_journal_prompts(category: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Return a list of journaling prompts."""
+    all_prompts = [
+        {"id": 1, "text": "What are you most grateful for today?", "category": "gratitude"},
+        {"id": 2, "text": "Who made a positive impact on your day?", "category": "gratitude"},
+        {"id": 3, "text": "What is one thing you learned about yourself recently?", "category": "reflection"},
+        {"id": 4, "text": "How do you feel at this exact moment?", "category": "emotions"},
+        {"id": 5, "text": "What is your main priority for tomorrow?", "category": "goals"},
+        {"id": 6, "text": "If you could change one thing about your day, what would it be?", "category": "reflection"},
+        {"id": 7, "text": "Describe a dream you had recently.", "category": "creativity"},
+    ]
+    
+    if category:
+        return [p for p in all_prompts if p["category"] == category]
+    return all_prompts
+

@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, status, Request, Response, BackgroundTasks, Form, HTTPException
@@ -5,17 +6,18 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
-from ..config import get_settings
+from ..config import get_settings_instance, get_settings
 from ..schemas import UserCreate, Token, UserResponse, ErrorResponse, PasswordResetRequest, PasswordResetComplete, TwoFactorLoginRequest, TwoFactorAuthRequiredResponse, TwoFactorConfirmRequest, UsernameAvailabilityResponse, CaptchaResponse, LoginRequest, OAuthAuthorizeRequest, OAuthTokenRequest, OAuthTokenResponse, OAuthUserInfo
-from ..services.db_service import get_db
+from ..services.db_router import get_db
 from ..services.auth_service import AuthService
 from ..services.captcha_service import captcha_service
 from ..utils.network import get_real_ip
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
 from ..models import User
 from ..utils.limiter import limiter
-from backend.fastapi.app.core import (
+from ...app.core import (
     AuthenticationError,
     AuthorizationError,
     InvalidCredentialsError,
@@ -28,13 +30,16 @@ from backend.fastapi.app.core import (
 )
 import secrets
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
-settings = get_settings()
+settings = get_settings_instance()
 
 @router.get("/captcha", response_model=CaptchaResponse)
 @limiter.limit("100/minute")
 async def get_captcha(request: Request):
     """Generate a new CAPTCHA."""
+
     session_id = secrets.token_urlsafe(16)
     code = captcha_service.generate_captcha(session_id)
     return CaptchaResponse(captcha_code=code, session_id=session_id)
@@ -52,7 +57,7 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.jwt_algorithm])
         
         # Check if token is revoked
-        from ..root_models import TokenRevocation
+        from ..models import TokenRevocation
         rev_stmt = select(TokenRevocation).filter(TokenRevocation.token_str == token)
         rev_res = await db.execute(rev_stmt)
         if rev_res.scalar_one_or_none():
@@ -63,6 +68,11 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
             raise InvalidCredentialsError()
     except JWTError:
         raise InvalidCredentialsError()
+    except Exception as e:
+        import traceback
+        logger.error(f"JWT decode or TokenRevocation check failed: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Auth internal error: {str(e)}")
 
     from ..services.cache_service import cache_service
     cache_key = f"user_rbac:{username}"
@@ -74,7 +84,7 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
                 self.__dict__.update(entries)
         user = CachedUser(**user_data)
     else:
-        user_stmt = select(User).filter(User.username == username)
+        user_stmt = select(User).filter(User.username == username).options(selectinload(User.personal_profile))
         user_res = await db.execute(user_stmt)
         user = user_res.scalar_one_or_none()
         
@@ -202,7 +212,7 @@ async def login(
                 "message": "Your account is active on another device or browser."
             }] if has_multiple_sessions else []
         ),
-        onboarding_completed=user.onboarding_completed or False,
+        onboarding_completed=getattr(user, "onboarding_completed", False),
         is_admin=getattr(user, "is_admin", False)
     )
 
@@ -245,7 +255,7 @@ async def verify_2fa(
                 "message": "Your account is active on another device or browser."
             }] if has_multiple_sessions else []
         ),
-        onboarding_completed=user.onboarding_completed or False,
+        onboarding_completed=getattr(user, "onboarding_completed", False),
         is_admin=getattr(user, "is_admin", False)
     )
 
@@ -495,7 +505,7 @@ async def oauth_login(
             id=user.id,
             created_at=user.created_at,
             warnings=[],
-            onboarding_completed=user.onboarding_completed or False,
+            onboarding_completed=getattr(user, "onboarding_completed", False),
             is_admin=getattr(user, "is_admin", False)
         )
 

@@ -1,0 +1,100 @@
+﻿  File "C:\Users\ayaan 
+shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\base.py", line 
+1641, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "C:\Users\ayaan 
+shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\base.py", line 
+1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ayaan 
+shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\base.py", line 
+1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ayaan 
+shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\base.py", line 
+2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\ayaan 
+shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\base.py", line 
+1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ayaan 
+shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\engine\default.py", line 
+951, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ayaan shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\di
+alects\sqlite\aiosqlite.py", line 180, in execute
+    self._adapt_connection._handle_exception(error)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\ayaan shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\di
+alects\sqlite\aiosqlite.py", line 340, in _handle_exception
+    raise error
+  File "C:\Users\ayaan shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\di
+alects\sqlite\aiosqlite.py", line 162, in execute
+    self.await_(_cursor.execute(operation, parameters))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ayaan shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\ut
+il\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\ayaan shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\sqlalchemy\ut
+il\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+2026-02-28 13:47:48,931 INFO sqlalchemy.engine.Engine ROLLBACK
+            ^^^^^^^^^^^^
+  File "C:\Users\ayaan 
+shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiosqlite\cursor.py", line 40, in 
+execute
+    await self._execute(self._cursor.execute, sql, parameters)
+  File "C:\Users\ayaan 
+shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiosqlite\cursor.py", line 32, in 
+_execute
+    return await self._conn._execute(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ayaan 
+shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiosqlite\core.py", line 160, in 
+_execute
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\ayaan 
+shaikh\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiosqlite\core.py", line 63, in 
+_connection_worker_thread
+    result = function()
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: token_revocations
+[SQL: SELECT token_revocations.id, token_revocations.token_str, token_revocations.revoked_at, 
+token_revocations.expires_at 
+FROM token_revocations 
+WHERE token_revocations.token_str = ?]
+[parameters: ('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzcGxpdF8xNzcyMjY2NjUwIiwiZXhwIjoxNzcyM
+jY4NDY4fQ.49iBwZiD0KGjyCVXiZ8SYuoTrpBiVYFJ798Znfu2CSo',)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+INFO:     127.0.0.1:53907 - "GET /api/v1/auth/me HTTP/1.1" 500 Internal Server Error
+INFO:sqlalchemy.engine.Engine:ROLLBACK
+{"timestamp": "2026-02-28 13:47:48,933", "level": "ERROR", "logger": "api.requests", "request_id": 
+"fc0d08e1-4d22-4302-aa07-f3f5e8641b68", "message": {"event": "request_completed", "request_id": 
+"fc0d08e1-4d22-4302-aa07-f3f5e8641b68", "method": "GET", "path": "/api/v1/auth/me", "client_ip": 
+"127.0.0.1", "status_code": 500, "process_time_ms": 44.09, "response_size_bytes": 505}}
+ERROR:api.requests:{"event": "request_completed", "request_id": 
+"fc0d08e1-4d22-4302-aa07-f3f5e8641b68", "method": "GET", "path": "/api/v1/auth/me", "client_ip": 
+"127.0.0.1", "status_code": 500, "process_time_ms": 44.09, "response_size_bytes": 505}

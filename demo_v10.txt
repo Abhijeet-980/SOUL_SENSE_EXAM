@@ -1,0 +1,15 @@
+﻿
+======================================================================
+ DATABASE REPLICA ROUTING DEMO
+======================================================================
+[14:03:50] STEP 1: GET /auth/captcha (Should hit REPLICA)
+  Result: 200 - Captcha: 99YN1
+
+[14:03:50] STEP 2: POST /auth/register (Should hit PRIMARY)
+  Result: 200
+
+[14:03:55] STEP 3: POST /auth/login (Should hit PRIMARY)
+  Login Success! Token acquired.
+
+[14:04:08] STEP 4: GET /auth/me (IMMEDIATE - Should hit PRIMARY via Guard)
+  Failed: 401 - {"detail":{"success":false,"error":{"code":"INVALID_CREDENTIALS","message":"Invalid credentials"}}}

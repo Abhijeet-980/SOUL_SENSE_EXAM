@@ -7,9 +7,9 @@ from datetime import datetime
 # Import model classes from models module
 from ..models import Base, Score, Response, Question, QuestionCategory
 
-from ..config import get_settings
+from ..config import get_settings_instance, get_settings
 
-settings = get_settings()
+settings = get_settings_instance()
 
 # Create async engine
 engine = create_async_engine(

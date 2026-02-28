@@ -25,7 +25,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 
 from ..config import get_settings_instance
-from ..services.db_service import get_db
+from ..services.db_router import get_db
 from ..models import User
 from sqlalchemy import select
 
@@ -50,8 +50,9 @@ async def rbac_middleware(request: Request, call_next: Callable):
     request.state.is_admin = False
     request.state.user_id = None
 
-    # Only protect routes that require authentication – skip static files, docs, etc.
-    if request.url.path.startswith("/api/v1"):
+    # Only protect routes that require authentication
+    exempt_paths = ["/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/captcha", "/api/v1/auth/server-id"]
+    if request.url.path.startswith("/api/v1") and request.url.path not in exempt_paths and not request.url.path.startswith("/api/v1/docs"):
         token: str = await oauth2_scheme(request)
         if not token:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication token")

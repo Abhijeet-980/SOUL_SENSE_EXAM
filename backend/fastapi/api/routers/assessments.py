@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, Annotated
 from ..services.db_service import get_db, AssessmentService
-from backend.fastapi.app.core import NotFoundError, AuthorizationError
+from ...app.core import NotFoundError, AuthorizationError
 from ..schemas import (
     AssessmentListResponse,
     AssessmentResponse,

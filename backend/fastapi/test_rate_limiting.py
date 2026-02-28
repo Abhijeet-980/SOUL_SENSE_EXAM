@@ -20,7 +20,7 @@ import requests
 import time
 from typing import Dict, Tuple
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://127.0.0.1:8000"
 API_V1 = f"{BASE_URL}/api/v1"
 
 
@@ -66,12 +66,12 @@ def test_endpoint_rate_limit(url: str, method: str = "GET", limit: int = 10,
             
             if response.status_code == 200 or response.status_code == 201:
                 success_count += 1
-                print(f"  Request {i+1}: ✓ Success (Status: {response.status_code})")
+                print(f"  Request {i+1}: [OK] Success (Status: {response.status_code})")
                 if rate_limit_limit:
                     print(f"    Rate Limit Headers: Limit={rate_limit_limit}, Remaining={rate_limit_remaining}, Reset={rate_limit_reset}")
             elif response.status_code == 429:
                 rate_limited_count += 1
-                print(f"  Request {i+1}: ✗ Rate Limited (429 Too Many Requests)")
+                print(f"  Request {i+1}: [FAIL] Rate Limited (429 Too Many Requests)")
                 retry_after = response.headers.get("Retry-After", "N/A")
                 print(f"    Retry-After: {retry_after}s")
             else:
@@ -79,7 +79,7 @@ def test_endpoint_rate_limit(url: str, method: str = "GET", limit: int = 10,
                 print(f"    Response: {response.text[:200]}")
         
         except Exception as e:
-            print(f"  Request {i+1}: ✗ Error: {str(e)}")
+            print(f"  Request {i+1}: [FAIL] Error: {str(e)}")
         
         # Small delay between requests
         time.sleep(0.1)
@@ -91,12 +91,12 @@ def test_endpoint_rate_limit(url: str, method: str = "GET", limit: int = 10,
     
     # Verify that approximately 'limit' requests succeeded
     if success_count >= limit - 2 and success_count <= limit + 2:
-        print(f"  ✓ Rate limiting is working correctly!")
+        print(f"  [OK] Rate limiting is working correctly!")
         if rate_limited_count > 0:
-            print(f"  ✓ Rate limit enforcement confirmed ({rate_limited_count} requests blocked)")
+            print(f"  [OK] Rate limit enforcement confirmed ({rate_limited_count} requests blocked)")
         return True, "Rate limiting working as expected"
     else:
-        print(f"  ✗ Rate limiting may not be working correctly")
+        print(f"  [FAIL] Rate limiting may not be working correctly")
         print(f"    Expected ~{limit} successful requests, got {success_count}")
         return False, f"Expected ~{limit} successful requests, got {success_count}"
 
@@ -113,9 +113,11 @@ def test_captcha_endpoint():
         response = requests.get(url)
         if response.status_code == 200:
             success_count += 1
-            print(f"  Request {i+1}: ✓ Success")
+            print(f"  Request {i+1}: [OK] Success")
         elif response.status_code == 429:
-            print(f"  Request {i+1}: ✗ Rate Limited")
+            print(f"  Request {i+1}: [FAIL] Rate Limited")
+        else:
+            print(f"  Request {i+1}: [FAIL] Status {response.status_code}")
         time.sleep(0.05)
     
     print(f"\n  Result: {success_count}/20 requests succeeded")
@@ -135,21 +137,28 @@ def test_auth_register_endpoint():
     test_data = {
         "username": f"testuser_{int(time.time())}",
         "password": "TestPassword123!",
+        "email": f"test_{int(time.time())}@example.com",
+        "first_name": "Test",
         "captcha_code": "TEST"
     }
     
     for i in range(15):
-        response = requests.post(url, json=test_data)
-        if response.status_code in [200, 201, 400]:  # 400 = validation error, which is OK
-            success_or_validation_count += 1
-            print(f"  Request {i+1}: Status {response.status_code}")
-        elif response.status_code == 429:
-            rate_limited_count += 1
-            print(f"  Request {i+1}: ✗ Rate Limited (429)")
+        try:
+            response = requests.post(url, json=test_data)
+            if response.status_code in [200, 201, 400]:  # 400 = validation error, which is OK
+                success_or_validation_count += 1
+                print(f"  Request {i+1}: Status {response.status_code}")
+            elif response.status_code == 429:
+                rate_limited_count += 1
+                print(f"  Request {i+1}: [FAIL] Rate Limited (429)")
+            else:
+                print(f"  Request {i+1}: [FAIL] Unexpected status {response.status_code}")
+        except Exception as e:
+            print(f"  Request {i+1}: [FAIL] {str(e)}")
         time.sleep(0.1)
     
     print(f"\n  Result: {success_or_validation_count} non-rate-limited, {rate_limited_count} rate-limited")
-    print(f"  ✓ Rate limiting is {'working' if rate_limited_count > 0 else 'not detected'}")
+    print(f"  [OK] Rate limiting check finished")
     return rate_limited_count > 0
 
 
@@ -163,6 +172,7 @@ def test_authenticated_endpoint():
 
 def main():
     """Run all rate limiting tests"""
+    import sys
     print("="*70)
     print("Redis Rate Limiting Test Suite")
     print("="*70)
@@ -170,43 +180,35 @@ def main():
     print("  1. FastAPI server is running (uvicorn)")
     print("  2. Redis server is running")
     print("  3. REDIS_HOST and REDIS_PORT are configured")
-    
-    input("\nPress Enter to continue...")
-    
     results = []
-    
     # Test 1: CAPTCHA endpoint (high limit)
     try:
         result = test_captcha_endpoint()
         results.append(("CAPTCHA endpoint", result))
     except Exception as e:
-        print(f"\n✗ CAPTCHA test failed with error: {str(e)}")
+        print(f"\n[FAIL] CAPTCHA test failed with error: {str(e)}")
         results.append(("CAPTCHA endpoint", False))
-    
     # Test 2: Register endpoint (low limit)
     try:
         result = test_auth_register_endpoint()
         results.append(("Register endpoint", result))
     except Exception as e:
-        print(f"\n✗ Register test failed with error: {str(e)}")
+        print(f"\n[FAIL] Register test failed with error: {str(e)}")
         results.append(("Register endpoint", False))
-    
     # Test 3: Authenticated endpoints (requires token)
     try:
         result = test_authenticated_endpoint()
         results.append(("Authenticated endpoints", result))
     except Exception as e:
-        print(f"\n✗ Authenticated test failed with error: {str(e)}")
+        print(f"\n[FAIL] Authenticated test failed with error: {str(e)}")
         results.append(("Authenticated endpoints", False))
-    
     # Summary
     print("\n" + "="*70)
     print("Test Summary")
     print("="*70)
     for test_name, passed in results:
-        status = "✓ PASS" if passed else "✗ FAIL"
+        status = "[OK] PASS" if passed else "[FAIL] FAIL"
         print(f"  {status} - {test_name}")
-    
     total_passed = sum(1 for _, passed in results if passed)
     print(f"\nTotal: {total_passed}/{len(results)} tests passed")
     print("="*70)
