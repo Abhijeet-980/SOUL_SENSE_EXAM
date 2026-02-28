@@ -17,7 +17,7 @@ from ..services.export_service_v2 import ExportServiceV2
 from ..services.background_task_service import BackgroundTaskService, TaskStatus, TaskType
 from ..models import User, ExportRecord, BackgroundJob
 from .auth import get_current_user
-from app.core import (
+from ...app.core import (
     NotFoundError,
     ValidationError,
     AuthorizationError,

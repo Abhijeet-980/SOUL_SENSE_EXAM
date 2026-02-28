@@ -17,7 +17,7 @@ from ..utils.network import get_real_ip
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
 from ..models import User
 from ..utils.limiter import limiter
-from app.core import (
+from ...app.core import (
     AuthenticationError,
     AuthorizationError,
     InvalidCredentialsError,
@@ -56,19 +56,12 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.jwt_algorithm])
         
-        # O(1) Zero-Trust Revocation Check using Redis Bloom Filter (#1101)
-        jti = payload.get("jti")
-        if jti:
-            from ..services.revocation_service import revocation_service
-            if await revocation_service.is_revoked(jti, db):
-                raise TokenExpiredError("Token has been revoked")
-        else:
-            # Fallback for tokens without JTI (legacy)
-            from ..models import TokenRevocation
-            rev_stmt = select(TokenRevocation).filter(TokenRevocation.token_str == token)
-            rev_res = await db.execute(rev_stmt)
-            if rev_res.scalar_one_or_none():
-                 raise TokenExpiredError("Token has been revoked")
+        # Check if token is revoked
+        from ..models import TokenRevocation
+        rev_stmt = select(TokenRevocation).filter(TokenRevocation.token_str == token)
+        rev_res = await db.execute(rev_stmt)
+        if rev_res.scalar_one_or_none():
+            raise TokenExpiredError("Token has been revoked")
 
         username: str = payload.get("sub")
         if not username:

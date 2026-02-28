@@ -160,14 +160,6 @@ async def lifespan(app: FastAPI):
             start_audit_loop()
             app.state.kafka_producer = producer
             print("[OK] Kafka Producer and Audit Consumer initialized")
-            
-            # ES Search initialization (#1087)
-            from .services.es_sync import register_es_listeners
-            from .services.es_service import get_es_service
-            register_es_listeners()
-            es = get_es_service()
-            await es.create_index()
-            print("[OK] Elasticsearch Sync Listeners and Index ready")
         except Exception as e:
             logger.warning(f"Kafka/Audit initialization failed: {e}")
             print(f"[WARNING] Event-sourced audit trail falling back to mock mode: {e}")
@@ -332,13 +324,9 @@ def create_app() -> FastAPI:
     from starlette.middleware.base import BaseHTTPMiddleware
     from .middleware.rbac_middleware import rbac_middleware
     from .middleware.feature_flags import feature_flag_middleware
-    from .middleware.rate_limiter_sliding import sliding_rate_limit_middleware
-    from .middleware.redaction_middleware import redaction_middleware
     
-    app.add_middleware(BaseHTTPMiddleware, dispatch=sliding_rate_limit_middleware)
     app.add_middleware(BaseHTTPMiddleware, dispatch=rbac_middleware)
     app.add_middleware(BaseHTTPMiddleware, dispatch=feature_flag_middleware)
-    app.add_middleware(BaseHTTPMiddleware, dispatch=redaction_middleware)
 
     # CORS middleware
     # In debug mode, allow all origins for easier development

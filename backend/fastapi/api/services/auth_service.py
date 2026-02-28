@@ -17,8 +17,8 @@ from sqlalchemy.exc import OperationalError
 from .audit_service import AuditService
 from ..utils.security import get_password_hash, verify_password, is_hashed, check_password_history
 from ..models import User, LoginAttempt, PersonalProfile, RefreshToken, PasswordHistory
-from ..constants.security_constants import PASSWORD_HISTORY_LIMIT
-from ..config import get_settings
+from ..constants.security_constants import PASSWORD_HISTORY_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS
+from .db_router import mark_write
 
 settings = get_settings_instance()
 
