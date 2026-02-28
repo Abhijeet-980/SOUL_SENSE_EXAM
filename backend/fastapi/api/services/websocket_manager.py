@@ -125,13 +125,22 @@ class ConnectionManager:
             await self._broadcast_local(message)
             
     async def shutdown(self):
-        if self._listener_task:
-            self._listener_task.cancel()
-        if self.pubsub:
-            await self.pubsub.unsubscribe(self.channel_name)
-            await self.pubsub.close()
-        if self.redis_client:
-            await self.redis_client.close()
-        self._is_connected = False
+        try:
+            if self._listener_task:
+                self._listener_task.cancel()
+            if self.pubsub:
+                try:
+                    await self.pubsub.unsubscribe(self.channel_name)
+                    await self.pubsub.close()
+                except Exception:
+                    pass
+            if self.redis_client:
+                try:
+                    await self.redis_client.close()
+                except Exception:
+                    pass
+            self._is_connected = False
+        except Exception:
+            pass
 
 manager = ConnectionManager()

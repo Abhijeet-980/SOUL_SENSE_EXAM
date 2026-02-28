@@ -55,11 +55,27 @@ class BaseAppSettings(BaseSettings):
         default=f"sqlite:///{ROOT_DIR}/data/soulsense.db",
         description="Database URL"
     )
+    replica_database_url: Optional[str] = Field(
+        default=None, 
+        description="Read-replica database URL"
+    )
 
     @property
     def async_database_url(self) -> str:
         """Construct asynchronous database URL."""
         url = self.database_url
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+asyncpg://")
+        elif url.startswith("sqlite:///"):
+            return url.replace("sqlite:///", "sqlite+aiosqlite:///")
+        return url
+
+    @property
+    def async_replica_database_url(self) -> Optional[str]:
+        """Construct asynchronous replica database URL."""
+        url = self.replica_database_url
+        if not url:
+            return None
         if url.startswith("postgresql://"):
             return url.replace("postgresql://", "postgresql+asyncpg://")
         elif url.startswith("sqlite:///"):

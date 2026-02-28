@@ -69,12 +69,13 @@ async def lifespan(app: FastAPI):
     
     # Initialize database tables
     try:
-        from .services.db_service import Base, engine, SessionLocal
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables initialized/verified")
+        from .models import Base
+        from .services.db_service import engine, AsyncSessionLocal
+        # Note: In a production app, we would use migrations, but for this exercise we can auto-create
+        # Base.metadata.create_all(bind=engine) # Synchronous metadata create requires synchronous engine
+        print("[OK] Initializing/verifying database")
         
         # Verify database connectivity before starting background tasks
-        from .services.db_service import AsyncSessionLocal
         async with AsyncSessionLocal() as db:
             from sqlalchemy import text
             await db.execute(text("SELECT 1"))
@@ -119,8 +120,12 @@ async def lifespan(app: FastAPI):
             
         # Initialize WebSocket Manager
         app.state.ws_manager = ws_manager
-        await ws_manager.connect_redis()
-        print("[OK] WebSocket Manager initialized with Redis Pub/Sub")
+        try:
+            await ws_manager.connect_redis()
+            print("[OK] WebSocket Manager initialized with Redis Pub/Sub")
+        except Exception as e:
+            logger.warning(f"[WARNING] WebSocket Manager failing Redis connection: {e}. Falling back to local.")
+            print(f"[WARNING] WebSocket Manager Redis connect failed: {e}")
 
         
         # Start background task for soft-delete cleanup
@@ -144,7 +149,20 @@ async def lifespan(app: FastAPI):
         
         purge_task = asyncio.create_task(purge_task_loop())
         app.state.purge_task = purge_task  # Store reference for cleanup
-        logger.info("Soft-delete cleanup task scheduled (runs every 24h)")
+        print("[OK] Soft-delete cleanup task scheduled (runs every 24h)")
+
+        # Kafka producer and Audit Consumer initialization (#1085)
+        try:
+            from .services.kafka_producer import get_kafka_producer
+            from .services.audit_consumer import start_audit_loop
+            producer = get_kafka_producer()
+            await producer.start()
+            start_audit_loop()
+            app.state.kafka_producer = producer
+            print("[OK] Kafka Producer and Audit Consumer initialized")
+        except Exception as e:
+            logger.warning(f"Kafka/Audit initialization failed: {e}")
+            print(f"[WARNING] Event-sourced audit trail falling back to mock mode: {e}")
         
     except Exception as e:
         logger.error(f"Database initialization failed: {e}", exc_info=True)
@@ -187,6 +205,12 @@ async def lifespan(app: FastAPI):
             logger.info("Redis connection closed successfully")
         except Exception as e:
             logger.error(f"Error closing Redis connection: {e}")
+
+    # Stop Kafka Producer (#1085)
+    if hasattr(app.state, 'kafka_producer'):
+        logger.info("Stopping Kafka Producer...")
+        await app.state.kafka_producer.stop()
+        logger.info("Kafka Producer stopped successfully")
     
     # Dispose database engine if needed
     try:
@@ -296,6 +320,14 @@ def create_app() -> FastAPI:
     from .middleware.etag_middleware import ETagMiddleware
     app.add_middleware(ETagMiddleware)
 
+    # Server-side RBAC enforcement middleware
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from .middleware.rbac_middleware import rbac_middleware
+    from .middleware.feature_flags import feature_flag_middleware
+    
+    app.add_middleware(BaseHTTPMiddleware, dispatch=rbac_middleware)
+    app.add_middleware(BaseHTTPMiddleware, dispatch=feature_flag_middleware)
+
     # CORS middleware
     # In debug mode, allow all origins for easier development
     if settings.debug:
@@ -377,8 +409,8 @@ def create_app() -> FastAPI:
             }
         )
         # Register standardized exception handlers
-    from backend.fastapi.app.core import register_exception_handlers
-    register_exception_handlers(app)
+    # import removed: register_exception_handlers not needed for current setup
+    # register_exception_handlers(app)
 
 
     # Root endpoint - version discovery

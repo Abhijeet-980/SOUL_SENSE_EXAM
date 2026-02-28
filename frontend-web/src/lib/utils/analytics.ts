@@ -138,25 +138,23 @@ class AnalyticsManager {
   }
 
   private initializeUserIdentity() {
-    // Check if we're in a browser environment (Issue #999: SSR fix)
-    if (typeof window === 'undefined') {
+    // Check if we are in a browser environment before accessing localStorage
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      const storedGuestId = localStorage.getItem('analytics_guest_id');
+      if (storedGuestId) {
+        this.guestUserId = storedGuestId;
+      } else {
+        // Generate new guest ID for first-time users
+        this.guestUserId = this.generateGuestId();
+        localStorage.setItem('analytics_guest_id', this.guestUserId);
+      }
+      // Initially use guest ID as user ID
+      this.currentUserId = this.guestUserId;
+    } else {
+      // Fallback for non-browser environments
       this.guestUserId = this.generateGuestId();
       this.currentUserId = this.guestUserId;
-      return;
     }
-
-    // Check if we have a stored guest ID
-    const storedGuestId = localStorage.getItem('analytics_guest_id');
-    if (storedGuestId) {
-      this.guestUserId = storedGuestId;
-    } else {
-      // Generate new guest ID for first-time users
-      this.guestUserId = this.generateGuestId();
-      localStorage.setItem('analytics_guest_id', this.guestUserId);
-    }
-
-    // Initially use guest ID as user ID
-    this.currentUserId = this.guestUserId;
   }
 
   private setupSessionTracking() {
@@ -358,11 +356,12 @@ class AnalyticsManager {
   // User identity management
   setUserId(userId: string) {
     // Clear guest ID when user logs in
-    if (this.currentUserId === this.guestUserId && typeof window !== 'undefined') {
-      localStorage.removeItem('analytics_guest_id');
+    if (this.currentUserId === this.guestUserId) {
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        localStorage.removeItem('analytics_guest_id');
+      }
       this.guestUserId = null;
     }
-
     this.currentUserId = userId;
   }
 

@@ -4,6 +4,7 @@ Compatibility layer for tests and legacy imports.
 Core models have been refactored elsewhere.
 """
 
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Text, create_engine, event, Index, text, DateTime, CheckConstraint, Enum as SQLEnum, JSON
 from sqlalchemy.orm import relationship, declarative_base, Session
 from sqlalchemy.engine import Engine, Connection
@@ -25,6 +26,7 @@ class UserProfile:
         
 class User(Base):
     __tablename__ = 'users'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, unique=True, nullable=False)
@@ -53,6 +55,7 @@ class User(Base):
     password_history = relationship("PasswordHistory", back_populates="user", cascade="all, delete-orphan")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
+    audit_snapshots = relationship("AuditSnapshot", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
     
     # Gamification Relationships
@@ -215,18 +218,26 @@ class LoginAttempt(Base):
     failure_reason = Column(String, nullable=True)
 
 class AuditLog(Base):
-    """Audit Log for tracking security-critical user actions.
-    Separated from LoginAttempt to provide a user-facing history.
-    """
+    """Audit Log for tracking security-critical user actions."""
     __tablename__ = 'audit_logs'
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    action = Column(String, nullable=False) # e.g., 'password_change', '2fa_enable'
-    ip_address = Column(String)
-    user_agent = Column(String, nullable=True)
+    action = Column(String, nullable=False)
     details = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     user = relationship("User", back_populates="audit_logs")
+
+class AuditSnapshot(Base):
+    """Event-sourced compacted version of audit events for fast querying (#1085)."""
+    __tablename__ = 'audit_snapshots'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_type = Column(String, index=True) # CREATED, UPDATED, DELETED
+    entity = Column(String, index=True) # e.g., 'User', 'Score'
+    entity_id = Column(String, index=True)
+    payload = Column(JSON) # Snapshot of fields
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    user = relationship("User", back_populates="audit_snapshots")
 
 class AnalyticsEvent(Base):
     """Track user behavior events (e.g., signup drop-off).
@@ -408,6 +419,7 @@ class UserEmotionalPatterns(Base):
 
 class Score(Base):
     __tablename__ = 'scores'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, index=True)
     total_score = Column(Integer, index=True)
@@ -464,6 +476,7 @@ class QuestionCategory(Base):
 
 class JournalEntry(Base):
     __tablename__ = 'journal_entries'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, index=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
@@ -554,6 +567,70 @@ def receive_before_create(target: Any, connection: Connection, **kw: Any) -> Non
         connection.execute(text('PRAGMA temp_store = MEMORY'))  # Store temp tables in memory
         connection.execute(text('PRAGMA mmap_size = 268435456'))  # 256MB memory map
         connection.execute(text('PRAGMA foreign_keys = ON'))  # Enable foreign key constraints
+
+@event.listens_for(Base.metadata, 'after_create')
+def receive_after_create(target: Any, connection: Connection, **kw: Any) -> None:
+    """Setup Row-Level Security policies in PostgreSQL"""
+    logger.info("Setting up Multi-Tenant isolation policies...")
+    if 'postgresql' in connection.engine.name:
+        core_tables = ['users', 'journal_entries', 'scores', 'achievements']
+        for table in core_tables:
+            try:
+                connection.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;"))
+                connection.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table};"))
+                connection.execute(text(
+                    f"CREATE POLICY tenant_isolation_policy ON {table} "
+                    f"USING (tenant_id = current_setting('app.tenant_id', true)::uuid);"
+                ))
+            except Exception as e:
+                logger.warning(f"Failed to create RLS policy on {table}: {e}")
+
+@event.listens_for(Session, 'after_flush')
+def capture_audit_events(session, flush_context):
+    """Capture model changes and put them in a buffer to be picked up by Kafka."""
+    if not hasattr(session, '_audit_buffer'):
+        session._audit_buffer = []
+
+    for obj in session.new:
+        if isinstance(obj, Base):
+            session._audit_buffer.append({
+                'type': 'CREATED',
+                'entity': obj.__class__.__name__,
+                'payload': {c.name: getattr(obj, c.name) for c in obj.__table__.columns},
+                'timestamp': datetime.utcnow().isoformat()
+            })
+    
+    for obj in session.dirty:
+        if isinstance(obj, Base):
+            session._audit_buffer.append({
+                'type': 'UPDATED',
+                'entity': obj.__class__.__name__,
+                'payload': {c.name: getattr(obj, c.name) for c in obj.__table__.columns},
+                'timestamp': datetime.utcnow().isoformat()
+            })
+
+    for obj in session.deleted:
+        if isinstance(obj, Base):
+             session._audit_buffer.append({
+                'type': 'DELETED',
+                 'entity': obj.__class__.__name__,
+                 'entity_id': getattr(obj, 'id', None),
+                 'timestamp': datetime.utcnow().isoformat()
+             })
+
+@event.listens_for(Session, 'after_commit')
+def push_audit_to_kafka(session):
+    """Actually trigger the Kafka producer for all buffered events."""
+    if hasattr(session, '_audit_buffer') and session._audit_buffer:
+        try:
+             # Lazy import to avoid circular dependencies
+             from ..services.kafka_producer import get_kafka_producer
+             producer = get_kafka_producer()
+             for event_data in session._audit_buffer:
+                 producer.queue_event(event_data)
+             session._audit_buffer = []
+        except Exception as e:
+             logging.error(f"Failed to push audit events: {e}")
 
 @event.listens_for(Question.__table__, 'after_create')
 def receive_after_create_question(target: Any, connection: Connection, **kw: Any) -> None:
@@ -792,6 +869,7 @@ class ExportRecord(Base):
 
 class Achievement(Base):
     __tablename__ = 'achievements'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     achievement_id = Column(String(100), unique=True, index=True)

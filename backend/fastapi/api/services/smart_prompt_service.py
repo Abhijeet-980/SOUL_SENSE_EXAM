@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, UTC
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
+from fastapi import Depends
 
 from ..models import Score, JournalEntry, UserEmotionalPatterns, UserSession
 

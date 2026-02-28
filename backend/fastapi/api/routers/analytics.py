@@ -1,13 +1,13 @@
 """Analytics API router - Aggregated, non-sensitive data only."""
-from fastapi import APIRouter, Depends, status, Request, Response, BackgroundTasks, Form, HTTPException
+from fastapi import APIRouter, Depends, status, Request, Response, BackgroundTasks, Form, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 from pydantic import BaseModel
 import logging
-from ..services.db_service import get_db
+from ..services.db_router import get_db
 from ..services.analytics_service import AnalyticsService
 from ..services.user_analytics_service import UserAnalyticsService
-from backend.fastapi.app.core import AuthorizationError, InternalServerError
+from ...app.core import AuthorizationError, InternalServerError
 from fastapi_cache.decorator import cache
 from ..schemas import (
     AnalyticsSummary,

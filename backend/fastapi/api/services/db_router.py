@@ -49,9 +49,9 @@ PrimarySessionLocal = async_sessionmaker(
 
 # Replica (read) engine – optional
 _ReplicaSessionLocal: Optional[async_sessionmaker] = None
-if getattr(settings, "replica_database_url", None):
+if settings.async_replica_database_url:
     _replica_engine = create_async_engine(
-        settings.replica_database_url,
+        settings.async_replica_database_url,
         echo=settings.debug,
         future=True,
         connect_args={"check_same_thread": False} if settings.database_type == "sqlite" else {},
@@ -75,19 +75,31 @@ async def _redis_client() -> redis.Redis:
     """Lazy‑init a Redis connection (same URL used by CacheService)."""
     return redis.from_url(settings.redis_url, decode_responses=True)
 
-async def mark_write(user_id: int) -> None:
+import time
+_RECENT_WRITES = {}
+
+async def mark_write(identifier: str | int) -> None:
     """Called after a successful write (POST/PUT/PATCH/DELETE).
     Stores a short‑lived key so subsequent reads for the same user
     are forced onto the primary DB.
     """
-    r = await _redis_client()
-    key = f"recent_write:{user_id}"
-    await r.set(key, "1", ex=_REDIS_TTL_SECONDS)
+    key = f"recent_write:{str(identifier)}"
+    try:
+        r = await _redis_client()
+        await r.set(key, "1", ex=_REDIS_TTL_SECONDS)
+    except Exception as e:
+        log.warning(f"Failed to check recent write in Redis: {e}, using memory fallback")
+        _RECENT_WRITES[key] = time.time() + _REDIS_TTL_SECONDS
 
-async def _has_recent_write(user_id: int) -> bool:
+async def _has_recent_write(identifier: str | int) -> bool:
     """Check if the user performed a write within the lag window."""
-    r = await _redis_client()
-    return bool(await r.get(f"recent_write:{user_id}"))
+    key = f"recent_write:{str(identifier)}"
+    try:
+        r = await _redis_client()
+        return bool(await r.get(key))
+    except Exception as e:
+        log.warning(f"Failed to check recent write in Redis: {e}, using memory fallback")
+        return _RECENT_WRITES.get(key, 0) > time.time()
 
 # ------------------------------------------------------------------
 # 3️⃣ Dependency – get_db
@@ -103,13 +115,33 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
     method = request.method.upper()
     use_primary = method in {"POST", "PUT", "PATCH", "DELETE"}
 
-    # If a recent write exists for this authenticated user, force primary.
-    if not use_primary and hasattr(request.state, "user_id"):
-        if await _has_recent_write(request.state.user_id):
-            use_primary = True
-            log.debug(
-                f"Read‑your‑own‑writes guard: routing GET for user {request.state.user_id} to primary."
-            )
+    # Attempt to read jwt early to evaluate 'read-your-own-writes' guard 
+    # without doing a replica-DB hit inside authentication middleware
+    if not use_primary:
+        # Try finding username in auth header
+        auth_header = request.headers.get("Authorization")
+        extracted_username = None
+        extracted_tenant_id = None
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                import jwt
+                from ..config import get_settings_instance
+                s = get_settings_instance()
+                payload = jwt.decode(token, s.SECRET_KEY, algorithms=[s.jwt_algorithm])
+                extracted_username = payload.get("sub")
+                extracted_tenant_id = payload.get("tid")
+            except Exception:
+                pass
+                
+        # If no auth header, maybe we got a user_id or username in request.state
+        if not extracted_username and hasattr(request.state, "user_id"):
+            extracted_username = request.state.user_id
+
+        if extracted_username:
+            if await _has_recent_write(extracted_username):
+                use_primary = True
+                log.debug(f"Read‑your‑own‑writes guard: routing GET for user {extracted_username} to primary.")
 
     SessionMaker = (
         PrimarySessionLocal
@@ -118,6 +150,32 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
     )
 
     async with SessionMaker() as db:
+        # If we successfully extracted a tenant_id, apply the RLS setting
+        if not use_primary:
+            # We already have extracted_tenant_id if we did the check above
+            pass
+        else:
+            # Need to extract it if not done already
+            auth_header = request.headers.get("Authorization")
+            extracted_tenant_id = None
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ")[1]
+                try:
+                    import jwt
+                    from ..config import get_settings_instance
+                    s = get_settings_instance()
+                    payload = jwt.decode(token, s.SECRET_KEY, algorithms=[s.jwt_algorithm])
+                    extracted_tenant_id = payload.get("tid")
+                except Exception:
+                    pass
+
+        if extracted_tenant_id:
+            try:
+                from sqlalchemy import text
+                await db.execute(text("SET app.tenant_id = :tid"), {"tid": extracted_tenant_id})
+            except Exception as e:
+                log.warning(f"Failed to set tenant_id for RLS: {e}")
+
         try:
             yield db
         finally:
