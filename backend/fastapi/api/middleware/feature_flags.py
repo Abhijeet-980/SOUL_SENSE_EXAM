@@ -1,7 +1,7 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import Request, HTTPException, status
 import logging
-import jwt
+from jose import jwt, JWTError
 from typing import Optional
 from functools import wraps
 from ..services.feature_flags import get_feature_service
@@ -25,7 +25,7 @@ async def feature_flag_middleware(request: Request, call_next):
             payload = jwt.decode(token, s.SECRET_KEY, algorithms=[s.jwt_algorithm])
             user_id = payload.get("sub")
             tenant_id = payload.get("tid")
-        except:
+        except (JWTError, Exception):
             pass # Invalid token doesn't crash the middleware, flags default to false
 
     # 2. Pre-cache relevant flags for this request lifecycle

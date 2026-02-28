@@ -18,7 +18,7 @@ from ..services.background_task_service import (
 )
 from ..models import User, BackgroundJob
 from .auth import get_current_user
-from ...app.core import NotFoundError, ValidationError
+from app.core import NotFoundError, ValidationError
 from pydantic import BaseModel, Field
 
 router = APIRouter()

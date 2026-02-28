@@ -8,31 +8,26 @@ from ..config import get_settings_instance
 
 logger = logging.getLogger(__name__)
 
-# Sliding Window Rate Limiting Lua Script
-LUA_RATE_LIMIT = """
-local key = KEYS[1]
-local now = tonumber(ARGV[1])
-local window = tonumber(ARGV[2])
-local limit = tonumber(ARGV[3])
-local clear_before = now - window
+import time
+import uuid
+import logging
+import os
+from typing import Optional, Tuple
+from fastapi import Request, Response, HTTPException, status
+from starlette.middleware.base import BaseHTTPMiddleware
+from ..utils.limiter import get_real_ip, get_user_id
+from ..config import get_settings_instance
 
--- 1. Remove old requests from the window
-redis.call('ZREMRANGEBYSCORE', key, 0, clear_before)
+logger = logging.getLogger(__name__)
 
--- 2. Count current requests
-local count = redis.call('ZCARD', key)
-local allowed = count < limit
-
-if allowed then
-    -- 3. Add the new request timestamp (unique seed using now + random/counter is better, but now usually suffices for high resolution)
-    redis.call('ZADD', key, now, now)
-end
-
--- 4. Set expiry to clean up idle keys
-redis.call('EXPIRE', key, window + 1)
-
-return {allowed and 1 or 0, limit - count - (allowed and 1 or 0)}
-"""
+# Load Lua script from file
+LUA_SCRIPT_PATH = os.path.join(os.path.dirname(__file__), '..', 'resources', 'rate_limit.lua')
+try:
+    with open(LUA_SCRIPT_PATH, 'r') as f:
+        LUA_RATE_LIMIT = f.read()
+except FileNotFoundError:
+    logger.error("rate_limit.lua not found!")
+    LUA_RATE_LIMIT = ""
 
 class SlidingWindowRateLimiter:
     def __init__(self):
@@ -46,7 +41,7 @@ class SlidingWindowRateLimiter:
         try:
             from ..main import app
             self.redis = getattr(app.state, 'redis_client', None)
-            if self.redis:
+            if self.redis and LUA_RATE_LIMIT:
                  self._script = self.redis.register_script(LUA_RATE_LIMIT)
         except Exception:
             pass
@@ -58,46 +53,61 @@ class SlidingWindowRateLimiter:
             return True, limit # Open if Redis is down
 
         now = time.time()
+        request_id = str(uuid.uuid4())
         # Returns [allowed_int, remaining]
-        res = await self._script(keys=[f"rate_limit:{key_name}"], args=[now, window, limit])
-        return bool(res[0]), res[1]
+        try:
+            res = await self._script(keys=[f"rate_limit:{key_name}"], args=[now, window, limit, request_id])
+            return bool(res[0]), res[1]
+        except Exception as e:
+            logger.error(f"Redis rate limiting script failed: {e}")
+            return True, limit
 
 rate_limiter = SlidingWindowRateLimiter()
 
 async def sliding_rate_limit_middleware(request: Request, call_next):
     """
-    FastAPI middleware for sliding-window rate limiting (#1087).
-    Applies global limits by IP/User and supports endpoint-specific overrides.
+    FastAPI middleware for sliding-window rate limiting (#1087, #1099).
+    Applies granular limits by IP/User/API Key to prevent bursts.
     """
-    # 1. Skip non-API routes or health checks
     if request.url.path.startswith("/api/v1/health") or not request.url.path.startswith("/api"):
         return await call_next(request)
 
-    # 2. Identify the requester (IP or User)
-    ident = get_user_id(request)
+    # Determine granularity and defaults
+    api_key = request.headers.get("X-API-Key")
+    user_id = getattr(request.state, "user_id", None)
     
-    # 3. Apply default global limit (e.g., 200 requests per minute)
-    # This can be configured in settings
-    limit = 200
-    window = 60
-    
+    if api_key:
+        ident = f"api_key:{api_key}"
+        limit = 1000
+        window = 60
+    elif user_id:
+        ident = f"user:{user_id}"
+        limit = 200
+        window = 60
+    else:
+        ip = get_real_ip(request)
+        ident = f"ip:{ip}"
+        limit = 50
+        window = 60
+        
     allowed, remaining = await rate_limiter.check_rate_limit(ident, limit, window)
     
     if not allowed:
         logger.warning(f"Rate limit exceeded for {ident}")
+        # Build standard slow down headers
+        headers = {
+            "X-RateLimit-Limit": str(limit),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": str(window)
+        }
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many requests. Please slow down.",
-            headers={
-                "X-RateLimit-Limit": str(limit),
-                "X-RateLimit-Remaining": "0",
-                "X-RateLimit-Reset": str(window)
-            }
+            headers=headers
         )
 
     response: Response = await call_next(request)
     
-    # 4. Inject headers
     response.headers["X-RateLimit-Limit"] = str(limit)
     response.headers["X-RateLimit-Remaining"] = str(remaining)
     response.headers["X-RateLimit-Reset"] = str(window)

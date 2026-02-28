@@ -17,7 +17,7 @@ from ..utils.network import get_real_ip
 from ..constants.security_constants import REFRESH_TOKEN_EXPIRE_DAYS
 from ..models import User
 from ..utils.limiter import limiter
-from ...app.core import (
+from app.core import (
     AuthenticationError,
     AuthorizationError,
     InvalidCredentialsError,
@@ -111,6 +111,15 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
     if getattr(user, 'is_deleted', False) or getattr(user, 'deleted_at', None) is not None:
         raise AuthorizationError(message="User account is deleted")
     
+    # Fetch and set DEK context for Envelope AEAD Encryption (#1105)
+    try:
+        from ..services.encryption_service import EncryptionService, current_dek, current_user_id
+        dek = await EncryptionService.get_or_create_user_dek(user.id, db)
+        current_dek.set(dek)
+        current_user_id.set(user.id)
+    except Exception as e:
+        logger.error(f"Failed to load user DEK context: {e}")
+        
     return user
 
 async def require_admin(current_user: User = Depends(get_current_user)):

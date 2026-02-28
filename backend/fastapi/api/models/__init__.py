@@ -12,6 +12,11 @@ from typing import List, Optional, Any, Dict, Tuple, Union
 from datetime import datetime, timedelta, UTC
 import logging
 
+try:
+    from ..services.encryption_service import EncryptedString
+except ImportError:
+    pass
+
 # Define Base
 Base = declarative_base()
 
@@ -70,6 +75,14 @@ class User(Base):
     # Notifications
     notification_preferences = relationship("NotificationPreference", uselist=False, back_populates="user", cascade="all, delete-orphan")
     notification_logs = relationship("NotificationLog", back_populates="user", cascade="all, delete-orphan")
+
+class UserEncryptionKey(Base):
+    """Stores the Master-Key-wrapped Data Encryption Key for Envelope AEAD (#1105)."""
+    __tablename__ = 'user_encryption_keys'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
+    wrapped_dek = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
 class NotificationPreference(Base):
     """User preferences for notification channels."""
@@ -233,6 +246,7 @@ class AuditLog(Base):
 class AuditSnapshot(Base):
     """Event-sourced compacted version of audit events for fast querying (#1085)."""
     __tablename__ = 'audit_snapshots'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     event_type = Column(String, index=True) # CREATED, UPDATED, DELETED
     entity = Column(String, index=True) # e.g., 'User', 'Score'
@@ -497,7 +511,7 @@ class JournalEntry(Base):
     username = Column(String, index=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
     title = Column(String, nullable=True)
-    content = Column(Text, nullable=False)
+    content = Column(EncryptedString, nullable=False)
     sentiment_score = Column(Float, default=0.0)
     emotional_patterns = Column(Text, nullable=True) # JSON list
     timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)
@@ -593,7 +607,12 @@ def receive_after_create(target: Any, connection: Connection, **kw: Any) -> None
     """Setup Row-Level Security policies in PostgreSQL"""
     logger.info("Setting up Multi-Tenant isolation policies...")
     if 'postgresql' in connection.engine.name:
-        core_tables = ['users', 'journal_entries', 'scores', 'achievements']
+        core_tables = [
+            'users', 'journal_entries', 'scores', 'achievements', 
+            'audit_logs', 'audit_snapshots', 'analytics_events',
+            'assessment_results', 'survey_submissions', 'notification_logs',
+            'satisfaction_records', 'user_xp', 'user_streaks', 'user_achievements'
+        ]
         for table in core_tables:
             try:
                 connection.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;"))

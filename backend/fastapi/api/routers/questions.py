@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT_DIR))
 VERSION = "1.0.0"
 
 from ..services.db_service import get_db, QuestionService
-from ...app.core import NotFoundError, ValidationError
+from app.core import NotFoundError, ValidationError
 from ..schemas import (
     QuestionResponse,
     QuestionListResponse,

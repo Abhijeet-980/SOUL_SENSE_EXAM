@@ -8,7 +8,7 @@ from ..services.results_service import AssessmentResultsService
 from ..schemas import ExamResponseCreate, ExamResultCreate, AssessmentResponse, AssessmentListResponse, DetailedExamResult
 from .auth import get_current_user
 from ..models import User
-from ...app.core import NotFoundError, InternalServerError, ValidationError
+from app.core import NotFoundError, InternalServerError, ValidationError
 
 logger = logging.getLogger(__name__)
 

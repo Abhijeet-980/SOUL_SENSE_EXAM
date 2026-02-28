@@ -7,7 +7,7 @@ import logging
 from ..services.db_router import get_db
 from ..services.analytics_service import AnalyticsService
 from ..services.user_analytics_service import UserAnalyticsService
-from ...app.core import AuthorizationError, InternalServerError
+from app.core import AuthorizationError, InternalServerError
 from fastapi_cache.decorator import cache
 from ..schemas import (
     AnalyticsSummary,
@@ -26,7 +26,6 @@ from ..schemas import (
 from ..middleware.rate_limiter import rate_limit_analytics
 from .auth import get_current_user, require_admin
 from ..models import User
-from ..utils.environment_context import get_current_environment
 from ..utils.network import get_real_ip
 
 logger = logging.getLogger("api.analytics")

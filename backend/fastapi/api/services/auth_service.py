@@ -141,7 +141,7 @@ class AuthService:
         return user
 
     def create_access_token(self, data: dict, expires_delta: Optional[timedelta] = None) -> str:
-        """Create a new JWT access token with unique JTI (#1101)."""
+        """Create a new JWT access token with unique JTI (#1101) and Tenant ID (#1084)."""
         from jose import jwt
         import uuid
 
@@ -152,6 +152,11 @@ class AuthService:
             expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
             
         jti = str(uuid.uuid4())
+        # Ensure tid is a string for JWT encoding
+        tid = to_encode.get("tid")
+        if tid and not isinstance(tid, str):
+            to_encode["tid"] = str(tid)
+            
         to_encode.update({
             "exp": expire,
             "jti": jti
