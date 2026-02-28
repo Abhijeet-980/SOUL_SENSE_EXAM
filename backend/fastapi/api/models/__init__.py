@@ -14,8 +14,8 @@ import logging
 
 try:
     from ..services.encryption_service import EncryptedString
-except ImportError:
-    pass
+except (ImportError, ValueError):
+    EncryptedString = Text
 
 # Define Base
 Base = declarative_base()
@@ -571,6 +571,7 @@ class JournalEntry(Base):
     energy_level = Column(Integer, nullable=True)
     work_hours = Column(Float, nullable=True)
     stress_level = Column(Integer, nullable=True)
+    stress_triggers = Column(Text, nullable=True)
     screen_time_mins = Column(Integer, nullable=True)
     daily_schedule = Column(Text, nullable=True)
     tags = Column(Text, nullable=True)

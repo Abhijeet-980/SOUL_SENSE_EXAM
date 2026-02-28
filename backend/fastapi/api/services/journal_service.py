@@ -12,7 +12,8 @@ Handles business logic for journal entries including:
 import json
 import os
 from datetime import datetime, timedelta, UTC
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any, Callable
+from fastapi import BackgroundTasks
 
 from sqlalchemy import func, and_, or_, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -144,6 +145,7 @@ class JournalService:
         self,
         current_user: User,
         content: str,
+        background_tasks: Optional[BackgroundTasks] = None,
         tags: Optional[List[str]] = None,
         privacy_level: str = "private",
         sleep_hours: Optional[float] = None,
@@ -155,20 +157,18 @@ class JournalService:
         stress_triggers: Optional[str] = None,
         daily_schedule: Optional[str] = None
     ) -> JournalEntry:
-        """Create a new journal entry with sentiment analysis."""
+        """Create a new journal entry. Sentiment analysis is offloaded to gRPC microservice (#1126)."""
         
-        # Analyze sentiment and word count
-        sentiment_score = analyze_sentiment(content)
-        emotional_patterns = detect_emotional_patterns(content, sentiment_score)
+        # Calculate word count synchronously
         word_count = calculate_word_count(content)
         
-        # Create entry
+        # Create entry (sentiment_score defaults to 0.0 or processing state)
         entry = JournalEntry(
             username=current_user.username,
             user_id=current_user.id,
             content=content,
-            sentiment_score=sentiment_score,
-            emotional_patterns=emotional_patterns,
+            sentiment_score=0.0, # Will be updated asynchronously
+            emotional_patterns="[]",
             word_count=word_count,
             tags=self._parse_tags(tags),
             privacy_level=privacy_level,
@@ -186,7 +186,20 @@ class JournalService:
         try:
             self.db.add(entry)
             await self.db.commit()
+            db_id = entry.id # Keep reference
             await self.db.refresh(entry)
+            
+            # Offload heavy sentiment analysis to gRPC microservice (#1126)
+            if background_tasks:
+                background_tasks.add_task(
+                    self.async_sentiment_update,
+                    entry_id=entry.id,
+                    content=content,
+                    user_id=current_user.id
+                )
+            else:
+                # Fallback to local if no background_tasks provided (e.g., tests)
+                logger.warning(f"No background_tasks for journal {entry.id}, skipping async analysis.")
         except Exception as e:
             await self.db.rollback()
             raise e
@@ -203,6 +216,28 @@ class JournalService:
             logger.error(f"Gamification update failed: {e}")
             
         return entry
+
+    async def async_sentiment_update(self, entry_id: int, content: str, user_id: int):
+        """
+        Background task to perform gRPC sentiment analysis and update DB (#1126).
+        """
+        from .nlp_client import get_nlp_client
+        from api.services.db_router import PrimarySessionLocal
+        
+        logger.info(f"Starting async sentiment analysis for journal {entry_id} via gRPC")
+        client = get_nlp_client()
+        result = await client.analyze_sentiment(content, entry_id, user_id)
+        
+        async with PrimarySessionLocal() as db:
+            stmt = select(JournalEntry).filter(JournalEntry.id == entry_id)
+            res = await db.execute(stmt)
+            entry = res.scalar_one_or_none()
+            if entry:
+                entry.sentiment_score = result["score"]
+                entry.emotional_patterns = json.dumps(result["patterns"])
+                await db.commit()
+                logger.info(f"Updated journal {entry_id} with gRPC sentiment score: {result['score']}")
+
 
     async def get_entries(
         self,
