@@ -300,7 +300,10 @@ def create_app() -> FastAPI:
     # Server-side RBAC enforcement middleware
     from starlette.middleware.base import BaseHTTPMiddleware
     from .middleware.rbac_middleware import rbac_middleware
+    from .middleware.feature_flags import feature_flag_middleware
+    
     app.add_middleware(BaseHTTPMiddleware, dispatch=rbac_middleware)
+    app.add_middleware(BaseHTTPMiddleware, dispatch=feature_flag_middleware)
 
     # CORS middleware
     # In debug mode, allow all origins for easier development
