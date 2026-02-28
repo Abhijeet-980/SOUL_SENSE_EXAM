@@ -19,6 +19,14 @@ This document describes the implementation of automated static security analysis
 - **Targets**: `requirements.txt` and `backend/fastapi/requirements.txt`
 - **Severity Threshold**: High (blocks CI on High/Critical vulnerabilities)
 
+### OWASP ZAP
+- **Purpose**: Dynamic security testing for APIs
+- **Mode**: Baseline scanning
+- **Target**: Running backend server in CI (http://host.docker.internal:8000)
+- **Configuration**: `.zap/rules.tsv` for suppressing false positives
+- **Severity Threshold**: Medium (blocks CI on Medium/High vulnerabilities)
+- **Output**: HTML report uploaded as artifact
+
 ## Configuration Files
 
 ### `.bandit`
@@ -32,6 +40,16 @@ skips = B101,B601,B603  # Skip assert checks, shell usage, subprocess without sh
 ```
 bandit>=1.7.0
 safety>=2.3.0
+```
+
+### `.zap/rules.tsv`
+```tsv
+# OWASP ZAP Rules File for Suppressing False Positives
+# Format: URL	Alert	Evidence	CWE	Other
+# Use this file to suppress known false positive alerts from ZAP baseline scans
+# Example entries (uncomment and modify as needed):
+# http://example.com/api/.*	X-Frame-Options Header Not Set		X-Frame-Options	Known false positive for API endpoints
+# http://example.com/.*	Content Security Policy (CSP) Header Not Set		CSP	Not applicable for API responses
 ```
 
 ## CI Integration
@@ -60,13 +78,33 @@ The security scans are integrated into the GitHub Actions workflow (`python-app.
        if [ -f backend/fastapi/requirements.txt ]; then safety check -r backend/fastapi/requirements.txt --severity-threshold high; fi
    ```
 
+4. **OWASP ZAP Dynamic Scan**
+   ```yaml
+   - name: Test Backend App
+     run: |
+       # ... server startup and pytest ...
+       echo "Running OWASP ZAP baseline scan..."
+       docker run --rm -v $(pwd):/zap/wrk -t zaproxy/zap-baseline:latest -t http://host.docker.internal:8000 -r zap_report.html --alert-level Medium -z "-config rules.file=/zap/wrk/.zap/rules.tsv"
+     working-directory: ./backend/fastapi
+
+   - name: Upload ZAP Scan Report
+     uses: actions/upload-artifact@v4
+     with:
+       name: zap-scan-report
+       path: backend/fastapi/zap_report.html
+   ```
+
 ## Acceptance Criteria
 
 - ✅ Bandit runs on every PR
 - ✅ Dependency scan runs on every PR
-- ✅ CI fails on High severity vulnerabilities
+- ✅ CI fails on High severity vulnerabilities (static)
 - ✅ CI passes when vulnerabilities are resolved
 - ✅ Security reports visible in CI logs
+- ✅ ZAP runs on staging environment (CI test environment)
+- ✅ Scan report uploaded as artifact
+- ✅ CI fails on medium/high vulnerabilities (dynamic)
+- ✅ False positives documented and suppressed
 
 ## Security Issues Detected
 
@@ -81,6 +119,16 @@ Bandit scans for common security vulnerabilities including:
 
 Safety checks for known vulnerabilities in Python packages from the Python Package Index (PyPI).
 
+ZAP baseline scanning detects runtime security issues including:
+
+- Missing security headers (X-Frame-Options, CSP, HSTS)
+- CORS misconfigurations
+- Authentication and authorization weaknesses
+- IDOR (Insecure Direct Object References)
+- Injection vulnerabilities
+- Sensitive data exposure
+- Broken access control
+
 ## Handling False Positives
 
 If Bandit reports false positives:
@@ -89,6 +137,14 @@ If Bandit reports false positives:
 2. Add appropriate skip rules to `.bandit` configuration
 3. Use `# nosec` comments in code for specific lines (as last resort)
 4. Update this document with the rationale
+
+If ZAP reports false positives:
+
+1. Review the alert in the HTML report artifact
+2. Add suppression rules to `.zap/rules.tsv` using the format: URL<TAB>Alert<TAB>Evidence<TAB>CWE<TAB>Other
+3. Use regex patterns for URLs when applicable
+4. Document the rationale in comments
+5. Re-run CI to verify suppression
 
 ## Maintenance
 
@@ -104,9 +160,16 @@ To test the security scans:
 1. **Test Bandit**: Add a vulnerable code snippet to `backend/` and verify CI failure
 2. **Test Safety**: Add an insecure dependency version and verify detection
 3. **Test Resolution**: Fix vulnerabilities and confirm CI passes
+4. **Test ZAP**: 
+   - Add an endpoint with missing security headers and verify detection
+   - Add an intentionally vulnerable endpoint (e.g., IDOR) and confirm CI failure
+   - Fix issues and verify CI passes
+   - Check the uploaded HTML report artifact for detailed findings
 
 ## References
 
 - [Bandit Documentation](https://bandit.readthedocs.io/)
 - [Safety Documentation](https://safetycli.readthedocs.io/)
+- [OWASP ZAP Documentation](https://www.zaproxy.org/)
+- [ZAP Baseline Scan](https://www.zaproxy.org/docs/docker/baseline-scan/)
 - [GitHub Actions Security](https://docs.github.com/en/actions/security-guides)
