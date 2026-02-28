@@ -1084,6 +1084,7 @@ class JournalResponse(BaseModel):
     emotional_patterns: Optional[str] = None
     tags: Optional[List[str]] = []
     entry_date: str
+    timestamp: str
     word_count: int = Field(default=0, description="Number of words in content")
     reading_time_mins: Optional[float] = Field(None, description="Estimated reading time in minutes")
     privacy_level: str = Field(default="private")
@@ -1118,6 +1119,13 @@ class JournalListResponse(BaseModel):
     entries: List[JournalResponse]
     page: int
     page_size: int
+
+
+class JournalCursorResponse(BaseModel):
+    """Schema for cursor-paginated journal entry list."""
+    data: List[JournalResponse]
+    next_cursor: Optional[str] = None
+    has_more: bool
 
 
 class JournalAnalytics(BaseModel):
