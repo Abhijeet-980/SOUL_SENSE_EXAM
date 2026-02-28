@@ -12,6 +12,7 @@ from api.models import User, NotificationLog
 from api.services.data_archival_service import DataArchivalService
 import redis
 from api.config import get_settings_instance
+from api.utils.distributed_lock import require_lock
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ def execute_async_export_task(self, job_id: str, user_id: int, username: str, fo
             run_async(_mark_task_failed(job_id, str(exc)))
 
 
+@require_lock(name="job_{job_id}", timeout=60)
 async def _execute_async_export_db(job_id: str, user_id: int, username: str, format: str, options: Dict[str, Any]):
     async with AsyncSessionLocal() as db:
         try:
