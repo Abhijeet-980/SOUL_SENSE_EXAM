@@ -56,12 +56,19 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.jwt_algorithm])
         
-        # Check if token is revoked
-        from ..models import TokenRevocation
-        rev_stmt = select(TokenRevocation).filter(TokenRevocation.token_str == token)
-        rev_res = await db.execute(rev_stmt)
-        if rev_res.scalar_one_or_none():
-            raise TokenExpiredError("Token has been revoked")
+        # O(1) Zero-Trust Revocation Check using Redis Bloom Filter (#1101)
+        jti = payload.get("jti")
+        if jti:
+            from ..services.revocation_service import revocation_service
+            if await revocation_service.is_revoked(jti, db):
+                raise TokenExpiredError("Token has been revoked")
+        else:
+            # Fallback for tokens without JTI (legacy)
+            from ..models import TokenRevocation
+            rev_stmt = select(TokenRevocation).filter(TokenRevocation.token_str == token)
+            rev_res = await db.execute(rev_stmt)
+            if rev_res.scalar_one_or_none():
+                 raise TokenExpiredError("Token has been revoked")
 
         username: str = payload.get("sub")
         if not username:
@@ -215,6 +222,22 @@ async def login(
         onboarding_completed=getattr(user, "onboarding_completed", False),
         is_admin=getattr(user, "is_admin", False)
     )
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    response: Response,
+    token: Annotated[str, Depends(oauth2_scheme)],
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Logout and revoke access token."""
+    # 1. Revoke the token
+    await auth_service.logout(token, auth_service.db)
+    
+    # 2. Clear cookies
+    response.delete_cookie("refresh_token")
+    
+    return {"message": "Logged out successfully"}
 
 @router.post("/login/2fa", response_model=Token, responses={401: {"model": ErrorResponse}})
 @limiter.limit("5/minute")
