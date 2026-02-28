@@ -283,3 +283,15 @@ def process_outbox_events(self):
             
     return run_async(_async_process())
 
+@celery_app.task(name="api.celery_tasks.archive_stale_journals")
+def archive_stale_journals():
+    """
+    Automated Cold Storage Archival Pipeline (#1125).
+    Runs weekly to move 2+ year old journals to S3.
+    """
+    async def _async_archival():
+        async with AsyncSessionLocal() as db:
+            return await DataArchivalService.archive_stale_journals(db)
+
+    return run_async(_async_archival())
+

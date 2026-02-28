@@ -236,9 +236,14 @@ class JournalService:
         result = await self.db.execute(stmt)
         entries = list(result.scalars().all())
         
-        # Attach dynamic fields
+        # Attach dynamic fields and check for archival
         for entry in entries:
             entry.reading_time_mins = round(entry.word_count / 200, 2)
+            if entry.archive_pointer and not entry.content:
+                # Mark as archived for UI but don't fetch all content in a list view
+                entry.is_archived = True
+                # Placeholder to avoid showing None
+                entry.content = "[Archived in Cold Storage]"
         
         return entries, total
 
@@ -259,6 +264,13 @@ class JournalService:
         
         # Attach dynamic fields
         entry.reading_time_mins = round(entry.word_count / 200, 2)
+        
+        # Handle Cold Storage retrieval (#1125)
+        if entry.archive_pointer and not entry.content:
+            from .storage_service import get_storage_service
+            storage = get_storage_service()
+            logger.info(f"Fetching archived journal {entry.id} from cold storage: {entry.archive_pointer}")
+            entry.content = await storage.fetch_content(entry.archive_pointer)
         
         self._validate_ownership(entry, current_user)
         return entry
@@ -364,6 +376,9 @@ class JournalService:
         
         for entry in entries:
             entry.reading_time_mins = round(entry.word_count / 200, 2)
+            if entry.archive_pointer and not entry.content:
+                entry.is_archived = True
+                entry.content = "[Archived in Cold Storage]"
         
         return entries, total
 
