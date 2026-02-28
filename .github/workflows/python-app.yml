@@ -29,6 +29,12 @@ jobs:
           if [ -f backend/fastapi/requirements.txt ]; then pip install -r backend/fastapi/requirements.txt; fi
           pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout flake8
 
+      - name: Install pre-commit
+        run: pip install pre-commit
+
+      - name: Run pre-commit hooks
+        run: pre-commit run --all-files --show-diff-on-failure
+
       - name: Type Check Root App
         run: mypy app/ --exclude backend/
 
