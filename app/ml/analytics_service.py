@@ -15,7 +15,7 @@ import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
-from app.db import get_session
+from app.db import safe_db_context
 from app.models import Score, JournalEntry, User
 from .pattern_recognition import PatternRecognitionService
 from .recommendation_engine import RecommendationEngine
@@ -106,45 +106,39 @@ class AnalyticsService:
         Returns:
             Dictionary containing benchmark comparisons
         """
-        session = get_session()
         try:
-            # Get user's scores
-            user_scores = session.query(Score).filter(Score.username == username).all()
+            with safe_db_context() as session:
+                # Get user's scores
+                user_scores = session.query(Score).filter(Score.username == username).all()
 
-            if not user_scores:
-                return {"benchmarks": [], "message": "No user scores available"}
+                if not user_scores:
+                    return {"benchmarks": [], "message": "No user scores available"}
 
-            user_avg = np.mean([s.total_score for s in user_scores])
+                user_avg = np.mean([s.total_score for s in user_scores])
 
-            # Get population statistics
-            population_stats = self._calculate_population_stats(session, age_group)
+                # Get population statistics
+                population_stats = self._calculate_population_stats(session, age_group)
 
-            # Calculate percentiles
-            user_percentile = self._calculate_percentile(user_avg, population_stats)
+                # Calculate percentiles
+                user_percentile = self._calculate_percentile(user_avg, population_stats)
 
-            benchmarks = {
-                "user_average": round(user_avg, 1),
-                "population_average": population_stats.get("mean", 0),
-                "user_percentile": user_percentile,
-                "percentiles": population_stats.get("percentiles", {}),
-                "comparison_group": age_group or "all_users",
-                "sample_size": population_stats.get("count", 0)
-            }
+                benchmarks = {
+                    "user_average": round(user_avg, 1),
+                    "population_average": population_stats.get("mean", 0),
+                    "user_percentile": user_percentile,
+                    "percentiles": population_stats.get("percentiles", {}),
+                    "comparison_group": age_group or "all_users",
+                    "sample_size": population_stats.get("count", 0)
+                }
 
-            # Generate benchmark insights
-            insights = self._generate_benchmark_insights(benchmarks)
+                # Generate benchmark insights
+                insights = self._generate_benchmark_insights(benchmarks)
 
-            return {
-                "benchmarks": benchmarks,
-                "insights": insights,
-                "generated_at": datetime.now().isoformat()
-            }
-
-        except Exception as e:
-            logger.error(f"Error getting comparative benchmarks for {username}: {e}")
-            return {"benchmarks": {}, "error": str(e)}
-        finally:
-            session.close()
+                return {
+                    "benchmarks": benchmarks,
+                    "insights": insights,
+                    "generated_at": datetime.now().isoformat()
+                }
 
     def get_personalized_recommendations(self, username: str) -> Dict[str, Any]:
         """
@@ -362,29 +356,27 @@ class AnalyticsService:
 
     def _assess_risk_level(self, username: str) -> str:
         """Assess user's current risk level."""
-        session = get_session()
         try:
-            # Get recent scores
-            recent_scores = session.query(Score).filter(
-                Score.username == username
-            ).order_by(Score.id.desc()).limit(5).all()
+            with safe_db_context() as session:
+                # Get recent scores
+                recent_scores = session.query(Score).filter(
+                    Score.username == username
+                ).order_by(Score.id.desc()).limit(5).all()
 
-            if not recent_scores:
-                return "unknown"
+                if not recent_scores:
+                    return "unknown"
 
-            scores = [s.total_score for s in recent_scores]
-            avg_score = np.mean(scores)
+                scores = [s.total_score for s in recent_scores]
+                avg_score = np.mean(scores)
 
-            # Simple risk assessment
-            if avg_score < 30:
-                return "high"
-            elif avg_score < 50:
-                return "medium"
-            else:
-                return "low"
+                # Simple risk assessment
+                if avg_score < 30:
+                    return "high"
+                elif avg_score < 50:
+                    return "medium"
+                else:
+                    return "low"
 
         except Exception as e:
             logger.error(f"Error assessing risk level for {username}: {e}")
             return "unknown"
-        finally:
-            session.close()

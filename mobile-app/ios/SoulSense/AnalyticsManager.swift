@@ -8,6 +8,7 @@
 
 import Foundation
 import UIKit
+import Mixpanel
 
 public class AnalyticsManager {
 
@@ -32,9 +33,27 @@ public class AnalyticsManager {
     private var screenEnterTimestamp: String?
 
     private init() {
+        initializeMixpanel()
         initializeUserIdentity()
         generateNewSessionId()
         setupSessionTracking()
+    }
+
+    private func initializeMixpanel() {
+        // TODO: Replace with your actual Mixpanel project token
+        let token = "YOUR_MIXPANEL_PROJECT_TOKEN"
+        
+        #if DEBUG
+        // Use a development token if available
+        let devToken = "YOUR_MIXPANEL_DEV_TOKEN"
+        Mixpanel.initialize(token: devToken)
+        #else
+        Mixpanel.initialize(token: token)
+        #endif
+        
+        // Configure Mixpanel
+        Mixpanel.mainInstance().loggingEnabled = true
+        Mixpanel.mainInstance().trackAppLifecycleEvents = true
     }
 
     public static func shared() -> AnalyticsManager {
@@ -56,10 +75,23 @@ public class AnalyticsManager {
 
         // Load current user ID (or use guest ID)
         currentUserId = userDefaults.string(forKey: Keys.currentUserId) ?? guestUserId
+        
+        // Identify user in Mixpanel
+        Mixpanel.mainInstance().identify(distinctId: currentUserId)
+        
+        // Set super properties that will be sent with every event
+        Mixpanel.mainInstance().registerSuperProperties([
+            "platform": "ios",
+            "app_version": getAppVersion(),
+            "device_model": UIDevice.current.model,
+            "os_version": UIDevice.current.systemVersion
+        ])
     }
 
     private func generateNewSessionId() {
         currentSessionId = "session_\(Date().timeIntervalSince1970)_\(UUID().uuidString.prefix(9))"
+        // Also update Mixpanel session property
+        Mixpanel.mainInstance().registerSuperProperties(["session_id": currentSessionId])
     }
 
     private func setupSessionTracking() {
@@ -136,13 +168,25 @@ public class AnalyticsManager {
     // MARK: - User Identity Management
 
     public func setUserId(_ userId: String) {
-        if currentUserId == guestUserId {
-            // Clear guest ID from persistent storage when user logs in
+        let isReturningGuest = (currentUserId == guestUserId)
+        
+        if isReturningGuest {
+            // Alias helps link guest activity to the new user account in Mixpanel
+            Mixpanel.mainInstance().createAlias(userId, distinctId: guestUserId)
             userDefaults.removeObject(forKey: Keys.guestUserId)
         }
 
         currentUserId = userId
         userDefaults.set(userId, forKey: Keys.currentUserId)
+        
+        // Re-identify with the real user ID
+        Mixpanel.mainInstance().identify(distinctId: userId)
+        
+        // Update user profile properties (People Analytics)
+        Mixpanel.mainInstance().people.set(properties: [
+            "$last_login": Date(),
+            "user_id": userId
+        ])
 
         print("[Analytics] User ID set: \(userId)")
     }
@@ -150,6 +194,12 @@ public class AnalyticsManager {
     public func clearUserId() {
         currentUserId = guestUserId
         userDefaults.removeObject(forKey: Keys.currentUserId)
+        
+        // Reset Mixpanel state for the next user
+        Mixpanel.mainInstance().reset()
+        
+        // Re-identify as guest
+        Mixpanel.mainInstance().identify(distinctId: guestUserId)
 
         print("[Analytics] User ID cleared, back to guest mode")
     }
@@ -315,9 +365,22 @@ public class AnalyticsManager {
     }
 
     private func sendToAnalyticsProvider(_ event: AnalyticsEvent) {
-        // TODO: Implement actual analytics provider integration
-        // For now, just print the event
-        print("[Analytics] Event: \(event.eventName) - \(event.properties)")
+        // Real Mixpanel Integration
+        var mixpanelProperties: [String: MixpanelType] = [:]
+        
+        // Convert internal properties to Mixpanel types
+        for (key, value) in event.properties {
+            if let mpValue = value as? MixpanelType {
+                mixpanelProperties[key] = mpValue
+            } else {
+                mixpanelProperties[key] = String(describing: value)
+            }
+        }
+        
+        // Track the event in Mixpanel
+        Mixpanel.mainInstance().track(event: event.eventName, properties: mixpanelProperties)
+        
+        print("[Analytics] Sent to Mixpanel: \(event.eventName)")
     }
 }
 

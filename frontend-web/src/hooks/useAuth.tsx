@@ -16,6 +16,10 @@ import {
   saveSession,
   clearSession,
   getExpiryTimestamp,
+  isTokenExpired,
+  updateLastActivity,
+  clearLastActivity,
+  isSessionTimedOut,
 } from '@/lib/utils/sessionStorage';
 import { authApi } from '@/lib/api/auth';
 import { Loader } from '@/components/ui';
@@ -45,6 +49,12 @@ interface AuthContextType {
     shouldRedirect?: boolean,
     redirectTo?: string,
     stayLoadingOnSuccess?: boolean
+  ) => Promise<any>;
+  loginOAuth: (
+    data: { provider: string; idToken?: string; accessToken?: string },
+    rememberMe: boolean,
+    shouldRedirect?: boolean,
+    redirectTo?: string
   ) => Promise<any>;
   logout: () => void;
   setIsLoading: (loading: boolean) => void;
@@ -81,17 +91,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // 2. Check for existing session
         const session = getSession();
         if (session) {
-          // Critical: Verify the session isn't using the stale 'current' fallback
-          if (session.user.id === 'current') {
-            console.error(
-              'Critical Auth Sync Error: Stale "current" ID fallback found in stored session.'
-            );
-            toast.error('Authentication session corrupted. Please log in again.');
-            clearSession();
-            if (isMounted) setUser(null);
-            router.push('/login');
+          // Client-side expiry check to prevent broken API requests
+          if (isTokenExpired(session.token)) {
+            console.log('Auth: Access token expired. Attempting proactive refresh...');
+            try {
+              const refreshResult = await authApi.refreshToken();
+              session.token = refreshResult.access_token;
+
+              const isPersistent = !!localStorage.getItem('soul_sense_auth_session');
+              saveSession(session, isPersistent);
+              setUser(session.user);
+              updateLastActivity(); // Update activity on token refresh (Issue #999)
+              console.log('Auth: Proactive refresh successful.');
+            } catch (refreshError) {
+              console.warn('Auth: Proactive refresh failed. Logging out:', refreshError);
+              clearSession();
+              setUser(null);
+              router.push('/login');
+              setIsLoading(false);
+              return;
+            }
           } else {
-            if (isMounted) setUser(session.user);
+            // Critical: Verify the session isn't using the stale 'current' fallback
+            if (session.user.id === 'current') {
+              console.error(
+                'Critical Auth Sync Error: Stale "current" ID fallback found in stored session.'
+              );
+              toast.error('Authentication session corrupted. Please log in again.');
+              clearSession();
+              if (isMounted) setUser(null);
+              router.push('/login');
+            } else {
+              if (isMounted) setUser(session.user);
+            }
           }
         }
 
@@ -203,6 +235,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
 
       saveSession(session, rememberMe);
+      updateLastActivity(); // Track activity on login (Issue #999)
       setUser(session.user);
 
       if (shouldRedirect) {
@@ -277,6 +310,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const loginOAuth = async (
+    data: { provider: string; idToken?: string; accessToken?: string },
+    rememberMe: boolean,
+    shouldRedirect = true,
+    redirectTo = '/'
+  ) => {
+    setIsLoading(true);
+    try {
+      const result = await authApi.oauthLogin(data);
+
+      if (!result.id) {
+        throw new Error('Invalid session state: Missing user identifier.');
+      }
+
+      const session: UserSession = {
+        user: {
+          id: result.id.toString(),
+          email: (result.email || '') as string,
+          name: result.username || 'User',
+          username: result.username,
+          created_at: result.created_at,
+          onboarding_completed: result.onboarding_completed,
+        },
+        token: result.access_token,
+        expiresAt: getExpiryTimestamp(),
+      };
+
+      saveSession(session, rememberMe);
+      setUser(session.user);
+
+      if (shouldRedirect) {
+        const finalRedirect = isValidCallbackUrl(redirectTo) ? redirectTo : '/';
+        router.push(finalRedirect);
+      }
+
+      setIsLoading(false);
+      return result;
+    } catch (error) {
+      setIsLoading(false);
+      console.error('OAuth login failed:', error);
+      toast.error('Social login failed. Please try again.');
+      throw error;
+    }
+  };
+
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
@@ -286,6 +364,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       // Always clear local session even if backend call fails
       clearSession();
+      clearLastActivity(); // Clear activity tracking on logout (Issue #999)
       setUser(null);
       router.push('/login');
     }
@@ -315,6 +394,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isMockMode,
         login,
         login2FA,
+        loginOAuth,
         logout,
         setIsLoading,
       }}

@@ -15,7 +15,7 @@ from apscheduler.executors.asyncio import AsyncIOExecutor
 import asyncio
 
 from app.ml.analytics_service import AnalyticsService
-from app.db import get_session
+from app.db import safe_db_context
 from app.models import User
 
 logger = logging.getLogger(__name__)
@@ -85,59 +85,53 @@ class AnalyticsScheduler:
         """Run the daily analytics pipeline for all users."""
         logger.info("Starting daily analytics processing")
 
-        session = get_session()
         try:
-            # Get all active users who have analytics enabled
-            users = session.query(User).filter(
-                User.is_active == True,
-                User.is_deleted == False
-            ).all()
+            with safe_db_context() as session:
+                # Get all active users who have analytics enabled
+                users = session.query(User).filter(
+                    User.is_active == True,
+                    User.is_deleted == False
+                ).all()
 
-            processed_users = 0
-            failed_users = 0
-            results = []
+                processed_users = 0
+                failed_users = 0
+                results = []
 
-            for user in users:
-                try:
-                    # Check if user has analytics enabled
-                    if not user.settings or not user.settings.analytics_enabled:
-                        continue
+                for user in users:
+                    try:
+                        # Check if user has analytics enabled
+                        if not user.settings or not user.settings.analytics_enabled:
+                            continue
 
-                    # Run analytics for this user
-                    analytics_result = await self._process_user_analytics(user.username)
-                    results.append({
-                        "username": user.username,
-                        "status": "success",
-                        "patterns_found": len(analytics_result.get("patterns", [])),
-                        "correlations_found": len(analytics_result.get("significant_correlations", []))
-                    })
-                    processed_users += 1
+                        # Run analytics for this user
+                        analytics_result = await self._process_user_analytics(user.username)
+                        results.append({
+                            "username": user.username,
+                            "status": "success",
+                            "patterns_found": len(analytics_result.get("patterns", [])),
+                            "correlations_found": len(analytics_result.get("significant_correlations", []))
+                        })
+                        processed_users += 1
 
-                except Exception as e:
-                    logger.error(f"Failed to process analytics for user {user.username}: {e}")
-                    results.append({
-                        "username": user.username,
-                        "status": "failed",
-                        "error": str(e)
-                    })
-                    failed_users += 1
+                    except Exception as e:
+                        logger.error(f"Failed to process analytics for user {user.username}: {e}")
+                        results.append({
+                            "username": user.username,
+                            "status": "failed",
+                            "error": str(e)
+                        })
+                        failed_users += 1
 
-            summary = {
-                "timestamp": datetime.now().isoformat(),
-                "total_users": len(users),
-                "processed_users": processed_users,
-                "failed_users": failed_users,
-                "results": results
-            }
+                summary = {
+                    "timestamp": datetime.now().isoformat(),
+                    "total_users": len(users),
+                    "processed_users": processed_users,
+                    "failed_users": failed_users,
+                    "results": results
+                }
 
-            logger.info(f"Daily analytics completed: {processed_users} processed, {failed_users} failed")
-            return summary
-
-        except Exception as e:
-            logger.error(f"Daily analytics pipeline failed: {e}")
-            return {"error": str(e), "timestamp": datetime.now().isoformat()}
-        finally:
-            session.close()
+                logger.info(f"Daily analytics completed: {processed_users} processed, {failed_users} failed")
+                return summary
 
     async def _process_user_analytics(self, username: str) -> Dict[str, Any]:
         """Process analytics for a specific user."""

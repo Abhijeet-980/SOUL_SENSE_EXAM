@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Any
 from collections import defaultdict
 import random
 
-from app.db import get_session
+from app.db import safe_db_context
 from app.models import Score, JournalEntry, User, UserEmotionalPatterns
 from .pattern_recognition import PatternRecognitionService
 
@@ -39,59 +39,53 @@ class RecommendationEngine:
         Returns:
             Dictionary containing insights and recommendations
         """
-        session = get_session()
         try:
-            if patterns is None:
-                patterns = self.pattern_service.detect_temporal_patterns(username)["patterns"]
+            with safe_db_context() as session:
+                if patterns is None:
+                    patterns = self.pattern_service.detect_temporal_patterns(username)["patterns"]
 
-            # Get user data
-            user = session.query(User).filter(User.username == username).first()
-            if not user:
-                return {"insights": [], "message": "User not found"}
+                # Get user data
+                user = session.query(User).filter(User.username == username).first()
+                if not user:
+                    return {"insights": [], "message": "User not found"}
 
-            # Get recent scores and journal entries
-            recent_scores = session.query(Score).filter(
-                Score.username == username
-            ).order_by(Score.id.desc()).limit(10).all()
+                # Get recent scores and journal entries
+                recent_scores = session.query(Score).filter(
+                    Score.username == username
+                ).order_by(Score.id.desc()).limit(10).all()
 
-            recent_entries = session.query(JournalEntry).filter(
-                JournalEntry.username == username
-            ).order_by(JournalEntry.entry_date.desc()).limit(10).all()
+                recent_entries = session.query(JournalEntry).filter(
+                    JournalEntry.username == username
+                ).order_by(JournalEntry.entry_date.desc()).limit(10).all()
 
-            insights = []
+                insights = []
 
-            # Pattern-based insights
-            pattern_insights = self._analyze_patterns(patterns, recent_scores)
-            insights.extend(pattern_insights)
+                # Pattern-based insights
+                pattern_insights = self._analyze_patterns(patterns, recent_scores)
+                insights.extend(pattern_insights)
 
-            # Correlation-based insights
-            correlation_insights = self._analyze_correlations(username)
-            insights.extend(correlation_insights)
+                # Correlation-based insights
+                correlation_insights = self._analyze_correlations(username)
+                insights.extend(correlation_insights)
 
-            # Trigger-based insights
-            trigger_insights = self._analyze_triggers(username, recent_entries)
-            insights.extend(trigger_insights)
+                # Trigger-based insights
+                trigger_insights = self._analyze_triggers(username, recent_entries)
+                insights.extend(trigger_insights)
 
-            # Progress insights
-            progress_insights = self._analyze_progress(recent_scores)
-            insights.extend(progress_insights)
+                # Progress insights
+                progress_insights = self._analyze_progress(recent_scores)
+                insights.extend(progress_insights)
 
-            # Goal suggestions
-            goal_suggestions = self._suggest_goals(username, insights)
-            insights.extend(goal_suggestions)
+                # Goal suggestions
+                goal_suggestions = self._suggest_goals(username, insights)
+                insights.extend(goal_suggestions)
 
-            return {
-                "insights": insights,
-                "total_insights": len(insights),
-                "categories": list(set(insight.get("category", "general") for insight in insights)),
-                "generated_at": datetime.now().isoformat()
-            }
-
-        except Exception as e:
-            logger.error(f"Error generating insights for {username}: {e}")
-            return {"insights": [], "error": str(e)}
-        finally:
-            session.close()
+                return {
+                    "insights": insights,
+                    "total_insights": len(insights),
+                    "categories": list(set(insight.get("category", "general") for insight in insights)),
+                    "generated_at": datetime.now().isoformat()
+                }
 
     def suggest_interventions(self, username: str, risk_level: str = "medium") -> Dict[str, Any]:
         """
@@ -104,40 +98,34 @@ class RecommendationEngine:
         Returns:
             Dictionary containing intervention suggestions
         """
-        session = get_session()
         try:
-            # Get user's emotional patterns
-            patterns = session.query(UserEmotionalPatterns).filter(
-                UserEmotionalPatterns.user_id == session.query(User.id).filter(
-                    User.username == username
+            with safe_db_context() as session:
+                # Get user's emotional patterns
+                patterns = session.query(UserEmotionalPatterns).filter(
+                    UserEmotionalPatterns.user_id == session.query(User.id).filter(
+                        User.username == username
+                    ).first()
                 ).first()
-            ).first()
 
-            interventions = []
+                interventions = []
 
-            if risk_level == "high":
-                interventions.extend(self._high_risk_interventions(patterns))
-            elif risk_level == "medium":
-                interventions.extend(self._medium_risk_interventions(patterns))
-            else:
-                interventions.extend(self._low_risk_interventions(patterns))
+                if risk_level == "high":
+                    interventions.extend(self._high_risk_interventions(patterns))
+                elif risk_level == "medium":
+                    interventions.extend(self._medium_risk_interventions(patterns))
+                else:
+                    interventions.extend(self._low_risk_interventions(patterns))
 
-            # Add personalized interventions based on patterns
-            pattern_based = self._pattern_based_interventions(username)
-            interventions.extend(pattern_based)
+                # Add personalized interventions based on patterns
+                pattern_based = self._pattern_based_interventions(username)
+                interventions.extend(pattern_based)
 
-            return {
-                "interventions": interventions,
-                "risk_level": risk_level,
-                "total_suggestions": len(interventions),
-                "generated_at": datetime.now().isoformat()
-            }
-
-        except Exception as e:
-            logger.error(f"Error suggesting interventions for {username}: {e}")
-            return {"interventions": [], "error": str(e)}
-        finally:
-            session.close()
+                return {
+                    "interventions": interventions,
+                    "risk_level": risk_level,
+                    "total_suggestions": len(interventions),
+                    "generated_at": datetime.now().isoformat()
+                }
 
     def create_personalized_prompts(self, username: str, trends: List[Dict]) -> List[Dict[str, Any]]:
         """
@@ -150,77 +138,71 @@ class RecommendationEngine:
         Returns:
             List of personalized prompts
         """
-        session = get_session()
         try:
-            # Get user's recent journal entries to avoid repetition
-            recent_entries = session.query(JournalEntry).filter(
-                JournalEntry.username == username
-            ).order_by(JournalEntry.entry_date.desc()).limit(5).all()
+            with safe_db_context() as session:
+                # Get user's recent journal entries to avoid repetition
+                recent_entries = session.query(JournalEntry).filter(
+                    JournalEntry.username == username
+                ).order_by(JournalEntry.entry_date.desc()).limit(5).all()
 
-            used_themes = set()
-            for entry in recent_entries:
-                if entry.content:
-                    content_lower = entry.content.lower()
-                    if "grateful" in content_lower:
-                        used_themes.add("gratitude")
-                    if "stress" in content_lower or "anxious" in content_lower:
-                        used_themes.add("stress")
-                    if "relationship" in content_lower:
-                        used_themes.add("relationships")
+                used_themes = set()
+                for entry in recent_entries:
+                    if entry.content:
+                        content_lower = entry.content.lower()
+                        if "grateful" in content_lower:
+                            used_themes.add("gratitude")
+                        if "stress" in content_lower or "anxious" in content_lower:
+                            used_themes.add("stress")
+                        if "relationship" in content_lower:
+                            used_themes.add("relationships")
 
-            prompts = []
+                prompts = []
 
-            # Base prompts
-            base_prompts = [
-                {
-                    "theme": "reflection",
-                    "prompt": "What emotions did you experience today, and what triggered them?",
-                    "category": "emotional_awareness"
-                },
-                {
-                    "theme": "gratitude",
-                    "prompt": "What are three things you're grateful for today, and why?",
-                    "category": "positive_focus"
-                },
-                {
-                    "theme": "growth",
-                    "prompt": "What did you learn about yourself today?",
-                    "category": "self_improvement"
-                },
-                {
-                    "theme": "relationships",
-                    "prompt": "How did your interactions with others affect your emotional state today?",
-                    "category": "social_connections"
-                },
-                {
-                    "theme": "wellbeing",
-                    "prompt": "What did you do today to take care of your mental health?",
-                    "category": "self_care"
-                }
-            ]
+                # Base prompts
+                base_prompts = [
+                    {
+                        "theme": "reflection",
+                        "prompt": "What emotions did you experience today, and what triggered them?",
+                        "category": "emotional_awareness"
+                    },
+                    {
+                        "theme": "gratitude",
+                        "prompt": "What are three things you're grateful for today, and why?",
+                        "category": "positive_focus"
+                    },
+                    {
+                        "theme": "growth",
+                        "prompt": "What did you learn about yourself today?",
+                        "category": "self_improvement"
+                    },
+                    {
+                        "theme": "relationships",
+                        "prompt": "How did your interactions with others affect your emotional state today?",
+                        "category": "social_connections"
+                    },
+                    {
+                        "theme": "wellbeing",
+                        "prompt": "What did you do today to take care of your mental health?",
+                        "category": "self_care"
+                    }
+                ]
 
-            # Filter out recently used themes
-            available_prompts = [p for p in base_prompts if p["theme"] not in used_themes]
+                # Filter out recently used themes
+                available_prompts = [p for p in base_prompts if p["theme"] not in used_themes]
 
-            # If we filtered too much, add back some
-            if len(available_prompts) < 3:
-                available_prompts = base_prompts
+                # If we filtered too much, add back some
+                if len(available_prompts) < 3:
+                    available_prompts = base_prompts
 
-            # Select prompts based on trends
-            selected_prompts = random.sample(available_prompts, min(3, len(available_prompts)))
+                # Select prompts based on trends
+                selected_prompts = random.sample(available_prompts, min(3, len(available_prompts)))
 
-            # Personalize based on trends
-            for prompt in selected_prompts:
-                personalized = self._personalize_prompt(prompt, trends)
-                prompts.append(personalized)
+                # Personalize based on trends
+                for prompt in selected_prompts:
+                    personalized = self._personalize_prompt(prompt, trends)
+                    prompts.append(personalized)
 
-            return prompts
-
-        except Exception as e:
-            logger.error(f"Error creating personalized prompts for {username}: {e}")
-            return []
-        finally:
-            session.close()
+                return prompts
 
     def _analyze_patterns(self, patterns: List[Dict], recent_scores: List) -> List[Dict[str, Any]]:
         """Analyze patterns and generate insights."""

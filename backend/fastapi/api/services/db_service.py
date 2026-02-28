@@ -1,8 +1,10 @@
 """Database service for assessments and questions."""
-from sqlalchemy import create_engine, func
-from sqlalchemy.orm import sessionmaker, Session
-from typing import List, Optional, Tuple
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import select, func
+from typing import List, Optional, Tuple, AsyncGenerator
 from datetime import datetime
+import logging
+import traceback
 
 # Import model classes from models module
 from ..models import Base, Score, Response, Question, QuestionCategory
@@ -11,119 +13,195 @@ from ..config import get_settings
 
 settings = get_settings()
 
-# Create engine
-engine = create_engine(
-    settings.database_url,
+# Create async engine
+engine = create_async_engine(
+    settings.async_database_url,
+    echo=settings.debug,
+    future=True,
     connect_args={"check_same_thread": False} if settings.database_type == "sqlite" else {}
 )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False
+)
 
 
-def get_db():
-    """Dependency to get database session."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Async dependency to get database session."""
+    async with AsyncSessionLocal() as db:
+        try:
+            yield db
+        finally:
+            await db.close()
 
 
 class AssessmentService:
     """Service for managing assessments (scores)."""
     
     @staticmethod
-    def get_assessments(
-        db: Session,
+    async def get_assessments(
+        db: AsyncSession,
         skip: int = 0,
         limit: int = 10,
+        user_id: Optional[int] = None,
         username: Optional[str] = None,
         age_group: Optional[str] = None
     ) -> Tuple[List[Score], int]:
         """
         Get assessments with pagination and optional filters.
+        When user_id is provided, results are scoped to that user only.
         """
-        query = db.query(Score)
+        stmt = select(Score)
         
+        # Apply filters — prefer user_id for session-bound isolation
+        if user_id is not None:
+            query = query.filter(Score.user_id == user_id)
+        elif username:
+            query = query.filter(Score.username == username)
         # Apply filters
         if username:
-            query = query.filter(Score.username == username)
+            stmt = stmt.filter(Score.username == username)
         if age_group:
-            query = query.filter(Score.detailed_age_group == age_group)
+            stmt = stmt.filter(Score.detailed_age_group == age_group)
         
         # Get total count
-        total = query.count()
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar() or 0
         
         # Apply pagination and ordering
-        assessments = query.order_by(Score.timestamp.desc()).offset(skip).limit(limit).all()
+        stmt = stmt.order_by(Score.timestamp.desc()).offset(skip).limit(limit)
+        result = await db.execute(stmt)
+        assessments = result.scalars().all()
         
-        return assessments, total
+        return list(assessments), total
     
     @staticmethod
-    def get_assessment_by_id(db: Session, assessment_id: int) -> Optional[Score]:
+    def get_assessment_by_id(
+        db: Session, assessment_id: int, user_id: Optional[int] = None
+    ) -> Optional[Score]:
+        """Get a single assessment by ID, optionally scoped to a specific user."""
+        query = db.query(Score).filter(Score.id == assessment_id)
+        if user_id is not None:
+            query = query.filter(Score.user_id == user_id)
+        return query.first()
+    
+    @staticmethod
+    def get_assessment_stats(
+        db: Session,
+        user_id: Optional[int] = None,
+        username: Optional[str] = None
+    ) -> dict:
+    async def get_assessment_by_id(db: AsyncSession, assessment_id: int) -> Optional[Score]:
         """Get a single assessment by ID."""
-        return db.query(Score).filter(Score.id == assessment_id).first()
+        stmt = select(Score).filter(Score.id == assessment_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
     
     @staticmethod
-    def get_assessment_stats(db: Session, username: Optional[str] = None) -> dict:
+    async def get_assessment_stats(db: AsyncSession, username: Optional[str] = None) -> dict:
         """
         Get statistical summary of assessments.
+        When user_id is provided, stats are scoped to that user.
         """
         query = db.query(Score)
         
-        if username:
+        if user_id is not None:
+            query = query.filter(Score.user_id == user_id)
+        elif username:
             query = query.filter(Score.username == username)
         
         # Calculate statistics
         stats = query.with_entities(
+        stmt = select(
             func.count(Score.id).label('total'),
             func.avg(Score.total_score).label('avg_score'),
             func.max(Score.total_score).label('max_score'),
             func.min(Score.total_score).label('min_score'),
             func.avg(Score.sentiment_score).label('avg_sentiment')
-        ).first()
+        )
+        
+        if username:
+            stmt = stmt.filter(Score.username == username)
+        
+        result = await db.execute(stmt)
+        stats = result.first()
         
         # Get age group distribution
-        age_distribution = db.query(
+        age_query = db.query(
+        age_stmt = select(
             Score.detailed_age_group,
             func.count(Score.id).label('count')
         )
         
-        if username:
-            age_distribution = age_distribution.filter(Score.username == username)
+        if user_id is not None:
+            age_query = age_query.filter(Score.user_id == user_id)
+        elif username:
+            age_query = age_query.filter(Score.username == username)
         
-        age_distribution = age_distribution.group_by(Score.detailed_age_group).all()
+        age_distribution = age_query.group_by(Score.detailed_age_group).all()
+        if username:
+            age_stmt = age_stmt.filter(Score.username == username)
+        
+        age_stmt = age_stmt.group_by(Score.detailed_age_group)
+        age_result = await db.execute(age_stmt)
+        age_distribution = age_result.all()
         
         return {
-            'total_assessments': stats.total or 0,
-            'average_score': round(stats.avg_score or 0, 2),
-            'highest_score': stats.max_score or 0,
-            'lowest_score': stats.min_score or 0,
-            'average_sentiment': round(stats.avg_sentiment or 0, 2),
+            'total_assessments': stats.total if stats else 0,
+            'average_score': round(stats.avg_score or 0, 2) if stats else 0,
+            'highest_score': stats.max_score if stats else 0,
+            'lowest_score': stats.min_score if stats else 0,
+            'average_sentiment': round(stats.avg_sentiment or 0, 2) if stats else 0,
             'age_group_distribution': {
                 age_group: count for age_group, count in age_distribution if age_group
             }
         }
     
     @staticmethod
-    def get_assessment_responses(db: Session, assessment_id: int) -> List[Response]:
-        """Get all responses for a specific assessment."""
-        assessment = db.query(Score).filter(Score.id == assessment_id).first()
+    def get_assessment_responses(
+        db: Session, assessment_id: int, user_id: Optional[int] = None
+    ) -> List[Response]:
+        """Get all responses for a specific assessment, scoped to user_id."""
+        query = db.query(Score).filter(Score.id == assessment_id)
+        if user_id is not None:
+            query = query.filter(Score.user_id == user_id)
+        assessment = query.first()
         if not assessment:
             return []
         
-        return db.query(Response).filter(
+        resp_query = db.query(Response).filter(
+            Response.session_id == assessment.session_id
+        )
+        if user_id is not None:
+            resp_query = resp_query.filter(Response.user_id == user_id)
+        return resp_query.all()
+    async def get_assessment_responses(db: AsyncSession, assessment_id: int) -> List[Response]:
+        """Get all responses for a specific assessment."""
+        stmt = select(Score).filter(Score.id == assessment_id)
+        result = await db.execute(stmt)
+        assessment = result.scalar_one_or_none()
+        
+        if not assessment:
+            return []
+        
+        resp_stmt = select(Response).filter(
             Response.username == assessment.username,
             Response.timestamp == assessment.timestamp
-        ).all()
+        )
+        resp_result = await db.execute(resp_stmt)
+        return list(resp_result.scalars().all())
 
 
 class QuestionService:
     """Service for managing questions."""
     
     @staticmethod
-    def get_questions(
-        db: Session,
+    async def get_questions(
+        db: AsyncSession,
         skip: int = 0,
         limit: int = 100,
         min_age: Optional[int] = None,
@@ -134,60 +212,71 @@ class QuestionService:
         """
         Get questions with pagination and filters.
         """
-        query = db.query(Question)
+        stmt = select(Question)
         
         # Apply filters
         if active_only:
-            query = query.filter(Question.is_active == 1)
+            stmt = stmt.filter(Question.is_active == 1)
         
         if category_id is not None:
-            query = query.filter(Question.category_id == category_id)
+            stmt = stmt.filter(Question.category_id == category_id)
         
         if min_age is not None:
-            query = query.filter(Question.min_age <= min_age)
+            stmt = stmt.filter(Question.min_age <= min_age)
         
         if max_age is not None:
-            query = query.filter(Question.max_age >= max_age)
+            stmt = stmt.filter(Question.max_age >= max_age)
         
         # Get total count
-        total = query.count()
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar() or 0
         
         # Apply pagination
-        questions = query.order_by(Question.id).offset(skip).limit(limit).all()
+        stmt = stmt.order_by(Question.id).offset(skip).limit(limit)
+        result = await db.execute(stmt)
+        questions = result.scalars().all()
         
-        return questions, total
+        return list(questions), total
     
     @staticmethod
-    def get_question_by_id(db: Session, question_id: int) -> Optional[Question]:
+    async def get_question_by_id(db: AsyncSession, question_id: int) -> Optional[Question]:
         """Get a single question by ID."""
-        return db.query(Question).filter(Question.id == question_id).first()
+        stmt = select(Question).filter(Question.id == question_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
     
     @staticmethod
-    def get_questions_by_age(
-        db: Session,
+    async def get_questions_by_age(
+        db: AsyncSession,
         age: int,
         limit: Optional[int] = None
     ) -> List[Question]:
         """
         Get questions appropriate for a specific age.
         """
-        query = db.query(Question).filter(
+        stmt = select(Question).filter(
             Question.is_active == 1,
             Question.min_age <= age,
             Question.max_age >= age
         ).order_by(Question.id)
         
         if limit:
-            query = query.limit(limit)
+            stmt = stmt.limit(limit)
         
-        return query.all()
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
     
     @staticmethod
-    def get_categories(db: Session) -> List[QuestionCategory]:
+    async def get_categories(db: AsyncSession) -> List[QuestionCategory]:
         """Get all question categories."""
-        return db.query(QuestionCategory).order_by(QuestionCategory.id).all()
+        stmt = select(QuestionCategory).order_by(QuestionCategory.id)
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
     
     @staticmethod
-    def get_category_by_id(db: Session, category_id: int) -> Optional[QuestionCategory]:
+    async def get_category_by_id(db: AsyncSession, category_id: int) -> Optional[QuestionCategory]:
         """Get a category by ID."""
-        return db.query(QuestionCategory).filter(QuestionCategory.id == category_id).first()
+        stmt = select(QuestionCategory).filter(QuestionCategory.id == category_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()

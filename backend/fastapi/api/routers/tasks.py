@@ -1,19 +1,14 @@
 """
 Tasks Router - Background task status polling and management.
-
-This router provides endpoints for:
-- Polling task status (GET /api/v1/tasks/{job_id})
-- Listing user's tasks (GET /api/v1/tasks)
-- Cancelling pending tasks (DELETE /api/v1/tasks/{job_id})
-
-All endpoints require authentication and enforce user-level access control.
+Migrated to Async SQLAlchemy 2.0.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 import logging
+import json
 
 from ..services.db_service import get_db
 from ..services.background_task_service import (
@@ -24,18 +19,15 @@ from ..services.background_task_service import (
 from ..models import User, BackgroundJob
 from .auth import get_current_user
 from backend.fastapi.app.core import NotFoundError, ValidationError
+from pydantic import BaseModel, Field
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("api.tasks")
 
 
 # ============================================================================
-# Response Models (inline for simplicity)
+# Response Models
 # ============================================================================
-
-from pydantic import BaseModel, Field
-from typing import Any, Dict
-
 
 class TaskStatusResponse(BaseModel):
     """Response schema for task status."""
@@ -65,6 +57,20 @@ class PendingTasksResponse(BaseModel):
 
 
 # ============================================================================
+# Utility Functions
+# ============================================================================
+
+def _parse_json_field(field: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Parse a JSON string field to dict, returning None on failure."""
+    if not field:
+        return None
+    try:
+        return json.loads(field)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+# ============================================================================
 # Task Status Polling Endpoints
 # ============================================================================
 
@@ -72,25 +78,10 @@ class PendingTasksResponse(BaseModel):
 async def get_task_status(
     job_id: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Get the status of a background task.
-    
-    This endpoint is designed for polling long-running tasks.
-    Recommended polling interval: 1-2 seconds for active tasks.
-    
-    **Status Values:**
-    - `pending`: Task is queued and waiting to start
-    - `processing`: Task is currently being executed
-    - `completed`: Task finished successfully (check `result` field)
-    - `failed`: Task encountered an error (check `error_message` field)
-    
-    **Returns:**
-    - 200: Task status retrieved successfully
-    - 404: Task not found or access denied
-    """
-    task = BackgroundTaskService.get_task(db, job_id, user_id=current_user.id)
+    """Get the status of a background task."""
+    task = await BackgroundTaskService.get_task(db, job_id, user_id=current_user.id)
     
     if not task:
         raise NotFoundError(
@@ -115,43 +106,27 @@ async def get_task_status(
 @router.get("", response_model=TaskListResponse)
 async def list_user_tasks(
     task_type: Optional[str] = Query(None, description="Filter by task type"),
-    status: Optional[str] = Query(None, description="Filter by status (pending, processing, completed, failed)"),
-    limit: int = Query(50, ge=1, le=100, description="Maximum number of tasks to return"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    limit: int = Query(50, ge=1, le=100),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    List all background tasks for the current user.
-    
-    **Query Parameters:**
-    - `task_type`: Filter by task type (e.g., export_pdf, send_email)
-    - `status`: Filter by status (pending, processing, completed, failed)
-    - `limit`: Maximum number of tasks to return (1-100)
-    
-    **Returns:**
-    - List of tasks ordered by creation date (newest first)
-    """
-    # Validate and convert status filter
+    """List all background tasks for the current user."""
     status_filter = None
     if status:
         try:
             status_filter = TaskStatus(status)
         except ValueError:
-            raise ValidationError(
-                message=f"Invalid status: {status}",
-                details=[{"field": "status", "valid_values": ["pending", "processing", "completed", "failed"]}]
-            )
+            raise ValidationError(message=f"Invalid status: {status}")
     
-    # Validate and convert task type filter
     type_filter = None
     if task_type:
         try:
             type_filter = TaskType(task_type)
         except ValueError:
-            # Allow any task type string for flexibility
             pass
     
-    tasks = BackgroundTaskService.get_user_tasks(
+    tasks = await BackgroundTaskService.get_user_tasks(
         db,
         user_id=current_user.id,
         task_type=type_filter,
@@ -180,17 +155,10 @@ async def list_user_tasks(
 @router.get("/pending/count", response_model=PendingTasksResponse)
 async def get_pending_tasks_count(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Get the count of pending/processing tasks for the current user.
-    
-    Useful for:
-    - Showing task queue status in UI
-    - Rate limiting task submission
-    - Displaying progress indicators
-    """
-    count = BackgroundTaskService.get_pending_tasks_count(db, user_id=current_user.id)
+    """Get the count of pending/processing tasks for the current user."""
+    count = await BackgroundTaskService.get_pending_tasks_count(db, user_id=current_user.id)
     return PendingTasksResponse(pending_count=count)
 
 
@@ -198,20 +166,10 @@ async def get_pending_tasks_count(
 async def cancel_task(
     job_id: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Cancel a pending task.
-    
-    **Note:** Only tasks with status `pending` can be cancelled.
-    Tasks that are already `processing`, `completed`, or `failed` cannot be cancelled.
-    
-    **Returns:**
-    - 200: Task cancelled successfully
-    - 400: Task cannot be cancelled (not pending)
-    - 404: Task not found or access denied
-    """
-    task = BackgroundTaskService.get_task(db, job_id, user_id=current_user.id)
+    """Cancel a pending task."""
+    task = await BackgroundTaskService.get_task(db, job_id, user_id=current_user.id)
     
     if not task:
         raise NotFoundError(
@@ -223,11 +181,10 @@ async def cancel_task(
     if task.status != TaskStatus.PENDING.value:
         raise ValidationError(
             message=f"Cannot cancel task with status '{task.status}'",
-            details=[{"field": "status", "error": "Only pending tasks can be cancelled", "current_status": task.status}]
+            details=[{"field": "status", "error": "Only pending tasks can be cancelled"}]
         )
     
-    # Update task to failed with cancellation message
-    BackgroundTaskService.update_task_status(
+    await BackgroundTaskService.update_task_status(
         db,
         job_id,
         TaskStatus.FAILED,
@@ -235,20 +192,4 @@ async def cancel_task(
     )
     
     logger.info(f"Task {job_id} cancelled by user {current_user.id}")
-    
     return {"status": "cancelled", "job_id": job_id}
-
-
-# ============================================================================
-# Utility Functions
-# ============================================================================
-
-def _parse_json_field(field: Optional[str]) -> Optional[Dict[str, Any]]:
-    """Parse a JSON string field to dict, returning None on failure."""
-    if not field:
-        return None
-    try:
-        import json
-        return json.loads(field)
-    except (json.JSONDecodeError, TypeError):
-        return None

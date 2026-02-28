@@ -26,7 +26,7 @@ from scipy import stats
 import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
 
-from app.db import get_session
+from app.db import safe_db_context
 from app.models import Score, JournalEntry, User
 from .cache_service import get_cache_service
 
@@ -64,79 +64,71 @@ class PatternRecognitionService:
             logger.info(f"Returning cached patterns for {username}")
             return cached_result
 
-        session = get_session()
         try:
-            # Parse time range
-            days = self._parse_time_range(time_range)
-            cutoff_date = datetime.now() - timedelta(days=days)
+            with safe_db_context() as session:
+                # Parse time range
+                days = self._parse_time_range(time_range)
+                cutoff_date = datetime.now() - timedelta(days=days)
 
-            # Get user's scores
-            scores = session.query(Score).filter(
-                Score.username == username,
-                Score.timestamp >= cutoff_date.isoformat()
-            ).order_by(Score.timestamp).all()
+                # Get user's scores
+                scores = session.query(Score).filter(
+                    Score.username == username,
+                    Score.timestamp >= cutoff_date.isoformat()
+                ).order_by(Score.timestamp).all()
 
-            if len(scores) < 7:  # Need minimum data for patterns
+                if len(scores) < 7:  # Need minimum data for patterns
+                    result = {
+                        "patterns": [],
+                        "message": "Insufficient data for pattern analysis",
+                        "confidence": 0.0
+                    }
+                    cache.set_patterns_cache(username, time_range, result, ttl=300)  # Cache for 5 min
+                    return result
+
+                # Convert to DataFrame for analysis
+                df = pd.DataFrame([{
+                    'timestamp': pd.to_datetime(s.timestamp),
+                    'score': s.total_score,
+                    'sentiment': s.sentiment_score or 0.0
+                } for s in scores])
+
+                df.set_index('timestamp', inplace=True)
+                df = df.resample('D').mean().ffill()  # Daily aggregation (updated from fillna)
+
+                patterns = []
+
+                # Day-of-week patterns
+                dow_pattern = self._analyze_day_of_week_patterns(df)
+                if dow_pattern:
+                    patterns.append(dow_pattern)
+
+                # Seasonal patterns
+                seasonal_pattern = self._analyze_seasonal_patterns(df)
+                if seasonal_pattern:
+                    patterns.append(seasonal_pattern)
+
+                # Trend patterns
+                trend_pattern = self._analyze_trend_patterns(df)
+                if trend_pattern:
+                    patterns.append(trend_pattern)
+
+                # Cyclical patterns
+                cyclical_pattern = self._analyze_cyclical_patterns(df)
+                if cyclical_pattern:
+                    patterns.append(cyclical_pattern)
+
                 result = {
-                    "patterns": [],
-                    "message": "Insufficient data for pattern analysis",
-                    "confidence": 0.0
+                    "patterns": patterns,
+                    "data_points": len(scores),
+                    "time_range_days": days,
+                    "analysis_timestamp": datetime.now().isoformat(),
+                    "cached": False
                 }
-                cache.set_patterns_cache(username, time_range, result, ttl=300)  # Cache for 5 min
+
+                # Cache the result
+                cache.set_patterns_cache(username, time_range, result)
+
                 return result
-
-            # Convert to DataFrame for analysis
-            df = pd.DataFrame([{
-                'timestamp': pd.to_datetime(s.timestamp),
-                'score': s.total_score,
-                'sentiment': s.sentiment_score or 0.0
-            } for s in scores])
-
-            df.set_index('timestamp', inplace=True)
-            df = df.resample('D').mean().fillna(method='ffill')  # Daily aggregation
-
-            patterns = []
-
-            # Day-of-week patterns
-            dow_pattern = self._analyze_day_of_week_patterns(df)
-            if dow_pattern:
-                patterns.append(dow_pattern)
-
-            # Seasonal patterns
-            seasonal_pattern = self._analyze_seasonal_patterns(df)
-            if seasonal_pattern:
-                patterns.append(seasonal_pattern)
-
-            # Trend patterns
-            trend_pattern = self._analyze_trend_patterns(df)
-            if trend_pattern:
-                patterns.append(trend_pattern)
-
-            # Cyclical patterns
-            cyclical_pattern = self._analyze_cyclical_patterns(df)
-            if cyclical_pattern:
-                patterns.append(cyclical_pattern)
-
-            result = {
-                "patterns": patterns,
-                "data_points": len(scores),
-                "time_range_days": days,
-                "analysis_timestamp": datetime.now().isoformat(),
-                "cached": False
-            }
-
-            # Cache the result
-            cache.set_patterns_cache(username, time_range, result)
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Error detecting temporal patterns for {username}: {e}")
-            result = {"patterns": [], "error": str(e)}
-            cache.set_patterns_cache(username, time_range, result, ttl=60)  # Cache errors for 1 min
-            return result
-        finally:
-            session.close()
 
     def find_correlations(self, username: str, metrics: List[str] = None) -> Dict[str, Any]:
         """
@@ -164,121 +156,113 @@ class PatternRecognitionService:
             logger.info(f"Returning cached correlations for {username}")
             return cached_result
 
-        session = get_session()
         try:
-            # Get date range from scores
-            score_dates = session.query(Score.timestamp).filter(
-                Score.username == username
-            ).order_by(Score.timestamp.desc()).limit(1).first()
+            with safe_db_context() as session:
+                # Get date range from scores
+                score_dates = session.query(Score.timestamp).filter(
+                    Score.username == username
+                ).order_by(Score.timestamp.desc()).limit(1).first()
 
-            if not score_dates:
-                result = {"correlations": {}, "message": "No score data available"}
-                cache.set_correlations_cache(username, str(metrics_hash), result, ttl=300)
-                return result
+                if not score_dates:
+                    result = {"correlations": {}, "message": "No score data available"}
+                    cache.set_correlations_cache(username, str(metrics_hash), result, ttl=300)
+                    return result
 
-            # Get journal entries for the same period
-            journal_entries = session.query(JournalEntry).filter(
-                JournalEntry.username == username
-            ).order_by(JournalEntry.entry_date.desc()).all()
+                # Get journal entries for the same period
+                journal_entries = session.query(JournalEntry).filter(
+                    JournalEntry.username == username
+                ).order_by(JournalEntry.entry_date.desc()).all()
 
-            # Create correlation dataset
-            data_points = []
+                # Create correlation dataset
+                data_points = []
 
-            # Get EQ scores by date
-            eq_scores = {}
-            for score in session.query(Score).filter(Score.username == username).all():
-                date_key = pd.to_datetime(score.timestamp).date()
-                eq_scores[date_key] = score.total_score
+                # Get EQ scores by date
+                eq_scores = {}
+                for score in session.query(Score).filter(Score.username == username).all():
+                    date_key = pd.to_datetime(score.timestamp).date()
+                    eq_scores[date_key] = score.total_score
 
-            # Process journal entries
-            for entry in journal_entries:
-                entry_date = pd.to_datetime(entry.entry_date).date()
-                eq_score = eq_scores.get(entry_date)
+                # Process journal entries
+                for entry in journal_entries:
+                    entry_date = pd.to_datetime(entry.entry_date).date()
+                    eq_score = eq_scores.get(entry_date)
 
-                if eq_score is not None:
-                    data_points.append({
-                        'date': entry_date,
-                        'eq_score': eq_score,
-                        'sleep_hours': entry.sleep_hours,
-                        'stress_level': entry.stress_level,
-                        'energy_level': entry.energy_level,
-                        'screen_time': entry.screen_time_mins
-                    })
-
-            if len(data_points) < 5:
-                result = {
-                    "correlations": {},
-                    "message": "Insufficient data points for correlation analysis"
-                }
-                cache.set_correlations_cache(username, str(metrics_hash), result, ttl=300)
-                return result
-
-            df = pd.DataFrame(data_points)
-            df.set_index('date', inplace=True)
-
-            # Calculate correlations with statistical significance
-            corr_matrix = df.corr(method='pearson')
-            spearman_corr = df.corr(method='spearman')
-
-            # Find significant correlations with p-values
-            significant_correlations = []
-            for i in range(len(corr_matrix.columns)):
-                for j in range(i+1, len(corr_matrix.columns)):
-                    col1, col2 = corr_matrix.columns[i], corr_matrix.columns[j]
-                    pearson_corr = corr_matrix.loc[col1, col2]
-                    spearman_corr_val = spearman_corr.loc[col1, col2]
-
-                    # Calculate p-value for Pearson correlation
-                    n = len(df.dropna())
-                    if n > 2:
-                        t_stat = pearson_corr * np.sqrt((n - 2) / (1 - pearson_corr**2))
-                        p_value = 2 * (1 - stats.t.cdf(abs(t_stat), n - 2))
-                    else:
-                        p_value = 1.0
-
-                    # Only include if statistically significant (p < 0.05)
-                    if p_value < 0.05 and abs(pearson_corr) > 0.3:
-                        # Calculate confidence interval
-                        se = 1 / np.sqrt(n - 3)  # Standard error approximation
-                        ci_lower = pearson_corr - 1.96 * se
-                        ci_upper = pearson_corr + 1.96 * se
-
-                        significant_correlations.append({
-                            "metric1": col1,
-                            "metric2": col2,
-                            "pearson_correlation": round(pearson_corr, 3),
-                            "spearman_correlation": round(spearman_corr_val, 3),
-                            "p_value": round(p_value, 4),
-                            "confidence_interval": [round(ci_lower, 3), round(ci_upper, 3)],
-                            "strength": self._interpret_correlation_strength(abs(pearson_corr)),
-                            "direction": "positive" if pearson_corr > 0 else "negative",
-                            "statistically_significant": True
+                    if eq_score is not None:
+                        data_points.append({
+                            'date': entry_date,
+                            'eq_score': eq_score,
+                            'sleep_hours': entry.sleep_hours,
+                            'stress_level': entry.stress_level,
+                            'energy_level': entry.energy_level,
+                            'screen_time': entry.screen_time_mins
                         })
 
-            result = {
-                "correlation_matrix": {
-                    "pearson": corr_matrix.to_dict(),
-                    "spearman": spearman_corr.to_dict()
-                },
-                "significant_correlations": significant_correlations,
-                "data_points": len(data_points),
-                "analysis_timestamp": datetime.now().isoformat(),
-                "statistical_notes": "Correlations with p < 0.05 are considered statistically significant",
-                "cached": False
-            }
+                if len(data_points) < 5:
+                    result = {
+                        "correlations": {},
+                        "message": "Insufficient data points for correlation analysis"
+                    }
+                    cache.set_correlations_cache(username, str(metrics_hash), result, ttl=300)
+                    return result
 
-            # Cache the result
-            cache.set_correlations_cache(username, str(metrics_hash), result)
+                df = pd.DataFrame(data_points)
+                df.set_index('date', inplace=True)
 
-            return result
+                # Calculate correlations with statistical significance
+                corr_matrix = df.corr(method='pearson')
+                spearman_corr = df.corr(method='spearman')
 
-        except Exception as e:
-            logger.error(f"Error finding correlations for {username}: {e}")
-            result = {"correlations": {}, "error": str(e)}
-            cache.set_correlations_cache(username, str(metrics_hash), result, ttl=60)
-            return result
-        finally:
-            session.close()
+                # Find significant correlations with p-values
+                significant_correlations = []
+                for i in range(len(corr_matrix.columns)):
+                    for j in range(i+1, len(corr_matrix.columns)):
+                        col1, col2 = corr_matrix.columns[i], corr_matrix.columns[j]
+                        p_corr = corr_matrix.loc[col1, col2]
+                        s_corr_val = spearman_corr.loc[col1, col2]
+
+                        # Calculate p-value for Pearson correlation
+                        n = len(df.dropna())
+                        if n > 2:
+                            t_stat = p_corr * np.sqrt((n - 2) / (1 - p_corr**2))
+                            p_val = 2 * (1 - stats.t.cdf(abs(t_stat), n - 2))
+                        else:
+                            p_val = 1.0
+
+                        # Only include if statistically significant (p < 0.05)
+                        if p_val < 0.05 and abs(p_corr) > 0.3:
+                            # Calculate confidence interval
+                            se = 1 / np.sqrt(n - 3)  # Standard error approximation
+                            ci_low = p_corr - 1.96 * se
+                            ci_high = p_corr + 1.96 * se
+
+                            significant_correlations.append({
+                                "metric1": col1,
+                                "metric2": col2,
+                                "pearson_correlation": round(p_corr, 3),
+                                "spearman_correlation": round(s_corr_val, 3),
+                                "p_value": round(p_val, 4),
+                                "confidence_interval": [round(ci_low, 3), round(ci_high, 3)],
+                                "strength": self._interpret_correlation_strength(abs(p_corr)),
+                                "direction": "positive" if p_corr > 0 else "negative",
+                                "statistically_significant": True
+                            })
+
+                result = {
+                    "correlation_matrix": {
+                        "pearson": corr_matrix.to_dict(),
+                        "spearman": spearman_corr.to_dict()
+                    },
+                    "significant_correlations": significant_correlations,
+                    "data_points": len(data_points),
+                    "analysis_timestamp": datetime.now().isoformat(),
+                    "statistical_notes": "Correlations with p < 0.05 are considered statistically significant",
+                    "cached": False
+                }
+
+                # Cache the result
+                cache.set_correlations_cache(username, str(metrics_hash), result)
+
+                return result
 
     def identify_triggers(self, username: str, journal_entries: List[Dict] = None) -> Dict[str, Any]:
         """
@@ -291,79 +275,73 @@ class PatternRecognitionService:
         Returns:
             Dictionary containing identified triggers and patterns
         """
-        session = get_session()
         try:
-            if journal_entries is None:
-                # Get recent journal entries
-                journal_entries = session.query(JournalEntry).filter(
-                    JournalEntry.username == username
-                ).order_by(JournalEntry.entry_date.desc()).limit(50).all()
+            with safe_db_context() as session:
+                if journal_entries is None:
+                    # Get recent journal entries
+                    journal_entries = session.query(JournalEntry).filter(
+                        JournalEntry.username == username
+                    ).order_by(JournalEntry.entry_date.desc()).limit(50).all()
 
-            if not journal_entries:
-                return {"triggers": [], "message": "No journal entries available"}
+                if not journal_entries:
+                    return {"triggers": [], "message": "No journal entries available"}
 
-            # Analyze sentiment and extract triggers
-            trigger_patterns = defaultdict(list)
-            sentiment_scores = []
+                # Analyze sentiment and extract triggers
+                trigger_patterns = defaultdict(list)
+                sentiment_scores = []
 
-            for entry in journal_entries:
-                if not entry.content:
-                    continue
+                for entry in journal_entries:
+                    if not entry.content:
+                        continue
 
-                # Sentiment analysis
-                sentiment = self.sia.polarity_scores(entry.content)
-                sentiment_scores.append({
-                    'date': entry.entry_date,
-                    'compound': sentiment['compound'],
-                    'content': entry.content[:200]  # Truncate for storage
-                })
-
-                # Simple keyword-based trigger detection
-                content_lower = entry.content.lower()
-
-                # Define trigger categories
-                triggers = {
-                    'work': ['work', 'job', 'deadline', 'meeting', 'boss', 'colleague'],
-                    'relationships': ['partner', 'family', 'friend', 'relationship', 'argument', 'conflict'],
-                    'health': ['sick', 'pain', 'doctor', 'illness', 'headache', 'tired'],
-                    'finance': ['money', 'bill', 'debt', 'financial', 'expensive', 'budget'],
-                    'social': ['party', 'event', 'social', 'lonely', 'alone', 'crowd']
-                }
-
-                for category, keywords in triggers.items():
-                    if any(keyword in content_lower for keyword in keywords):
-                        trigger_patterns[category].append({
-                            'date': entry.entry_date,
-                            'sentiment': sentiment['compound'],
-                            'content_snippet': entry.content[:100]
-                        })
-
-            # Analyze patterns in triggers
-            trigger_analysis = []
-            for category, occurrences in trigger_patterns.items():
-                if len(occurrences) >= 2:
-                    avg_sentiment = np.mean([occ['sentiment'] for occ in occurrences])
-
-                    trigger_analysis.append({
-                        "category": category,
-                        "occurrences": len(occurrences),
-                        "average_sentiment": round(avg_sentiment, 3),
-                        "sentiment_impact": "negative" if avg_sentiment < -0.1 else "neutral" if avg_sentiment < 0.1 else "positive",
-                        "frequency": len(occurrences) / len(journal_entries) if journal_entries else 0
+                    # Sentiment analysis
+                    sentiment = self.sia.polarity_scores(entry.content)
+                    sentiment_scores.append({
+                        'date': entry.entry_date,
+                        'compound': sentiment['compound'],
+                        'content': entry.content[:200]  # Truncate for storage
                     })
 
-            return {
-                "triggers": trigger_analysis,
-                "sentiment_timeline": sentiment_scores[-20:],  # Last 20 entries
-                "total_entries_analyzed": len(journal_entries),
-                "analysis_timestamp": datetime.now().isoformat()
-            }
+                    # Simple keyword-based trigger detection
+                    content_lower = entry.content.lower()
 
-        except Exception as e:
-            logger.error(f"Error identifying triggers for {username}: {e}")
-            return {"triggers": [], "error": str(e)}
-        finally:
-            session.close()
+                    # Define trigger categories
+                    triggers = {
+                        'work': ['work', 'job', 'deadline', 'meeting', 'boss', 'colleague'],
+                        'relationships': ['partner', 'family', 'friend', 'relationship', 'argument', 'conflict'],
+                        'health': ['sick', 'pain', 'doctor', 'illness', 'headache', 'tired'],
+                        'finance': ['money', 'bill', 'debt', 'financial', 'expensive', 'budget'],
+                        'social': ['party', 'event', 'social', 'lonely', 'alone', 'crowd']
+                    }
+
+                    for category, keywords in triggers.items():
+                        if any(keyword in content_lower for keyword in keywords):
+                            trigger_patterns[category].append({
+                                'date': entry.entry_date,
+                                'sentiment': sentiment['compound'],
+                                'content_snippet': entry.content[:100]
+                            })
+
+                # Analyze patterns in triggers
+                trigger_analysis = []
+                for category, occurrences in trigger_patterns.items():
+                    if len(occurrences) >= 2:
+                        avg_sentiment = np.mean([occ['sentiment'] for occ in occurrences])
+
+                        trigger_analysis.append({
+                            "category": category,
+                            "occurrences": len(occurrences),
+                            "average_sentiment": round(avg_sentiment, 3),
+                            "sentiment_impact": "negative" if avg_sentiment < -0.1 else "neutral" if avg_sentiment < 0.1 else "positive",
+                            "frequency": len(occurrences) / len(journal_entries) if journal_entries else 0
+                        })
+
+                return {
+                    "triggers": trigger_analysis,
+                    "sentiment_timeline": sentiment_scores[-20:],  # Last 20 entries
+                    "total_entries_analyzed": len(journal_entries),
+                    "analysis_timestamp": datetime.now().isoformat()
+                }
 
     def predict_mood(self, username: str, future_days: int = 7) -> Dict[str, Any]:
         """
@@ -386,85 +364,77 @@ class PatternRecognitionService:
             logger.info(f"Returning cached forecast for {username}")
             return cached_result
 
-        session = get_session()
         try:
-            # Get historical scores
-            scores = session.query(Score).filter(
-                Score.username == username
-            ).order_by(Score.timestamp).all()
+            with safe_db_context() as session:
+                # Get historical scores
+                scores = session.query(Score).filter(
+                    Score.username == username
+                ).order_by(Score.timestamp).all()
 
-            if len(scores) < 14:  # Need at least 2 weeks of data
-                result = {
-                    "predictions": [],
-                    "message": "Insufficient historical data for mood prediction",
-                    "min_data_required": 14
-                }
-                cache.set_forecast_cache(username, future_days, result, ttl=300)
-                return result
+                if len(scores) < 14:  # Need at least 2 weeks of data
+                    result = {
+                        "predictions": [],
+                        "message": "Insufficient historical data for mood prediction",
+                        "min_data_required": 14
+                    }
+                    cache.set_forecast_cache(username, future_days, result, ttl=300)
+                    return result
 
-            # Prepare time series data
-            df = pd.DataFrame([{
-                'timestamp': pd.to_datetime(s.timestamp),
-                'score': s.total_score
-            } for s in scores])
+                # Prepare time series data
+                df = pd.DataFrame([{
+                    'timestamp': pd.to_datetime(s.timestamp),
+                    'score': s.total_score
+                } for s in scores])
 
-            df.set_index('timestamp', inplace=True)
-            df = df.resample('D').mean().fillna(method='ffill')
+                df.set_index('timestamp', inplace=True)
+                df = df.resample('D').mean().ffill() # Updated from fillna
 
-            if len(df) < 14:
-                result = {
-                    "predictions": [],
-                    "message": "Insufficient daily data points for forecasting"
-                }
-                cache.set_forecast_cache(username, future_days, result, ttl=300)
-                return result
+                if len(df) < 14:
+                    result = {
+                        "predictions": [],
+                        "message": "Insufficient daily data points for forecasting"
+                    }
+                    cache.set_forecast_cache(username, future_days, result, ttl=300)
+                    return result
 
-            predictions = []
+                predictions = []
 
-            try:
-                # Try ARIMA model first
-                arima_predictions = self._predict_with_arima(df, future_days)
-                if arima_predictions:
-                    predictions.extend(arima_predictions)
-                    model_used = "ARIMA"
-                else:
-                    # Fallback to Prophet
-                    prophet_predictions = self._predict_with_prophet(df, future_days)
-                    if prophet_predictions:
-                        predictions.extend(prophet_predictions)
-                        model_used = "Prophet"
+                try:
+                    # Try ARIMA model first
+                    arima_predictions = self._predict_with_arima(df, future_days)
+                    if arima_predictions:
+                        predictions.extend(arima_predictions)
+                        model_used = "ARIMA"
                     else:
-                        # Final fallback to simple trend
-                        predictions.extend(self._predict_with_trend(df, future_days))
-                        model_used = "Linear Trend"
+                        # Fallback to Prophet
+                        prophet_predictions = self._predict_with_prophet(df, future_days)
+                        if prophet_predictions:
+                            predictions.extend(prophet_predictions)
+                            model_used = "Prophet"
+                        else:
+                            # Final fallback to simple trend
+                            predictions.extend(self._predict_with_trend(df, future_days))
+                            model_used = "Linear Trend"
 
-            except Exception as e:
-                logger.warning(f"Advanced forecasting failed, using simple trend: {e}")
-                predictions.extend(self._predict_with_trend(df, future_days))
-                model_used = "Linear Trend (Fallback)"
+                except Exception as e:
+                    logger.warning(f"Advanced forecasting failed, using simple trend: {e}")
+                    predictions.extend(self._predict_with_trend(df, future_days))
+                    model_used = "Linear Trend (Fallback)"
 
-            result = {
-                "predictions": predictions,
-                "model_used": model_used,
-                "data_points_used": len(scores),
-                "daily_data_points": len(df),
-                "analysis_timestamp": datetime.now().isoformat(),
-                "forecast_method": "Advanced time series forecasting with statistical models",
-                "cached": False
-            }
+                result = {
+                    "predictions": predictions,
+                    "model_used": model_used,
+                    "data_points_used": len(scores),
+                    "daily_data_points": len(df),
+                    "analysis_timestamp": datetime.now().isoformat(),
+                    "forecast_method": "Advanced time series forecasting with statistical models",
+                    "cached": False
+                }
 
-            # Cache the result
-            cache.set_forecast_cache(username, future_days, result)
+                # Cache the result
+                cache.set_forecast_cache(username, future_days, result)
 
-            return result
-
-        except Exception as e:
-            logger.error(f"Error predicting mood for {username}: {e}")
-            result = {"predictions": [], "error": str(e)}
-            cache.set_forecast_cache(username, future_days, result, ttl=60)
-            return result
-        finally:
-            session.close()
+                return result
 
     def _predict_with_arima(self, df: pd.DataFrame, future_days: int) -> List[Dict]:
         """Predict using ARIMA model with confidence intervals."""

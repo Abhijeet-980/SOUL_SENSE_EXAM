@@ -20,7 +20,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
-from app.db import get_session
+from app.db import safe_db_context
 from app.models import Score, UserStrengths, UserEmotionalPatterns, User, UserSession
 
 logger = logging.getLogger(__name__)
@@ -72,8 +72,7 @@ class EQInsightsGenerator:
     def _train_model_from_data(self) -> None:
         """Train ML model from historical user data."""
         try:
-            session = get_session()
-            try:
+            with safe_db_context() as session:
                 # Get historical scores with user data
                 scores_query = session.query(
                     Score.id, Score.username, Score.total_score, Score.sentiment_score,
@@ -142,9 +141,6 @@ class EQInsightsGenerator:
 
                 # Save model
                 self._save_model()
-
-            finally:
-                session.close()
 
         except Exception as e:
             logger.error(f"Failed to train ML model: {e}")
@@ -233,8 +229,7 @@ class EQInsightsGenerator:
             Dictionary with insights, recommendations, and improvement suggestions
         """
         try:
-            session = get_session()
-            try:
+            with safe_db_context() as session:
                 # Get user profile data
                 user_strengths = session.query(UserStrengths).filter(
                     UserStrengths.user_id == user_id
@@ -305,9 +300,6 @@ class EQInsightsGenerator:
                 insights['next_steps'] = self._generate_next_steps(insights)
 
                 return insights
-
-            finally:
-                session.close()
 
         except Exception as e:
             logger.error(f"Failed to generate insights: {e}")

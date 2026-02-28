@@ -11,6 +11,7 @@ Provides authenticated CRUD endpoints for all user profile types:
 
 from typing import Annotated
 from fastapi import APIRouter, Depends, status, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 from ..utils.limiter import limiter
 from backend.fastapi.app.core import NotFoundError
 
@@ -50,13 +51,9 @@ from ..models import User
 router = APIRouter(tags=["Profiles"])
 
 
-def get_profile_service():
-    """Dependency to get ProfileService with database session."""
-    db = next(get_db())
-    try:
-        yield ProfileService(db)
-    finally:
-        db.close()
+async def get_profile_service(db: AsyncSession = Depends(get_db)):
+    """Dependency to get ProfileService."""
+    return ProfileService(db)
 
 
 # ============================================================================
@@ -72,10 +69,8 @@ async def get_settings(
 ):
     """
     Get the current user's settings.
-    
-    **Authentication Required**
     """
-    settings = profile_service.get_user_settings(current_user.id)
+    settings = await profile_service.get_user_settings(current_user.id)
     if not settings:
         raise NotFoundError(
             resource="User settings",
@@ -94,17 +89,8 @@ async def create_settings(
 ):
     """
     Create settings for the current user.
-    
-    **Fields:**
-    - theme: 'light' or 'dark' (default: 'light')
-    - question_count: Number of questions per assessment, 5-50 (default: 10)
-    - sound_enabled: Enable sound effects (default: true)
-    - notifications_enabled: Enable notifications (default: true)
-    - language: Language code, e.g., 'en', 'es' (default: 'en')
-    
-    **Authentication Required**
     """
-    settings = profile_service.create_user_settings(
+    settings = await profile_service.create_user_settings(
         user_id=current_user.id,
         settings_data=settings_data.model_dump(exclude_unset=True)
     )
@@ -119,11 +105,8 @@ async def update_settings(
 ):
     """
     Update the current user's settings.
-    Only provided fields will be updated.
-    
-    **Authentication Required**
     """
-    settings = profile_service.update_user_settings(
+    settings = await profile_service.update_user_settings(
         user_id=current_user.id,
         settings_data=settings_data.model_dump(exclude_unset=True)
     )
@@ -137,15 +120,13 @@ async def delete_settings(
 ):
     """
     Delete the current user's settings.
-    
-    **Authentication Required**
     """
-    profile_service.delete_user_settings(current_user.id)
+    await profile_service.delete_user_settings(current_user.id)
     return None
 
 
 # ============================================================================
-# Data Consent Endpoints (Issue #929)
+# Data Consent Endpoints
 # ============================================================================
 
 @router.get("/consent", response_model=DataConsentResponse, summary="Get Data Consent Settings")
@@ -155,10 +136,8 @@ async def get_consent(
 ):
     """
     Get the current user's data consent settings.
-    
-    **Authentication Required**
     """
-    settings = profile_service.get_user_settings(current_user.id)
+    settings = await profile_service.get_user_settings(current_user.id)
     if not settings:
         raise NotFoundError(resource="User settings")
     return DataConsentResponse(
@@ -175,10 +154,8 @@ async def update_consent(
 ):
     """
     Update the current user's data consent settings.
-    
-    **Authentication Required**
     """
-    settings = profile_service.update_user_settings(
+    settings = await profile_service.update_user_settings(
         user_id=current_user.id,
         settings_data=consent_data.model_dump(exclude_unset=True)
     )
@@ -189,7 +166,7 @@ async def update_consent(
 
 
 # ============================================================================
-# Crisis Settings Endpoints (Issue #930)
+# Crisis Settings Endpoints
 # ============================================================================
 
 @router.get("/crisis_settings", response_model=CrisisSettingsResponse, summary="Get Crisis Settings")
@@ -199,10 +176,8 @@ async def get_crisis_settings(
 ):
     """
     Get the current user's crisis settings.
-    
-    **Authentication Required**
     """
-    settings = profile_service.get_user_settings(current_user.id)
+    settings = await profile_service.get_user_settings(current_user.id)
     if not settings:
         raise NotFoundError(resource="User settings")
     return CrisisSettingsResponse(
@@ -218,10 +193,8 @@ async def update_crisis_settings(
 ):
     """
     Update the current user's crisis settings.
-    
-    **Authentication Required**
     """
-    settings = profile_service.update_user_settings(
+    settings = await profile_service.update_user_settings(
         user_id=current_user.id,
         settings_data=crisis_data.model_dump()
     )
@@ -241,10 +214,8 @@ async def get_medical_profile(
 ):
     """
     Get the current user's medical profile.
-    
-    **Authentication Required**
     """
-    profile = profile_service.get_medical_profile(current_user.id)
+    profile = await profile_service.get_medical_profile(current_user.id)
     if not profile:
         raise NotFoundError(
             resource="Medical profile",
@@ -261,21 +232,8 @@ async def create_medical_profile(
 ):
     """
     Create a medical profile for the current user.
-    
-    **Fields (all optional):**
-    - blood_type: Blood type (e.g., 'A+', 'O-')
-    - allergies: Known allergies
-    - medications: Current medications
-    - medical_conditions: Medical conditions
-    - surgeries: History of surgeries
-    - therapy_history: Past counselling/therapy
-    - ongoing_health_issues: Current health concerns
-    - emergency_contact_name: Emergency contact name
-    - emergency_contact_phone: Emergency contact phone
-    
-    **Authentication Required**
     """
-    profile = profile_service.create_medical_profile(
+    profile = await profile_service.create_medical_profile(
         user_id=current_user.id,
         profile_data=profile_data.model_dump(exclude_unset=True)
     )
@@ -290,11 +248,8 @@ async def update_medical_profile(
 ):
     """
     Update the current user's medical profile.
-    Only provided fields will be updated.
-    
-    **Authentication Required**
     """
-    profile = profile_service.update_medical_profile(
+    profile = await profile_service.update_medical_profile(
         user_id=current_user.id,
         profile_data=profile_data.model_dump(exclude_unset=True)
     )
@@ -308,10 +263,8 @@ async def delete_medical_profile(
 ):
     """
     Delete the current user's medical profile.
-    
-    **Authentication Required**
     """
-    profile_service.delete_medical_profile(current_user.id)
+    await profile_service.delete_medical_profile(current_user.id)
     return None
 
 
@@ -326,10 +279,8 @@ async def get_personal_profile(
 ):
     """
     Get the current user's personal profile.
-    
-    **Authentication Required**
     """
-    profile = profile_service.get_personal_profile(current_user.id)
+    profile = await profile_service.get_personal_profile(current_user.id)
     if not profile:
         raise NotFoundError(
             resource="Personal profile",
@@ -346,27 +297,8 @@ async def create_personal_profile(
 ):
     """
     Create a personal profile for the current user.
-    
-    **Fields (all optional):**
-    - occupation: Current occupation
-    - education: Education level/background
-    - marital_status: Marital status
-    - hobbies: Hobbies and interests
-    - bio: Personal biography (max 1000 chars)
-    - life_events: Significant life events (JSON format)
-    - email: Email address
-    - phone: Phone number
-    - date_of_birth: Date of birth (YYYY-MM-DD)
-    - gender: Gender
-    - address: Physical address
-    - society_contribution: Community contributions
-    - life_pov: Personal philosophy/perspective
-    - high_pressure_events: Recent high-pressure events
-    - avatar_path: Path to avatar image
-    
-    **Authentication Required**
     """
-    profile = profile_service.create_personal_profile(
+    profile = await profile_service.create_personal_profile(
         user_id=current_user.id,
         profile_data=profile_data.model_dump(exclude_unset=True)
     )
@@ -381,11 +313,8 @@ async def update_personal_profile(
 ):
     """
     Update the current user's personal profile.
-    Only provided fields will be updated.
-    
-    **Authentication Required**
     """
-    profile = profile_service.update_personal_profile(
+    profile = await profile_service.update_personal_profile(
         user_id=current_user.id,
         profile_data=profile_data.model_dump(exclude_unset=True)
     )
@@ -399,10 +328,8 @@ async def delete_personal_profile(
 ):
     """
     Delete the current user's personal profile.
-    
-    **Authentication Required**
     """
-    profile_service.delete_personal_profile(current_user.id)
+    await profile_service.delete_personal_profile(current_user.id)
     return None
 
 
@@ -417,10 +344,8 @@ async def get_strengths(
 ):
     """
     Get the current user's strengths profile.
-    
-    **Authentication Required**
     """
-    strengths = profile_service.get_user_strengths(current_user.id)
+    strengths = await profile_service.get_user_strengths(current_user.id)
     if not strengths:
         raise NotFoundError(
             resource="User strengths",
@@ -437,20 +362,8 @@ async def create_strengths(
 ):
     """
     Create a strengths profile for the current user.
-    
-    **Fields:**
-    - top_strengths: JSON array of top strengths (default: "[]")
-    - areas_for_improvement: JSON array of areas to improve (default: "[]")
-    - current_challenges: JSON array of current challenges (default: "[]")
-    - learning_style: Preferred learning style (optional)
-    - communication_preference: Communication preference (optional)
-    - comm_style: Detailed communication style (optional)
-    - sharing_boundaries: JSON array of sharing boundaries (default: "[]")
-    - goals: Personal goals (optional)
-    
-    **Authentication Required**
     """
-    strengths = profile_service.create_user_strengths(
+    strengths = await profile_service.create_user_strengths(
         user_id=current_user.id,
         strengths_data=strengths_data.model_dump(exclude_unset=True)
     )
@@ -465,11 +378,8 @@ async def update_strengths(
 ):
     """
     Update the current user's strengths profile.
-    Only provided fields will be updated.
-    
-    **Authentication Required**
     """
-    strengths = profile_service.update_user_strengths(
+    strengths = await profile_service.update_user_strengths(
         user_id=current_user.id,
         strengths_data=strengths_data.model_dump(exclude_unset=True)
     )
@@ -483,10 +393,8 @@ async def delete_strengths(
 ):
     """
     Delete the current user's strengths profile.
-    
-    **Authentication Required**
     """
-    profile_service.delete_user_strengths(current_user.id)
+    await profile_service.delete_user_strengths(current_user.id)
     return None
 
 
@@ -501,10 +409,8 @@ async def get_emotional_patterns(
 ):
     """
     Get the current user's emotional patterns.
-    
-    **Authentication Required**
     """
-    patterns = profile_service.get_emotional_patterns(current_user.id)
+    patterns = await profile_service.get_emotional_patterns(current_user.id)
     if not patterns:
         raise NotFoundError(
             resource="Emotional patterns",
@@ -521,16 +427,8 @@ async def create_emotional_patterns(
 ):
     """
     Create emotional patterns for the current user.
-    
-    **Fields:**
-    - common_emotions: JSON array of common emotions (default: "[]")
-    - emotional_triggers: What causes these emotions (optional)
-    - coping_strategies: User's coping strategies (optional)
-    - preferred_support: Preferred support style during distress (optional)
-    
-    **Authentication Required**
     """
-    patterns = profile_service.create_emotional_patterns(
+    patterns = await profile_service.create_emotional_patterns(
         user_id=current_user.id,
         patterns_data=patterns_data.model_dump(exclude_unset=True)
     )
@@ -545,11 +443,8 @@ async def update_emotional_patterns(
 ):
     """
     Update the current user's emotional patterns.
-    Only provided fields will be updated.
-    
-    **Authentication Required**
     """
-    patterns = profile_service.update_emotional_patterns(
+    patterns = await profile_service.update_emotional_patterns(
         user_id=current_user.id,
         patterns_data=patterns_data.model_dump(exclude_unset=True)
     )
@@ -563,8 +458,6 @@ async def delete_emotional_patterns(
 ):
     """
     Delete the current user's emotional patterns.
-    
-    **Authentication Required**
     """
-    profile_service.delete_emotional_patterns(current_user.id)
+    await profile_service.delete_emotional_patterns(current_user.id)
     return None

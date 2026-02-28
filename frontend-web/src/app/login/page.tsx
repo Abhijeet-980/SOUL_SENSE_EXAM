@@ -92,6 +92,47 @@ export default function LoginPage() {
     return () => clearInterval(timer);
   }, [lockoutTime]);
 
+  // Handle OAuth callback tokens from URL hash (Google/Github redirect return)
+  const { loginOAuth } = useAuth();
+  useEffect(() => {
+    const handleOAuthCallback = async () => {
+      // Check if we have hash params (standard for OIDC implicit flow)
+      const hash = window.location.hash;
+      const search = window.location.search;
+
+      const params = new URLSearchParams(hash.replace('#', '?') || search);
+      const accessToken = params.get('access_token');
+      const idToken = params.get('id_token');
+      const code = params.get('code'); // standard OAuth code
+
+      if (accessToken || idToken || code) {
+        setIsLoggingIn(true);
+        try {
+          const provider = localStorage.getItem('oauth_provider') || 'google';
+          console.log(`Processing OAuth callback for ${provider}...`);
+
+          await loginOAuth({
+            provider,
+            idToken: idToken || undefined,
+            accessToken: accessToken || code || undefined // Send code as access_token for now, backend can handle it
+          }, true);
+
+          toast.success("Social login successful!");
+          router.push(callbackUrl);
+        } catch (error: any) {
+          console.error("OAuth callback error:", error);
+          toast.error("Social login failed. Please try again or use credentials.");
+        } finally {
+          setIsLoggingIn(false);
+          // Cleanup URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+    };
+
+    handleOAuthCallback();
+  }, [loginOAuth, router, callbackUrl]);
+
   const handleLoginSubmit = async (data: LoginFormData, methods: UseFormReturn<LoginFormData>) => {
     if (lockoutTime > 0) return;
 

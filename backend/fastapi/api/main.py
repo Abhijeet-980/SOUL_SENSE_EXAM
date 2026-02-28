@@ -14,8 +14,14 @@ from .config import get_settings_instance
 from .api.v1.router import api_router as api_v1_router
 from .routers.health import router as health_router
 from .utils.limiter import limiter
+from .utils.logging_config import setup_logging
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from .services.websocket_manager import manager as ws_manager
+
+# Initialize centralized logging
+setup_logging()
+logger = logging.getLogger("api.main")
 
 # Load and validate settings on import
 settings = get_settings_instance()
@@ -65,12 +71,13 @@ async def lifespan(app: FastAPI):
     try:
         from .services.db_service import Base, engine, SessionLocal
         Base.metadata.create_all(bind=engine)
-        print("[OK] Database tables initialized/verified")
+        logger.info("Database tables initialized/verified")
         
         # Verify database connectivity before starting background tasks
-        with SessionLocal() as db:
+        from .services.db_service import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
             from sqlalchemy import text
-            db.execute(text("SELECT 1"))
+            await db.execute(text("SELECT 1"))
             print("[OK] Database connectivity verified")
         
         # Initialize Redis for rate limiting
@@ -109,16 +116,23 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Analytics scheduler initialization failed: {e}")
             print(f"[WARNING] Analytics scheduler not available: {e}")
+            
+        # Initialize WebSocket Manager
+        app.state.ws_manager = ws_manager
+        await ws_manager.connect_redis()
+        print("[OK] WebSocket Manager initialized with Redis Pub/Sub")
+
         
         # Start background task for soft-delete cleanup
         async def purge_task_loop():
             while True:
                 try:
                     print("[CLEANUP] Starting scheduled purge of expired accounts...")
-                    with SessionLocal() as db:
+                    from .services.db_service import AsyncSessionLocal
+                    async with AsyncSessionLocal() as db:
                         from .services.user_service import UserService
                         user_service = UserService(db)
-                        user_service.purge_deleted_users(settings.deletion_grace_period_days)
+                        await user_service.purge_deleted_users(settings.deletion_grace_period_days)
                     print("[CLEANUP] Scheduled purge completed successfully")
                 except Exception as e:
                     logger = logging.getLogger("api.purge_task")
@@ -130,10 +144,10 @@ async def lifespan(app: FastAPI):
         
         purge_task = asyncio.create_task(purge_task_loop())
         app.state.purge_task = purge_task  # Store reference for cleanup
-        print("[OK] Soft-delete cleanup task scheduled (runs every 24h)")
+        logger.info("Soft-delete cleanup task scheduled (runs every 24h)")
         
     except Exception as e:
-        print(f"[ERROR] Database initialization failed: {e}")
+        logger.error(f"Database initialization failed: {e}", exc_info=True)
         # Re-raise to crash the application - don't start with broken DB
         raise
     
@@ -158,6 +172,12 @@ async def lifespan(app: FastAPI):
         logger.info("Stopping analytics scheduler...")
         app.state.analytics_scheduler.stop()
         logger.info("Analytics scheduler stopped successfully")
+        
+    # Close WebSocket Manager
+    if hasattr(app.state, 'ws_manager'):
+        logger.info("Shutting down WebSocket Manager...")
+        await app.state.ws_manager.shutdown()
+        logger.info("WebSocket Manager shutdown successfully")
     
     # Close Redis connection
     if hasattr(app.state, 'redis_client'):
@@ -178,6 +198,15 @@ async def lifespan(app: FastAPI):
         logger.error(f"Error disposing database engine: {e}")
     
     logger.info("Application shutdown completed")
+
+
+class CorrelationIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
 
 
 class VersionHeaderMiddleware(BaseHTTPMiddleware):
@@ -208,7 +237,8 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
         if process_time > 500:
             logger = logging.getLogger("api.performance")
             logger.warning(
-                f"Slow request: {request.method} {request.url.path} took {process_time:.2f}ms"
+                f"Slow request: {request.method} {request.url.path} took {process_time:.2f}ms",
+                extra={"request_id": getattr(request.state, 'request_id', 'unknown'), "method": request.method, "path": request.url.path, "duration_ms": process_time}
             )
 
         # Log all requests in debug mode
@@ -216,7 +246,8 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
         if settings.debug:
             logger = logging.getLogger("api.requests")
             logger.info(
-                f"{request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.2f}ms"
+                f"{request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.2f}ms",
+                extra={"request_id": getattr(request.state, 'request_id', 'unknown'), "status_code": response.status_code}
             )
 
         return response
@@ -232,6 +263,8 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
 
+    # Correlation ID middleware (outermost for logging reference)
+    app.add_middleware(CorrelationIDMiddleware)
     @app.get("/favicon.ico", include_in_schema=False)
     async def favicon():
         return FileResponse(FAVICON_PATH, media_type="image/svg+xml")
@@ -251,6 +284,11 @@ def create_app() -> FastAPI:
     # Security Headers Middleware
     from .middleware.security import SecurityHeadersMiddleware
     app.add_middleware(SecurityHeadersMiddleware)
+
+    # Consent Validation Middleware for privacy compliance
+    # Blocks analytics data collection without user consent
+    from .middleware.consent_middleware import ConsentValidationMiddleware
+    app.add_middleware(ConsentValidationMiddleware)
 
     # ETag Middleware for HTTP caching optimization
     # Adds ETag headers to static resources (questions, prompts, translations)
@@ -289,10 +327,55 @@ def create_app() -> FastAPI:
 
     # Register V1 API Router
     app.include_router(api_v1_router, prefix="/api/v1")
+    
+    # Register WebSocket Router
+    from .routers.websockets import router as ws_router
+    app.include_router(ws_router, prefix="/api/v1/stream", tags=["WebSockets"])
 
     # Register Health endpoints at root level for orchestration
     app.include_router(health_router, tags=["Health"])
 
+    from .exceptions import APIException
+    from .constants.errors import ErrorCode
+
+    @app.exception_handler(APIException)
+    async def api_exception_handler(request: Request, exc: APIException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=exc.detail
+        )
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        logger = logging.getLogger("api.main")
+        request_id = getattr(request.state, 'request_id', 'unknown')
+        
+        if settings.debug:
+            # Safe for local dev: print full traceback to stdout and log error details
+            traceback.print_exc()
+            logger.error(f"Unhandled Exception: {exc}", extra={
+                "request_id": request_id,
+                "error": str(exc),
+                "type": type(exc).__name__
+            })
+            error_details = {"error": str(exc), "type": type(exc).__name__, "request_id": request_id}
+            message = f"Internal Server Error: {exc}"
+        else:
+            # Production: Log the error safely without stdout pollution, 
+            # preserving traceback in structured logs via exc_info=True
+            logger.error("Internal Server Error occurred", extra={"request_id": request_id}, exc_info=True)
+            # strictly zero code artifacts or tracebacks in production response
+            error_details = {"request_id": request_id}
+            message = "Internal Server Error"
+        
+        return JSONResponse(
+            status_code=500,
+            content={
+                "code": ErrorCode.INTERNAL_SERVER_ERROR.value,
+                "message": message,
+                "details": error_details
+            }
+        )
         # Register standardized exception handlers
     from backend.fastapi.app.core import register_exception_handlers
     register_exception_handlers(app)
@@ -309,11 +392,12 @@ def create_app() -> FastAPI:
             "documentation": "/docs"
         }
 
-    print("[OK] SoulSense API started successfully")
-    print(f"[ENV] Environment: {settings.app_env}")
-    print(f"[CONFIG] Debug mode: {settings.debug}")
-    print(f"[DB] Database: {settings.database_url}")
-    print(f"[API] API available at /api/v1")
+    logger.info("SoulSense API started successfully", extra={
+        "environment": settings.app_env,
+        "debug": settings.debug,
+        "database": settings.database_url,
+        "api_v1_path": "/api/v1"
+    })
 
     # OUTSIDE MIDDLEWARES (added last to run first)
     

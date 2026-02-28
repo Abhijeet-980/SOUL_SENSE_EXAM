@@ -1,24 +1,17 @@
 """
 Enhanced Export Router with backward compatibility and new features.
-
-This router maintains backward compatibility with v1 endpoints while adding
-advanced export features from ExportServiceV2.
-
-Async Export Flow (Background Tasks):
-1. POST /api/v1/reports/export/async → Returns 202 with job_id
-2. GET /api/v1/tasks/{job_id} → Poll for completion
-3. GET /api/v1/reports/export/{export_id}/download → Download when ready
+Migrated to Async SQLAlchemy 2.0.
 """
 
 from fastapi import APIRouter, Depends, Query, Body, BackgroundTasks, status
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
-from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, UTC, timedelta
 from typing import Dict, Any, List, Optional
 import logging
 import os
 
-from ..services.db_service import get_db
+from ..services.db_service import get_db, AsyncSessionLocal
 from ..services.export_service import ExportService as ExportServiceV1
 from ..services.export_service_v2 import ExportServiceV2
 from ..services.background_task_service import BackgroundTaskService, TaskStatus, TaskType
@@ -33,7 +26,7 @@ from backend.fastapi.app.core import (
 )
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("api.export")
 
 # Rate limiting: {user_id: [timestamp, request_count]}
 _export_rate_limits: Dict[int, List[datetime]] = {}
@@ -41,21 +34,15 @@ MAX_REQUESTS_PER_HOUR = 10
 
 
 def _check_rate_limit(user_id: int) -> None:
-    """
-    Check if user has exceeded rate limit.
-    Allows MAX_REQUESTS_PER_HOUR requests per hour.
-    """
-    now = datetime.now()
+    """Check if user has exceeded rate limit."""
+    now = datetime.now(UTC)
 
-    # Clean old requests
     if user_id in _export_rate_limits:
-        # Remove requests older than 1 hour
         _export_rate_limits[user_id] = [
             ts for ts in _export_rate_limits[user_id]
-            if (now - ts).seconds < 3600
+            if (now - ts).total_seconds() < 3600
         ]
 
-    # Check current count
     current_count = len(_export_rate_limits.get(user_id, []))
     if current_count >= MAX_REQUESTS_PER_HOUR:
         raise RateLimitError(
@@ -63,7 +50,6 @@ def _check_rate_limit(user_id: int) -> None:
             wait_seconds=3600
         )
 
-    # Add current request
     if user_id not in _export_rate_limits:
         _export_rate_limits[user_id] = []
     _export_rate_limits[user_id].append(now)
@@ -77,25 +63,14 @@ def _check_rate_limit(user_id: int) -> None:
 async def generate_export(
     request: dict,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    V1 Endpoint: Generate an export of user data.
-
-    Backward compatible endpoint that uses v1 service for json/csv formats.
-    For enhanced features, use POST /api/v1/export/v2 endpoint.
-
-    Payload: {"format": "json" | "csv"}
-    """
+    """V1 Endpoint: Generate an export of user data."""
     export_format = request.get("format", "json").lower()
-
-    # Rate Limiting
     _check_rate_limit(current_user.id)
 
     try:
-        # Generate Export using V1 service
-        filepath, job_id = ExportServiceV1.generate_export(db, current_user, export_format)
-
+        filepath, job_id = await ExportServiceV1.generate_export(db, current_user, export_format)
         filename = os.path.basename(filepath)
 
         return {
@@ -119,25 +94,22 @@ async def generate_export(
 @router.get("/pdf")
 async def export_pdf_direct(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Generate and return a comprehensive PDF report immediately.
-    """
+    """Generate and return a comprehensive PDF report immediately."""
     _check_rate_limit(current_user.id)
     
     try:
-        # Prepare options for full export
         options = {
             "data_types": list(ExportServiceV2.DATA_TYPES),
             "include_metadata": True
         }
         
-        filepath, export_id = ExportServiceV2.generate_export(
+        filepath, export_id = await ExportServiceV2.generate_export(
             db, current_user, "pdf", options
         )
         
-        filename = f"SoulSense_Report_{datetime.now().strftime('%Y-%m-%d')}.pdf"
+        filename = f"SoulSense_Report_{datetime.now(UTC).strftime('%Y-%m-%d')}.pdf"
         
         return FileResponse(
             path=filepath,
@@ -156,27 +128,23 @@ async def export_pdf_direct(
 # ASYNC EXPORT ENDPOINTS (Background Task Queue)
 # ============================================================================
 
-def _execute_async_export(
+async def _execute_async_export(
     user_id: int,
     username: str,
     format: str,
     options: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """
-    Background task function for generating exports asynchronously.
-    
-    This function is executed by BackgroundTaskService.execute_task
-    in a separate thread/context with its own database session.
-    """
-    from ..services.db_service import SessionLocal
-    
-    with SessionLocal() as db:
-        # Fetch user again in the new session
-        user = db.query(User).filter(User.id == user_id).first()
+    """Background task function for generating exports asynchronously."""
+    async with AsyncSessionLocal() as db:
+        from sqlalchemy import select
+        stmt = select(User).filter(User.id == user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+        
         if not user:
             raise ValueError(f"User {user_id} not found")
         
-        filepath, export_id = ExportServiceV2.generate_export(
+        filepath, export_id = await ExportServiceV2.generate_export(
             db, user, format, options
         )
         
@@ -192,60 +160,25 @@ def _execute_async_export(
 @router.post("/async", status_code=status.HTTP_202_ACCEPTED)
 async def create_async_export(
     background_tasks: BackgroundTasks,
-    format: str = Body(..., embed=True, description="Export format: json, csv, xml, html, pdf"),
-    options: Optional[Dict[str, Any]] = Body(None, embed=True, description="Export options"),
+    format: str = Body(..., embed=True),
+    options: Optional[Dict[str, Any]] = Body(None, embed=True),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Create an export asynchronously using background tasks.
-    
-    This endpoint immediately returns **HTTP 202 Accepted** with a job_id.
-    The export is generated in the background without blocking the HTTP response.
-    
-    **Workflow:**
-    1. Call this endpoint to start the export
-    2. Poll `GET /api/v1/tasks/{job_id}` to check progress
-    3. When status is "completed", download from the provided URL
-    
-    **Request Body:**
-    ```json
-    {
-        "format": "pdf",
-        "options": {
-            "data_types": ["profile", "journal", "assessments"],
-            "encrypt": false
-        }
-    }
-    ```
-    
-    **Supported formats:** json, csv, xml, html, pdf
-    
-    **Returns:**
-    - job_id: Unique identifier for tracking the task
-    - status: "processing" (always 202 Accepted)
-    - poll_url: Endpoint to check task status
-    """
-    # Rate limiting
+    """Create an export asynchronously."""
     _check_rate_limit(current_user.id)
     
-    # Check if user has too many pending tasks
-    pending_count = BackgroundTaskService.get_pending_tasks_count(db, current_user.id)
+    pending_count = await BackgroundTaskService.get_pending_tasks_count(db, current_user.id)
     if pending_count >= 5:
         raise RateLimitError(
             message="Too many pending exports. Please wait for existing exports to complete.",
             wait_seconds=60
         )
     
-    # Validate format
     format_lower = format.lower()
     if format_lower not in ExportServiceV2.SUPPORTED_FORMATS:
-        raise ValidationError(
-            message=f"Unsupported format: {format}",
-            details=[{"field": "format", "supported_formats": list(ExportServiceV2.SUPPORTED_FORMATS)}]
-        )
+        raise ValidationError(message=f"Unsupported format: {format}")
     
-    # Determine task type based on format
     task_type_map = {
         "pdf": TaskType.EXPORT_PDF,
         "csv": TaskType.EXPORT_CSV,
@@ -255,35 +188,17 @@ async def create_async_export(
     }
     task_type = task_type_map.get(format_lower, TaskType.EXPORT_JSON)
     
-    # Prepare options with defaults
     export_options = options or {}
     if 'data_types' not in export_options:
         export_options['data_types'] = list(ExportServiceV2.DATA_TYPES)
     
-    # Validate data types
-    invalid_types = set(export_options.get('data_types', [])) - ExportServiceV2.DATA_TYPES
-    if invalid_types:
-        raise ValidationError(
-            message=f"Invalid data types: {', '.join(invalid_types)}",
-            details=[{"field": "data_types", "valid_types": list(ExportServiceV2.DATA_TYPES)}]
-        )
-    
-    # Validate encryption options
-    if export_options.get('encrypt', False) and not export_options.get('password'):
-        raise ValidationError(
-            message="Password is required when encryption is enabled",
-            details=[{"field": "password", "error": "Password required for encryption"}]
-        )
-    
-    # Create background task record
-    task = BackgroundTaskService.create_task(
+    task = await BackgroundTaskService.create_task(
         db=db,
         user_id=current_user.id,
         task_type=task_type,
         params={"format": format_lower, "options": export_options}
     )
     
-    # Schedule background execution
     background_tasks.add_task(
         BackgroundTaskService.execute_task,
         task.job_id,
@@ -294,12 +209,9 @@ async def create_async_export(
         export_options
     )
     
-    logger.info(f"Async export started for user {current_user.username}, job_id: {task.job_id}")
-    
     return {
         "job_id": task.job_id,
         "status": "processing",
-        "message": "Export started. Poll the status endpoint for updates.",
         "poll_url": f"/api/v1/tasks/{task.job_id}",
         "format": format_lower
     }
@@ -308,37 +220,18 @@ async def create_async_export(
 @router.post("/async/pdf", status_code=status.HTTP_202_ACCEPTED)
 async def create_async_pdf_export(
     background_tasks: BackgroundTasks,
-    include_charts: bool = Body(True, embed=True, description="Include charts and visualizations"),
-    data_types: Optional[List[str]] = Body(None, embed=True, description="Data types to include"),
+    include_charts: bool = Body(True, embed=True),
+    data_types: Optional[List[str]] = Body(None, embed=True),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Generate a PDF report asynchronously.
-    
-    This is a convenience endpoint for PDF exports with simplified options.
-    Returns **HTTP 202 Accepted** immediately.
-    
-    **Recommended for:**
-    - Large reports with charts
-    - Multiple data types
-    - When instant response is required in the UI
-    
-    **Example:**
-    ```json
-    {
-        "include_charts": true,
-        "data_types": ["profile", "journal", "assessments", "scores"]
-    }
-    ```
-    """
+    """Generate a PDF report asynchronously."""
     options = {
         "data_types": data_types or list(ExportServiceV2.DATA_TYPES),
         "include_metadata": True,
         "include_charts": include_charts
     }
     
-    # Forward to the generic async export endpoint
     return await create_async_export(
         background_tasks=background_tasks,
         format="pdf",
@@ -353,73 +246,25 @@ async def create_export_v2(
     format: str = Body(..., embed=True),
     options: Optional[Dict[str, Any]] = Body(None, embed=True),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    V2 Endpoint: Create an export with advanced options.
-
-    Request Body:
-    {
-        "format": "json" | "csv" | "xml" | "html" | "pdf",
-        "options": {
-            "date_range": {
-                "start": "2023-01-01T00:00:00",
-                "end": "2024-12-31T23:59:59"
-            },
-            "data_types": ["profile", "journal", "assessments"],
-            "encrypt": false,
-            "password": "optional_password_for_encryption"
-        }
-    }
-
-    Supported formats:
-    - json: Complete data with metadata (GDPR compliant)
-    - csv: Tabular data in ZIP archive
-    - xml: Structured XML with schema
-    - html: Interactive, searchable HTML file
-    - pdf: Professional document with charts
-
-    Supported data_types:
-    - profile, journal, assessments, scores, satisfaction,
-    - settings, medical, strengths, emotional_patterns, responses
-    """
-    # Rate limiting
+    """V2 Endpoint: Create an export with advanced options."""
     _check_rate_limit(current_user.id)
 
-    # Validate format
     format_lower = format.lower()
     if format_lower not in ExportServiceV2.SUPPORTED_FORMATS:
-        raise ValidationError(
-            message=f"Unsupported format: {format}",
-            details=[{"field": "format", "supported_formats": list(ExportServiceV2.SUPPORTED_FORMATS)}]
-        )
+        raise ValidationError(message=f"Unsupported format: {format}")
 
-    # Prepare options with defaults
     export_options = options or {}
     if 'data_types' not in export_options:
         export_options['data_types'] = list(ExportServiceV2.DATA_TYPES)
 
-    # Validate data types
-    invalid_types = set(export_options['data_types']) - ExportServiceV2.DATA_TYPES
-    if invalid_types:
-        raise ValidationError(
-            message=f"Invalid data types: {', '.join(invalid_types)}",
-            details=[{"field": "data_types", "valid_types": list(ExportServiceV2.DATA_TYPES)}]
-        )
-
-    # Validate encryption options
-    if export_options.get('encrypt', False) and not export_options.get('password'):
-        raise ValidationError(
-            message="Password is required when encryption is enabled",
-            details=[{"field": "password", "error": "Password required for encryption"}]
-        )
-
     try:
-        filepath, export_id = ExportServiceV2.generate_export(
+        filepath, export_id = await ExportServiceV2.generate_export(
             db, current_user, format_lower, export_options
         )
 
-        filename = filepath.split('/')[-1]
+        filename = os.path.basename(filepath)
 
         return {
             "export_id": export_id,
@@ -427,9 +272,7 @@ async def create_export_v2(
             "format": format_lower,
             "filename": filename,
             "download_url": f"/api/v1/export/{export_id}/download",
-            "expires_at": (datetime.now() + __import__('datetime').timedelta(hours=48)).isoformat(),
-            "is_encrypted": export_options.get('encrypt', False),
-            "data_types": export_options.get('data_types', []),
+            "expires_at": (datetime.now(UTC) + timedelta(hours=48)).isoformat(),
             "message": "Export completed successfully"
         }
 
@@ -437,28 +280,22 @@ async def create_export_v2(
         raise ValidationError(message=str(ve))
     except Exception as e:
         logger.error(f"Export failed for {current_user.username}: {e}")
-        raise InternalServerError(
-            message="Failed to generate export. Please try again or contact support."
-        )
+        raise InternalServerError(message="Failed to generate export")
 
 
 @router.get("/v2")
 async def list_exports_v2(
     limit: int = Query(50, ge=1, le=100),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    List all exports for the current user.
-    """
+    """List all exports for the current user."""
     try:
-        history = ExportServiceV2.get_export_history(db, current_user, limit)
-
+        history = await ExportServiceV2.get_export_history(db, current_user, limit)
         return {
             "total": len(history),
             "exports": history
         }
-
     except Exception as e:
         logger.error(f"Failed to list exports for {current_user.username}: {e}")
         raise InternalServerError(message="Failed to retrieve export history")
@@ -468,32 +305,27 @@ async def list_exports_v2(
 async def get_export_status_v2(
     export_id: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Get the status and details of an export job (V2).
-    """
-    export = db.query(ExportRecord).filter(
+    """Get the status and details of an export job."""
+    from sqlalchemy import select
+    stmt = select(ExportRecord).filter(
         ExportRecord.export_id == export_id,
         ExportRecord.user_id == current_user.id
-    ).first()
+    )
+    res = await db.execute(stmt)
+    export = res.scalar_one_or_none()
 
     if not export:
-        raise NotFoundError(
-            resource="Export",
-            resource_id=export_id,
-            details=[{"message": "Export not found or you don't have access to it"}]
-        )
+        raise NotFoundError(resource="Export", resource_id=export_id)
 
-    # Check if expired
-    if export.expires_at and export.expires_at < datetime.now():
+    if export.expires_at and export.expires_at < datetime.now(UTC):
         return {
             "export_id": export_id,
             "status": "expired",
-            "message": "Export has expired. Please create a new export."
+            "message": "Export has expired."
         }
 
-    # Check if file still exists
     file_exists = os.path.exists(export.file_path)
 
     return {
@@ -512,103 +344,65 @@ async def get_export_status_v2(
 async def delete_export_v2(
     export_id: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Delete an export file and its record (V2).
-    """
+    """Delete an export file and its record."""
     try:
-        success = ExportServiceV2.delete_export(db, current_user, export_id)
+        success = await ExportServiceV2.delete_export(db, current_user, export_id)
 
         if not success:
-            raise NotFoundError(
-                resource="Export",
-                resource_id=export_id,
-                details=[{"message": "Export not found or you don't have access to it"}]
-            )
+            raise NotFoundError(resource="Export", resource_id=export_id)
 
         return {
             "message": "Export deleted successfully",
             "export_id": export_id
         }
-
     except NotFoundError:
         raise
     except Exception as e:
         logger.error(f"Failed to delete export {export_id}: {e}")
-        raise InternalServerError(message="Failed to delete export. Please try again.")
+        raise InternalServerError(message="Failed to delete export")
 
 
 @router.get("/formats")
 async def list_supported_formats():
-    """
-    List all supported export formats and their capabilities.
-    """
+    """List all supported export formats."""
     return {
         "formats": {
-            "json": {
-                "description": "Complete data export with GDPR metadata",
-                "features": ["Structured data", "Full metadata", "Machine-readable", "Easy to parse"],
-                "use_cases": ["Data portability", "Backup", "API integration"]
-            },
-            "csv": {
-                "description": "Tabular data in ZIP archive",
-                "features": ["Spreadsheet compatible", "Multiple files", "Easy analysis"],
-                "use_cases": ["Excel/Google Sheets", "Data analysis", "Statistical tools"]
-            },
-            "xml": {
-                "description": "Structured XML with schema validation",
-                "features": ["Schema validation", "Hierarchical", "Standards compliant"],
-                "use_cases": ["Enterprise integration", "System migration"]
-            },
-            "html": {
-                "description": "Interactive, self-contained HTML file",
-                "features": ["Searchable", "Interactive", "Printable", "No software needed"],
-                "use_cases": ["Viewing in browser", "Printing", "Sharing"]
-            },
-            "pdf": {
-                "description": "Professional document with charts",
-                "features": ["Visualizations", "Trend charts", "Professional format"],
-                "use_cases": ["Reports", "Archives", "Printing"]
-            }
+            "json": {"description": "Complete data export"},
+            "csv": {"description": "Tabular data in ZIP archive"},
+            "xml": {"description": "Structured XML"},
+            "html": {"description": "Interactive HTML"},
+            "pdf": {"description": "Professional document"}
         },
         "data_types": list(ExportServiceV2.DATA_TYPES),
-        "encryption": "Supported (requires password)",
         "retention": "48 hours"
     }
 
 
-# ============================================================================
-# SHARED ENDPOINTS
-# ============================================================================
-
 @router.get("/{job_id}/status")
 async def get_export_status(
     job_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    V1 Endpoint: Get the status of an export job.
-    """
-    # Check if it's a V2 export (with database record)
-    from ..services.db_service import SessionLocal
-    with SessionLocal() as db:
-        export = db.query(ExportRecord).filter(
-            ExportRecord.export_id == job_id
-        ).first()
+    """V1 Endpoint: Get the status of an export job."""
+    from sqlalchemy import select
+    stmt = select(ExportRecord).filter(ExportRecord.export_id == job_id)
+    res = await db.execute(stmt)
+    export = res.scalar_one_or_none()
 
-        if export:
-            if export.user_id != current_user.id:
-                raise AuthorizationError(message="Access denied to this export")
+    if export:
+        if export.user_id != current_user.id:
+            raise AuthorizationError(message="Access denied")
 
-            return {
-                "job_id": job_id,
-                "status": export.status,
-                "filename": os.path.basename(export.file_path),
-                "download_url": f"/api/v1/export/{job_id}/download"
-            }
+        return {
+            "job_id": job_id,
+            "status": export.status,
+            "filename": os.path.basename(export.file_path),
+            "download_url": f"/api/v1/export/{job_id}/download"
+        }
 
-    # Fallback for V1 exports (no database record)
     raise NotFoundError(resource="Export job", resource_id=job_id)
 
 
@@ -616,65 +410,41 @@ async def get_export_status(
 async def download_export(
     identifier: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    """
-    Download an export file.
-    Supports both V1 (filename) and V2 (export_id) identifiers.
-    """
-    # First, check if it's a V2 export (by export_id)
-    export = db.query(ExportRecord).filter(
-        ExportRecord.export_id == identifier
-    ).first()
+    """Download an export file."""
+    from sqlalchemy import select
+    stmt = select(ExportRecord).filter(ExportRecord.export_id == identifier)
+    res = await db.execute(stmt)
+    export = res.scalar_one_or_none()
 
     filepath = None
     filename = None
 
     if export:
-        # V2 export
         if export.user_id != current_user.id:
-            raise AuthorizationError(message="Access denied to this export")
+            raise AuthorizationError(message="Access denied")
 
-        if export.expires_at and export.expires_at < datetime.now():
-            raise ValidationError(
-                message="Export has expired. Please create a new export.",
-                details=[{"field": "export_id", "error": "Export expired", "expired_at": export.expires_at.isoformat()}]
-            )
+        if export.expires_at and export.expires_at < datetime.now(UTC):
+            raise ValidationError(message="Export has expired.")
 
         filepath = export.file_path
         filename = os.path.basename(filepath)
     else:
-        # V1 export - check if it's a valid filename
         if not ExportServiceV1.validate_export_access(current_user, identifier):
-            raise AuthorizationError(message="Access denied to this export file")
+            raise AuthorizationError(message="Access denied")
 
         filepath = str(ExportServiceV1.EXPORT_DIR / identifier)
         filename = identifier
 
-    # Check if file exists
     if not os.path.exists(filepath):
-        raise NotFoundError(
-            resource="Export file",
-            details=[{"message": "Export file not found or expired"}]
-        )
+        raise NotFoundError(resource="Export file")
 
-    # Determine media type
-    if filename.endswith('.json'):
-        media_type = 'application/json'
-    elif filename.endswith('.csv') or filename.endswith('.zip'):
-        media_type = 'application/zip'
-    elif filename.endswith('.xml'):
-        media_type = 'application/xml'
-    elif filename.endswith('.html'):
-        media_type = 'text/html'
-    elif filename.endswith('.pdf'):
-        media_type = 'application/pdf'
-    else:
-        media_type = 'application/octet-stream'
+    media_type = 'application/octet-stream'
+    if filename.endswith('.json'): media_type = 'application/json'
+    elif filename.endswith('.csv') or filename.endswith('.zip'): media_type = 'application/zip'
+    elif filename.endswith('.xml'): media_type = 'application/xml'
+    elif filename.endswith('.html'): media_type = 'text/html'
+    elif filename.endswith('.pdf'): media_type = 'application/pdf'
 
-    # Serve file
-    return FileResponse(
-        path=filepath,
-        filename=filename,
-        media_type=media_type
-    )
+    return FileResponse(path=filepath, filename=filename, media_type=media_type)

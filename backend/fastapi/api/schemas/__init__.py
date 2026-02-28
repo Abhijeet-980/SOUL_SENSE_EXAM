@@ -174,6 +174,7 @@ class Token(BaseModel):
     created_at: Optional[datetime] = None
     warnings: Optional[List[Dict[str, str]]] = None
     onboarding_completed: Optional[bool] = None
+    is_admin: Optional[bool] = None
 
 
 class CaptchaResponse(BaseModel):
@@ -1083,6 +1084,7 @@ class JournalResponse(BaseModel):
     emotional_patterns: Optional[str] = None
     tags: Optional[List[str]] = []
     entry_date: str
+    timestamp: str
     word_count: int = Field(default=0, description="Number of words in content")
     reading_time_mins: Optional[float] = Field(None, description="Estimated reading time in minutes")
     privacy_level: str = Field(default="private")
@@ -1117,6 +1119,13 @@ class JournalListResponse(BaseModel):
     entries: List[JournalResponse]
     page: int
     page_size: int
+
+
+class JournalCursorResponse(BaseModel):
+    """Schema for cursor-paginated journal entry list."""
+    data: List[JournalResponse]
+    next_cursor: Optional[str] = None
+    has_more: bool
 
 
 class JournalAnalytics(BaseModel):
@@ -1447,3 +1456,33 @@ class KPISummary(BaseModel):
     arpu: ARPUKPI
     calculated_at: str = Field(description="ISO 8601 timestamp when KPIs were calculated")
     period: str = Field(description="Time period these KPIs cover")
+
+
+# ============================================================================
+# Privacy & Consent Schemas (Issue #982)
+# ============================================================================
+
+class ConsentEventCreate(BaseModel):
+    """Schema for tracking consent events (consent_given, consent_revoked)."""
+    anonymous_id: str = Field(..., min_length=10, description="Client-generated anonymous ID")
+    event_type: str = Field(..., pattern="^(consent_given|consent_revoked)$", description="Type of consent event")
+    consent_type: str = Field(..., description="Type of consent (analytics, marketing, research, etc.)")
+    consent_version: str = Field(..., description="Version of consent terms")
+    event_data: Optional[Dict[str, Any]] = Field(None, description="Additional consent metadata")
+
+
+class ConsentStatusResponse(BaseModel):
+    """Response schema for user's current consent status."""
+    analytics_consent: bool = Field(description="Whether user has consented to analytics tracking")
+    marketing_consent: bool = Field(description="Whether user has consented to marketing communications")
+    research_consent: bool = Field(description="Whether user has consented to research data usage")
+    consent_version: str = Field(description="Current version of consent terms")
+    last_updated: str = Field(description="ISO 8601 timestamp of last consent update")
+    consent_history: List[Dict[str, Any]] = Field(description="History of consent events")
+
+
+class ConsentUpdateRequest(BaseModel):
+    """Schema for updating user consent preferences."""
+    analytics_consent: Optional[bool] = None
+    marketing_consent: Optional[bool] = None
+    research_consent: Optional[bool] = None

@@ -5,10 +5,8 @@ Provides authenticated CRUD endpoints for user management.
 """
 
 from typing import Annotated, List, Dict
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, status, UploadFile, File, Request
-import os
-import shutil
 from pathlib import Path
 from ..utils.limiter import limiter
 
@@ -25,30 +23,23 @@ from ..schemas import (
 from ..services.audit_service import AuditService
 from ..services.user_service import UserService
 from ..services.profile_service import ProfileService
-from ..routers.auth import get_current_user
+from ..routers.auth import get_current_user, require_admin
 from ..services.db_service import get_db
 from ..models import User
 from backend.fastapi.app.core import NotFoundError, ValidationError, InternalServerError
 
+
 router = APIRouter(tags=["Users"])
 
 
-def get_user_service():
+async def get_user_service(db: AsyncSession = Depends(get_db)):
     """Dependency to get UserService with database session."""
-    db = next(get_db())
-    try:
-        yield UserService(db)
-    finally:
-        db.close()
+    return UserService(db)
 
 
-def get_profile_service():
+async def get_profile_service(db: AsyncSession = Depends(get_db)):
     """Dependency to get ProfileService with database session."""
-    db = next(get_db())
-    try:
-        yield ProfileService(db)
-    finally:
-        db.close()
+    return ProfileService(db)
 
 
 # ============================================================================
@@ -63,8 +54,6 @@ async def get_current_user_info(
 ):
     """
     Get information about the currently authenticated user.
-    
-    **Authentication Required**
     """
     return UserResponse(
         id=current_user.id,
@@ -82,12 +71,9 @@ async def get_current_user_details(
     user_service: Annotated[UserService, Depends(get_user_service)]
 ):
     """
-    Get detailed information about the currently authenticated user,
-    including profile completion status and assessment count.
-    
-    **Authentication Required**
+    Get detailed information about the currently authenticated user.
     """
-    detail = user_service.get_user_detail(current_user.id)
+    detail = await user_service.get_user_detail(current_user.id)
     return UserDetail(**detail)
 
 
@@ -99,16 +85,9 @@ async def get_complete_user_profile(
     profile_service: Annotated[ProfileService, Depends(get_profile_service)]
 ):
     """
-    Get complete user profile including all sub-profiles:
-    - User settings
-    - Medical profile
-    - Personal profile
-    - Strengths
-    - Emotional patterns
-    
-    **Authentication Required**
+    Get complete user profile including all sub-profiles.
     """
-    return profile_service.get_complete_profile(current_user.id)
+    return await profile_service.get_complete_profile(current_user.id)
 
 
 @router.put("/me", response_model=UserResponse, summary="Update Current User")
@@ -119,14 +98,8 @@ async def update_current_user(
 ):
     """
     Update the currently authenticated user's information.
-    
-    **Updatable Fields:**
-    - username: Must be unique and 3-50 characters
-    - password: Minimum 8 characters (will be hashed)
-    
-    **Authentication Required**
     """
-    updated_user = user_service.update_user(
+    updated_user = await user_service.update_user(
         user_id=current_user.id,
         username=user_update.username,
         password=user_update.password
@@ -146,22 +119,15 @@ async def delete_current_user(
 ):
     """
     Delete the currently authenticated user account.
-    
-    **Warning:** This action is irreversible and will delete:
-    - User account
-    - All profiles (settings, medical, personal, strengths, emotional)
-    - All assessment scores and responses
-    
-    **Authentication Required**
     """
-    user_service.delete_user(current_user.id)
+    await user_service.delete_user(current_user.id)
     return None
 
 
 @router.get("/me/audit-logs", response_model=List[AuditLogResponse], summary="Get Current User Audit Logs")
 async def get_my_audit_logs(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[Session, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     page: int = 1,
     per_page: int = 20
 ):
@@ -171,36 +137,27 @@ async def get_my_audit_logs(
     if per_page > 50:
         per_page = 50
         
-    return AuditService.get_user_logs(current_user.id, page=page, per_page=per_page, db_session=db)
+    return await AuditService.get_user_logs(current_user.id, page=page, per_page=per_page, db_session=db)
 
 
 # ============================================================================
-# Admin Endpoints (Future: Add admin role check)
+# Admin Endpoints
 # ============================================================================
 
 @router.get("/", response_model=List[UserResponse], summary="List All Users")
 async def list_users(
-    current_user: Annotated[User, Depends(get_current_user)],
+    admin_user: Annotated[User, Depends(require_admin)],
     user_service: Annotated[UserService, Depends(get_user_service)],
     skip: int = 0,
     limit: int = 100
 ):
     """
-    List all users with pagination.
-    
-    **Query Parameters:**
-    - skip: Number of records to skip (default: 0)
-    - limit: Maximum number of records to return (default: 100, max: 100)
-    
-    **Note:** Currently available to all authenticated users.
-    Future versions will require admin role.
-    
-    **Authentication Required**
+    List all users with pagination (Admin only).
     """
     if limit > 100:
         limit = 100
         
-    users = user_service.get_all_users(skip=skip, limit=limit)
+    users = await user_service.get_all_users(skip=skip, limit=limit)
     return [
         UserResponse(
             id=user.id,
@@ -215,18 +172,13 @@ async def list_users(
 @router.get("/{user_id}", response_model=UserResponse, summary="Get User by ID")
 async def get_user(
     user_id: int,
-    current_user: Annotated[User, Depends(get_current_user)],
+    admin_user: Annotated[User, Depends(require_admin)],
     user_service: Annotated[UserService, Depends(get_user_service)]
 ):
     """
-    Get a specific user by ID.
-    
-    **Note:** Currently available to all authenticated users.
-    Future versions will require admin role or ownership.
-    
-    **Authentication Required**
+    Get a specific user by ID (Admin only).
     """
-    user = user_service.get_user_by_id(user_id)
+    user = await user_service.get_user_by_id(user_id)
     if not user:
         raise NotFoundError(resource="User", resource_id=str(user_id))
     
@@ -241,43 +193,30 @@ async def get_user(
 @router.get("/{user_id}/detail", response_model=UserDetail, summary="Get User Details by ID")
 async def get_user_detail(
     user_id: int,
-    current_user: Annotated[User, Depends(get_current_user)],
+    admin_user: Annotated[User, Depends(require_admin)],
     user_service: Annotated[UserService, Depends(get_user_service)]
 ):
     """
-    Get detailed information about a specific user.
-    
-    **Note:** Currently available to all authenticated users.
-    Future versions will require admin role or ownership.
-    
-    **Authentication Required**
+    Get detailed information about a specific user (Admin only).
     """
-    detail = user_service.get_user_detail(user_id)
+    detail = await user_service.get_user_detail(user_id)
     return UserDetail(**detail)
 
 
 # ============================================================================
-# Onboarding Endpoints (Issue #933)
+# Onboarding Endpoints
 # ============================================================================
 
 @router.post("/me/onboarding/complete", response_model=OnboardingCompleteResponse, summary="Complete User Onboarding")
 async def complete_onboarding(
     onboarding_data: OnboardingData,
     current_user: Annotated[User, Depends(get_current_user)],
-    profile_service: Annotated[ProfileService, Depends(get_profile_service)]
+    profile_service: Annotated[ProfileService, Depends(get_profile_service)],
+    db: Annotated[AsyncSession, Depends(get_db)]
 ):
     """
     Complete the onboarding wizard and save all profile data.
-    This marks the user as having completed onboarding.
-    
-    **Steps:**
-    - Step 1: Welcome & Vision (primary_goal, focus_areas)
-    - Step 2: Current Lifestyle (sleep_hours, exercise_freq, dietary_patterns)
-    - Step 3: Support System (has_therapist, support_network_size, primary_support_type)
-    
-    **Authentication Required**
     """
-    # 1. Update personal profile with lifestyle data
     personal_profile_data = {
         "sleep_hours": onboarding_data.sleep_hours,
         "exercise_freq": onboarding_data.exercise_freq,
@@ -286,25 +225,20 @@ async def complete_onboarding(
         "support_network_size": onboarding_data.support_network_size,
         "primary_support_type": onboarding_data.primary_support_type,
     }
-    # Filter out None values
     personal_profile_data = {k: v for k, v in personal_profile_data.items() if v is not None}
     if personal_profile_data:
-        profile_service.update_personal_profile(current_user.id, personal_profile_data)
+        await profile_service.update_personal_profile(current_user.id, personal_profile_data)
     
-    # 2. Update strengths with goals data
     strengths_data = {}
     if onboarding_data.primary_goal is not None:
         strengths_data["primary_goal"] = onboarding_data.primary_goal
     if onboarding_data.focus_areas is not None:
         strengths_data["focus_areas"] = onboarding_data.focus_areas
     if strengths_data:
-        profile_service.update_user_strengths(current_user.id, strengths_data)
+        await profile_service.update_user_strengths(current_user.id, strengths_data)
     
-    # 3. Mark onboarding as completed
     current_user.onboarding_completed = True
-    from ..services.db_service import get_db
-    db = next(get_db())
-    db.commit()
+    await db.commit()
     
     return OnboardingCompleteResponse(
         message="Onboarding completed successfully",
@@ -318,8 +252,6 @@ async def get_onboarding_status(
 ):
     """
     Check if the current user has completed onboarding.
-    
-    **Authentication Required**
     """
     return {
         "onboarding_completed": current_user.onboarding_completed or False
@@ -331,19 +263,11 @@ async def upload_user_avatar(
     file: Annotated[UploadFile, File(description="Avatar image file (PNG, JPG, JPEG) - max 5MB")],
     current_user: Annotated[User, Depends(get_current_user)],
     user_service: Annotated[UserService, Depends(get_user_service)],
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[AsyncSession, Depends(get_db)]
 ):
     """
     Upload an avatar image for the current user.
-
-    **File Requirements:**
-    - Format: PNG, JPG, or JPEG
-    - Maximum size: 5MB
-    - Recommended dimensions: Square images work best
-
-    **Authentication Required**
     """
-    # Validate file type
     allowed_types = ["image/png", "image/jpeg", "image/jpg"]
     if file.content_type not in allowed_types:
         raise ValidationError(
@@ -351,8 +275,6 @@ async def upload_user_avatar(
             details=[{"field": "file", "error": "Invalid file type"}]
         )
 
-    # Validate file size (5MB limit)
-    file_size = 0
     content = await file.read()
     file_size = len(content)
 
@@ -362,16 +284,13 @@ async def upload_user_avatar(
             details=[{"field": "file", "error": "File size exceeds 5MB limit"}]
         )
 
-    # Create avatars directory if it doesn't exist
     avatars_dir = Path("app_data/avatars")
-    avatars_dir.mkdir(exist_ok=True)
+    avatars_dir.mkdir(parents=True, exist_ok=True)
 
-    # Generate unique filename
     file_extension = file.filename.split(".")[-1].lower() if "." in file.filename else "png"
     avatar_filename = f"{current_user.username}_avatar.{file_extension}"
     avatar_path = avatars_dir / avatar_filename
 
-    # Save the file
     try:
         with open(avatar_path, "wb") as buffer:
             buffer.write(content)
@@ -381,24 +300,22 @@ async def upload_user_avatar(
             details=[{"error": str(e)}]
         )
 
-    # Update user's personal profile with avatar path
     try:
-        # Get or create personal profile
         from ..models import PersonalProfile
-        personal_profile = db.query(PersonalProfile).filter(
-            PersonalProfile.user_id == current_user.id
-        ).first()
+        from sqlalchemy import select
+        
+        stmt = select(PersonalProfile).filter(PersonalProfile.user_id == current_user.id)
+        result = await db.execute(stmt)
+        personal_profile = result.scalar_one_or_none()
 
         if not personal_profile:
             personal_profile = PersonalProfile(user_id=current_user.id)
             db.add(personal_profile)
 
-        # Update avatar path (relative to app_data/avatars)
         personal_profile.avatar_path = str(avatar_filename)
-        db.commit()
+        await db.commit()
 
     except Exception as e:
-        # Clean up file if database update fails
         if avatar_path.exists():
             avatar_path.unlink()
         raise InternalServerError(

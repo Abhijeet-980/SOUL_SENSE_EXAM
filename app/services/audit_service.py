@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, UTC
 from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc
-from app.db import get_session
+from app.db import safe_db_context
 from app.models import AuditLog, User
 
 logger = logging.getLogger(__name__)
@@ -53,39 +53,61 @@ class AuditService:
         error_message: str = None,
         db_session: Optional[Session] = None
     ) -> bool:
-        """
-        Log a comprehensive audit event.
-
-        Args:
-            event_type: Category of event (auth, data_access, admin, system)
-            username: Username of the actor
-            user_id: User ID of the actor
-            action: Specific action performed
-            resource_type: Type of resource affected
-            resource_id: ID of the affected resource
-            outcome: Result of the action (success, failure, denied)
-            severity: Severity level (info, warning, error, critical)
-            ip_address: IP address of the request
-            user_agent: User agent string
-            details: Additional context data
-            error_message: Error message if applicable
-            db_session: Optional shared session
-
-        Returns:
-            bool: True if logged successfully
-        """
-        session = db_session if db_session else get_session()
-        should_close = db_session is None
-
+        """Log a comprehensive audit event."""
+        if db_session:
+            return cls._log_event_impl(
+                session=db_session,
+                event_type=event_type,
+                username=username,
+                user_id=user_id,
+                action=action,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                outcome=outcome,
+                severity=severity,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                details=details,
+                error_message=error_message
+            )
+        
         try:
+            with safe_db_context() as session:
+                return cls._log_event_impl(
+                    session=session,
+                    event_type=event_type,
+                    username=username,
+                    user_id=user_id,
+                    action=action,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    outcome=outcome,
+                    severity=severity,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    details=details,
+                    error_message=error_message
+                )
+        except Exception as e:
+            logger.critical(f"AUDIT LOG FAILURE: {e}")
+            return False
+
+    @classmethod
+    def _log_event_impl(cls, session: Session, **kwargs) -> bool:
+        """Internal implementation for log_event."""
+        try:
+            event_type = kwargs.get('event_type')
+            severity = kwargs.get('severity', 'info')
+            outcome = kwargs.get('outcome', 'success')
+            user_agent = kwargs.get('user_agent')
+            details = kwargs.get('details')
+            error_message = kwargs.get('error_message')
+
             # Validate inputs
             if event_type not in cls.EVENT_TYPES:
-                logger.warning(f"Invalid event_type: {event_type}")
                 event_type = 'system'
-
             if severity not in cls.SEVERITY_LEVELS:
                 severity = 'info'
-
             if outcome not in ['success', 'failure', 'denied']:
                 outcome = 'success'
 
@@ -107,13 +129,13 @@ class AuditService:
                 timestamp=datetime.now(UTC),
                 event_type=event_type,
                 severity=severity,
-                username=username,
-                user_id=user_id,
-                ip_address=ip_address,
+                username=kwargs.get('username'),
+                user_id=kwargs.get('user_id'),
+                ip_address=kwargs.get('ip_address'),
                 user_agent=safe_ua,
-                resource_type=resource_type,
-                resource_id=str(resource_id) if resource_id else None,
-                action=action,
+                resource_type=kwargs.get('resource_type'),
+                resource_id=str(kwargs.get('resource_id')) if kwargs.get('resource_id') else None,
+                action=kwargs.get('action'),
                 outcome=outcome,
                 details=safe_details,
                 error_message=safe_error,
@@ -121,22 +143,16 @@ class AuditService:
             )
 
             session.add(log_entry)
-            session.commit()
-
-            # Log to application logger for immediate visibility
+            
+            # Log to application logger
             log_level = getattr(logging, severity.upper(), logging.INFO)
-            logger.log(log_level, f"AUDIT [{event_type}:{action}] User:{username} Resource:{resource_type}:{resource_id} Outcome:{outcome}")
+            logger.log(log_level, f"AUDIT [{event_type}:{kwargs.get('action')}] User:{kwargs.get('username')} Resource:{kwargs.get('resource_type')}:{kwargs.get('resource_id')} Outcome:{outcome}")
 
             return True
 
         except Exception as e:
-            logger.critical(f"AUDIT LOG FAILURE: {e}")
-            if not db_session:
-                session.rollback()
+            logger.error(f"Audit processing failed: {e}")
             return False
-        finally:
-            if should_close:
-                session.close()
 
     @classmethod
     def log_auth_event(cls, event_type: str, username: str, details: Dict[str, Any] = None,
@@ -204,43 +220,34 @@ class AuditService:
     @classmethod
     def query_logs(cls, filters: Dict[str, Any] = None, page: int = 1, per_page: int = 50,
                   db_session: Optional[Session] = None) -> Tuple[List[AuditLog], int]:
-        """
-        Query audit logs with filtering and pagination.
-
-        Args:
-            filters: Dictionary of filter criteria
-            page: Page number (1-based)
-            per_page: Results per page
-            db_session: Optional session
-
-        Returns:
-            Tuple of (logs, total_count)
-        """
-        session = db_session if db_session else get_session()
-        should_close = db_session is None
-
+        """Query audit logs with filtering and pagination."""
+        if db_session:
+            return cls._query_logs_impl(db_session, filters, page, per_page)
+        
         try:
-            query = session.query(AuditLog)
-
-            # Apply filters
-            if filters:
-                query = cls._apply_filters(query, filters)
-
-            # Get total count
-            total_count = query.count()
-
-            # Apply pagination and ordering
-            offset = (page - 1) * per_page
-            logs = query.order_by(desc(AuditLog.timestamp)).limit(per_page).offset(offset).all()
-
-            return logs, total_count
-
+            with safe_db_context() as session:
+                return cls._query_logs_impl(session, filters, page, per_page)
         except Exception as e:
             logger.error(f"Failed to query audit logs: {e}")
             return [], 0
-        finally:
-            if should_close:
-                session.close()
+
+    @classmethod
+    def _query_logs_impl(cls, session: Session, filters: Dict[str, Any], page: int, per_page: int) -> Tuple[List[AuditLog], int]:
+        """Internal implementation for query_logs."""
+        query = session.query(AuditLog)
+
+        # Apply filters
+        if filters:
+            query = cls._apply_filters(query, filters)
+
+        # Get total count
+        total_count = query.count()
+
+        # Apply pagination and ordering
+        offset = (page - 1) * per_page
+        logs = query.order_by(desc(AuditLog.timestamp)).limit(per_page).offset(offset).all()
+
+        return logs, total_count
 
     @classmethod
     def get_user_activity(cls, user_id: int, page: int = 1, per_page: int = 20,
@@ -272,76 +279,60 @@ class AuditService:
 
     @classmethod
     def archive_old_logs(cls, retention_days: int = None, db_session: Optional[Session] = None) -> int:
-        """
-        Archive logs older than retention period.
-
-        Args:
-            retention_days: Override default retention days
-            db_session: Optional session
-
-        Returns:
-            Number of logs archived
-        """
+        """Archive logs older than retention period."""
         if retention_days is None:
             retention_days = cls.RETENTION_ACTIVE
 
-        session = db_session if db_session else get_session()
-        should_close = db_session is None
-
+        if db_session:
+            return cls._archive_old_logs_impl(db_session, retention_days)
+        
         try:
-            cutoff_date = datetime.now(UTC) - timedelta(days=retention_days)
-            archived_count = session.query(AuditLog).filter(
-                and_(
-                    AuditLog.timestamp < cutoff_date,
-                    AuditLog.archived == False
-                )
-            ).update({'archived': True})
-
-            session.commit()
-            logger.info(f"Archived {archived_count} old audit logs")
-            return archived_count
-
+            with safe_db_context() as session:
+                return cls._archive_old_logs_impl(session, retention_days)
         except Exception as e:
             logger.error(f"Audit archive failed: {e}")
-            if not db_session:
-                session.rollback()
             return 0
-        finally:
-            if should_close:
-                session.close()
+
+    @classmethod
+    def _archive_old_logs_impl(cls, session: Session, retention_days: int) -> int:
+        """Internal implementation for archive_old_logs."""
+        cutoff_date = datetime.now(UTC) - timedelta(days=retention_days)
+        archived_count = session.query(AuditLog).filter(
+            and_(
+                AuditLog.timestamp < cutoff_date,
+                AuditLog.archived == False
+            )
+        ).update({'archived': True})
+
+        logger.info(f"Archived {archived_count} old audit logs")
+        return archived_count
 
     @classmethod
     def cleanup_expired_logs(cls, db_session: Optional[Session] = None) -> int:
-        """
-        Permanently delete logs past their retention period.
-
-        Returns:
-            Number of logs deleted
-        """
-        session = db_session if db_session else get_session()
-        should_close = db_session is None
-
+        """Permanently delete logs past their retention period."""
+        if db_session:
+            return cls._cleanup_expired_logs_impl(db_session)
+        
         try:
-            cutoff_date = datetime.now(UTC)
-            deleted_count = session.query(AuditLog).filter(
-                and_(
-                    AuditLog.retention_until < cutoff_date,
-                    AuditLog.archived == True
-                )
-            ).delete()
-
-            session.commit()
-            logger.info(f"Cleaned up {deleted_count} expired audit logs")
-            return deleted_count
-
+            with safe_db_context() as session:
+                return cls._cleanup_expired_logs_impl(session)
         except Exception as e:
             logger.error(f"Audit cleanup failed: {e}")
-            if not db_session:
-                session.rollback()
             return 0
-        finally:
-            if should_close:
-                session.close()
+
+    @classmethod
+    def _cleanup_expired_logs_impl(cls, session: Session) -> int:
+        """Internal implementation for cleanup_expired_logs."""
+        cutoff_date = datetime.now(UTC)
+        deleted_count = session.query(AuditLog).filter(
+            and_(
+                AuditLog.retention_until < cutoff_date,
+                AuditLog.archived == True
+            )
+        ).delete()
+
+        logger.info(f"Cleaned up {deleted_count} expired audit logs")
+        return deleted_count
 
     # Helper methods
     @staticmethod
@@ -469,18 +460,25 @@ class AuditService:
                         user_agent: Optional[str] = None, details: Optional[Dict[str, Any]] = None,
                         db_session: Optional[Session] = None) -> bool:
         """Legacy method for backward compatibility."""
-        # Get username from user_id
-        session = db_session if db_session else get_session()
-        should_close = db_session is None
+        if db_session:
+            return cls._log_event_legacy_impl(db_session, user_id, action, ip_address, user_agent, details)
+        
+        try:
+            with safe_db_context() as session:
+                return cls._log_event_legacy_impl(session, user_id, action, ip_address, user_agent, details)
+        except Exception as e:
+            logger.error(f"Legacy audit log failed: {e}")
+            return False
 
+    @classmethod
+    def _log_event_legacy_impl(cls, session: Session, user_id: int, action: str, ip_address: str, 
+                              user_agent: str, details: Dict[str, Any]) -> bool:
+        """Internal implementation for log_event_legacy."""
         try:
             user = session.query(User).filter(User.id == user_id).first()
             username = user.username if user else f"user_{user_id}"
         except Exception:
             username = f"user_{user_id}"
-        finally:
-            if should_close:
-                session.close()
 
         # Map legacy action to new format
         event_type = 'auth' if action in ['LOGIN', 'PASSWORD_CHANGE', '2FA_ENABLE'] else 'system'
@@ -495,8 +493,8 @@ class AuditService:
             severity=severity,
             ip_address=ip_address,
             user_agent=user_agent,
-            metadata=details,
-            db_session=db_session
+            details=details,
+            db_session=session
         )
 
     @staticmethod

@@ -273,7 +273,7 @@ export default function ExamPage() {
   return (
     <>
       {isReviewing ? (
-        <ReviewScreen onSubmit={handleSubmit} isSubmitting={isSubmitting} />
+        <ReviewScreen onSubmit={handleSubmit} isSubmitting={isSubmitting} error={submitError} />
       ) : (
         <div className="container mx-auto px-4 py-8 max-w-4xl">
           {/* Header */}
