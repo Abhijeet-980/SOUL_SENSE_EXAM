@@ -132,6 +132,9 @@ class AnalyticsScheduler:
 
                 logger.info(f"Daily analytics completed: {processed_users} processed, {failed_users} failed")
                 return summary
+        except Exception as e:
+            logger.error(f"Daily analytics run failed: {e}")
+            return {"status": "failed", "error": str(e)}
 
     async def _process_user_analytics(self, username: str) -> Dict[str, Any]:
         """Process analytics for a specific user."""
@@ -178,5 +181,4 @@ def get_scheduler() -> AnalyticsScheduler:
     global _scheduler
     if _scheduler is None:
         _scheduler = AnalyticsScheduler()
-    return _scheduler</content>
-<parameter name="filePath">c:\Users\Gupta\Downloads\SOUL_SENSE_EXAM\app\ml\scheduler_service.py
+    return _scheduler

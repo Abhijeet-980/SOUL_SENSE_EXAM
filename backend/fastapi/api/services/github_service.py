@@ -1,3 +1,4 @@
+from ..config import get_settings_instance
 import httpx
 import time
 import asyncio

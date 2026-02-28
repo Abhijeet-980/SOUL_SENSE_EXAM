@@ -1,3 +1,4 @@
+from ..config import get_settings_instance
 import time
 import logging
 from typing import Tuple

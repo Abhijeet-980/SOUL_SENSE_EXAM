@@ -1,3 +1,4 @@
+from ..config import get_settings_instance
 from datetime import datetime, timedelta, timezone
 import time
 import logging
@@ -10,7 +11,7 @@ if TYPE_CHECKING:
 
 from fastapi import Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import OperationalError
 from .audit_service import AuditService
@@ -19,7 +20,7 @@ from ..models import User, LoginAttempt, PersonalProfile, RefreshToken, Password
 from ..constants.security_constants import PASSWORD_HISTORY_LIMIT
 from ..config import get_settings
 
-settings = get_settings()
+settings = get_settings_instance()
 
 logger = logging.getLogger("api.auth")
 
@@ -75,7 +76,7 @@ class AuthService:
             )
 
         # 3. Try fetching by username first
-        stmt = select(User).filter(User.username == identifier_lower)
+        stmt = select(User).filter(User.username == identifier_lower).options(selectinload(User.personal_profile))
         result = await self.db.execute(stmt)
         user = result.scalar_one_or_none()
         
@@ -85,7 +86,7 @@ class AuthService:
             profile_result = await self.db.execute(profile_stmt)
             profile = profile_result.scalar_one_or_none()
             if profile:
-                user_stmt = select(User).filter(User.id == profile.user_id)
+                user_stmt = select(User).filter(User.id == profile.user_id).options(selectinload(User.personal_profile))
                 user_result = await self.db.execute(user_stmt)
                 user = user_result.scalar_one_or_none()
         
@@ -212,7 +213,7 @@ class AuthService:
                  raise AuthException(code=ErrorCode.AUTH_INVALID_CREDENTIALS, message="Invalid or expired code")
                  
             # 3. Success - Fetch User
-            user_stmt = select(User).filter(User.id == user_id_int)
+            user_stmt = select(User).filter(User.id == user_id_int).options(selectinload(User.personal_profile))
             user_result = await self.db.execute(user_stmt)
             user = user_result.scalar_one_or_none()
             
@@ -292,6 +293,10 @@ class AuthService:
                 user.last_login = datetime.now(timezone.utc).isoformat()
                 await self.db.commit()
                 logger.info(f"Updated last_login for user_id={user_id}")
+                try:
+                    await mark_write(user.username)
+                except Exception as e:
+                    logger.warning(f"Failed to mark write in Redis: {e}")
         except Exception as e:
             await self.db.rollback()
             logger.error(f"Failed to update last_login: {e}")
@@ -413,11 +418,15 @@ class AuthService:
                 gender=user_data.gender
             )
             self.db.add(new_profile)
-
-            self.db.commit()
-            self.db.refresh(new_user)
-
-            # In a real app, send "Welcome/Verify" email here
+            await self.db.commit()
+            await self.db.refresh(new_user)
+            
+            # CONSISTENCY: Guard subsequent reads for this user (Read-Your-Own-Writes)
+            try:
+                await mark_write(new_user.username)
+            except Exception as e:
+                logger.warning(f"Failed to mark write in Redis: {e}")
+            
             return True, new_user, "Registration successful. Please verify your email."
         except (OperationalError, DatabaseError) as e:
             # Handle database connection/operational errors

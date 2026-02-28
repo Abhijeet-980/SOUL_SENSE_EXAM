@@ -26,7 +26,7 @@ from ..services.profile_service import ProfileService
 from ..routers.auth import get_current_user, require_admin
 from ..services.db_service import get_db
 from ..models import User
-from backend.fastapi.app.core import NotFoundError, ValidationError, InternalServerError
+from ...app.core import NotFoundError, ValidationError, InternalServerError
 
 
 router = APIRouter(tags=["Users"])
