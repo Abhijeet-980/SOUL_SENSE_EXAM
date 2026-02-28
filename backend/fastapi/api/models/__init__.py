@@ -256,6 +256,15 @@ class AuditSnapshot(Base):
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     user = relationship("User", back_populates="audit_snapshots")
 
+class OutboxEvent(Base):
+    """Transactional Outbox Pattern for guaranteed delivery (#1122)."""
+    __tablename__ = 'outbox_events'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    topic = Column(String, default="audit_trail", nullable=False)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    status = Column(String, default='pending', index=True) # pending, processed
+
 class AnalyticsEvent(Base):
     """Track user behavior events (e.g., signup drop-off).
     Uses anonymous_id for pre-signup tracking.
@@ -644,19 +653,37 @@ def capture_audit_events(session, flush_context):
                  'timestamp': datetime.utcnow().isoformat()
              })
 
-@event.listens_for(Session, 'after_commit')
-def push_audit_to_kafka(session):
-    """Actually trigger the Kafka producer for all buffered events."""
+@event.listens_for(Session, 'before_commit')
+def flush_audit_to_outbox(session):
+    """Transactional Outbox: Write collected audit events to the outbox table inside the same transaction."""
     if hasattr(session, '_audit_buffer') and session._audit_buffer:
         try:
-             # Lazy import to avoid circular dependencies
-             from ..services.kafka_producer import get_kafka_producer
-             producer = get_kafka_producer()
-             for event_data in session._audit_buffer:
-                 producer.queue_event(event_data)
-             session._audit_buffer = []
+            from sqlalchemy import insert
+            stmt = OutboxEvent.__table__.insert().values([
+                {
+                    "topic": "audit_trail",
+                    "payload": event_data,
+                    "status": "pending",
+                    "created_at": datetime.utcnow()
+                }
+                for event_data in session._audit_buffer
+            ])
+            session.execute(stmt)
         except Exception as e:
-             logging.error(f"Failed to push audit events: {e}")
+            logger.error(f"Failed to insert audit outbox events: {e}")
+
+@event.listens_for(Session, 'after_commit')
+def cleanup_audit_buffer(session):
+    """Clear the buffer after a successful commit."""
+    if hasattr(session, '_audit_buffer'):
+        session._audit_buffer = []
+
+@event.listens_for(Session, 'after_rollback')
+def rollback_audit_buffer(session):
+    """Clear the buffer after a rollback to prevent leakage."""
+    if hasattr(session, '_audit_buffer'):
+        session._audit_buffer = []
+
 
 @event.listens_for(Question.__table__, 'after_create')
 def receive_after_create_question(target: Any, connection: Connection, **kw: Any) -> None:

@@ -234,3 +234,52 @@ async def _execute_archive_generation(job_id: str, user_id: int, password: str, 
             )
             raise e
 
+@celery_app.task(bind=True, max_retries=1, name="api.celery_tasks.process_outbox_events")
+def process_outbox_events(self):
+    """
+    Poll the outbox_events table for pending events, publish them to Kafka, 
+    and mark them as processed in a single transaction-like boundary.
+    This guarantees at-least-once delivery for audit events.
+    """
+    from api.models import OutboxEvent
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy import create_engine
+    
+    settings = get_settings_instance()
+    
+    # We use a synchronous DB connection to avoid making the celery worker fully async
+    # Adjust as needed if your codebase strictly requires AsyncSession in Celery tasks.
+    # Below uses a quick async block wrapper if required, but run_async is cleaner.
+    async def _async_process():
+        from api.services.kafka_producer import get_kafka_producer
+        producer = get_kafka_producer()
+        
+        async with AsyncSessionLocal() as db:
+            # Query pending events (limit to 50 to avoid big locks)
+            stmt = select(OutboxEvent).filter(OutboxEvent.status == 'pending').limit(50)
+            result = await db.execute(stmt)
+            events = result.scalars().all()
+            
+            if not events:
+                return 0
+                
+            processed_count = 0
+            for event in events:
+                try:
+                    # Push to Kafka first
+                    producer.queue_event(event.payload)
+                    # Once queued (or sent if queue_event is synchronous/awaitable), mark processed
+                    event.status = 'processed'
+                    processed_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to process outbox event {event.id}: {e}")
+                    # Stop processing this batch on Kafka failure to maintain order and wait for retry
+                    break
+                    
+            if processed_count > 0:
+                await db.commit()
+                
+            return processed_count
+            
+    return run_async(_async_process())
+

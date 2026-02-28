@@ -25,3 +25,10 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     task_default_retry_delay=5, # Overriden by task exponential backoff
 )
+
+celery_app.conf.beat_schedule = {
+    'process-outbox-events-frequent': {
+        'task': 'api.celery_tasks.process_outbox_events',
+        'schedule': 5.0, # Execute every 5 seconds
+    },
+}
