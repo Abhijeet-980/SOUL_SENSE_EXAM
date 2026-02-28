@@ -8,7 +8,7 @@ import aiofiles
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from cachetools import LRUCache
-from backend.fastapi.api.config import get_settings_instance
+from api.config import get_settings_instance
 from ..utils.atomic import atomic_write
 from .github.github_client import GitHubClient
 from .github.github_processor import GitHubProcessor

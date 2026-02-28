@@ -1,6 +1,6 @@
 import os
 from celery import Celery
-from backend.fastapi.api.config import get_settings_instance
+from api.config import get_settings_instance
 
 settings = get_settings_instance()
 
@@ -11,7 +11,7 @@ celery_app = Celery(
     "soulsense_worker",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["backend.fastapi.api.celery_tasks"]
+    include=["api.celery_tasks"]
 )
 
 # Optional configuration for Idempotency and DLQ-like behavior

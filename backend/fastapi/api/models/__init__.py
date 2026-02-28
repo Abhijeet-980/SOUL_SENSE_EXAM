@@ -102,6 +102,7 @@ class NotificationTemplate(Base):
 class NotificationLog(Base):
     """Audit log and delivery tracking for notifications."""
     __tablename__ = 'notification_logs'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=True) # Optional in case of broadcast
     template_name = Column(String, nullable=False)
@@ -178,6 +179,7 @@ class SurveyQuestion(Base):
 
 class SurveySubmission(Base):
     __tablename__ = 'survey_submissions'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     survey_id = Column(Integer, ForeignKey('survey_templates.id'), nullable=False)
@@ -220,6 +222,7 @@ class LoginAttempt(Base):
 class AuditLog(Base):
     """Audit Log for tracking security-critical user actions."""
     __tablename__ = 'audit_logs'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     action = Column(String, nullable=False)
@@ -244,6 +247,7 @@ class AnalyticsEvent(Base):
     Uses anonymous_id for pre-signup tracking.
     """
     __tablename__ = 'analytics_events'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
     anonymous_id = Column(String, nullable=True, index=True)
@@ -503,6 +507,7 @@ class JournalEntry(Base):
 
 class SatisfactionRecord(Base):
     __tablename__ = 'satisfaction_records'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=True)
     username = Column(String, index=True)
@@ -535,6 +540,7 @@ class AssessmentResult(Base):
     Supported types: 'career_clarity', 'work_satisfaction', 'strengths'.
     """
     __tablename__ = 'assessment_results'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     assessment_type = Column(String, nullable=False, index=True)
@@ -883,7 +889,7 @@ class Achievement(Base):
 
 class UserAchievement(Base):
     __tablename__ = 'user_achievements'
-    
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     achievement_id = Column(String(100), ForeignKey('achievements.achievement_id'), nullable=False)
@@ -896,7 +902,7 @@ class UserAchievement(Base):
 
 class UserStreak(Base):
     __tablename__ = 'user_streaks'
-    
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
     activity_type = Column(String(50), default='combined')  # journal, assessment, combined
@@ -909,7 +915,7 @@ class UserStreak(Base):
 
 class UserXP(Base):
     __tablename__ = 'user_xp'
-    
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
     total_xp = Column(Integer, default=0)
@@ -1092,23 +1098,23 @@ from sqlalchemy import event
 
 @event.listens_for(User, 'after_update')
 def receive_after_update_user(mapper, connection, target):
-    from backend.fastapi.api.services.cache_service import cache_service
+    from api.services.cache_service import cache_service
     cache_service.sync_invalidate(f"user_rbac:{target.username}")
     cache_service.sync_invalidate(f"user_rbac_id:{target.id}")
 
 @event.listens_for(User, 'after_delete')
 def receive_after_delete_user(mapper, connection, target):
-    from backend.fastapi.api.services.cache_service import cache_service
+    from api.services.cache_service import cache_service
     cache_service.sync_invalidate(f"user_rbac:{target.username}")
     cache_service.sync_invalidate(f"user_rbac_id:{target.id}")
 
 @event.listens_for(UserSettings, 'after_update')
 def receive_after_update_user_settings(mapper, connection, target):
-    from backend.fastapi.api.services.cache_service import cache_service
+    from api.services.cache_service import cache_service
     cache_service.sync_invalidate(f"user_settings:{target.user_id}")
 
 @event.listens_for(NotificationPreference, 'after_update')
 def receive_after_update_notif_pref(mapper, connection, target):
-    from backend.fastapi.api.services.cache_service import cache_service
+    from api.services.cache_service import cache_service
     cache_service.sync_invalidate(f"notif_pref:{target.user_id}")
 

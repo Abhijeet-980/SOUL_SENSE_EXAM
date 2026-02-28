@@ -3,7 +3,7 @@ import time
 import asyncio
 import os
 from typing import Dict, Any, Optional
-from backend.fastapi.api.config import get_settings_instance
+from api.config import get_settings_instance
 
 
 class GitHubClient:

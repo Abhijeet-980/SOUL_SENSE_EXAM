@@ -62,8 +62,8 @@ async def generate_personal_archive(
     The archive includes a high-fidelity PDF report, structured JSON, and tabular CSVs.
     Runs asynchronously in the background.
     """
-    from backend.fastapi.api.services.background_task_service import BackgroundTaskService, TaskType
-    from backend.fastapi.api.celery_tasks import generate_archive_task
+    from api.services.background_task_service import BackgroundTaskService, TaskType
+    from api.celery_tasks import generate_archive_task
 
     task = await BackgroundTaskService.create_task(
         db=db,

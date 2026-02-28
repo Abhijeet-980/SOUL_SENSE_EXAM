@@ -5,7 +5,7 @@ from typing import Tuple
 from fastapi import Request, HTTPException, status
 import redis.asyncio as redis
 
-from backend.fastapi.api.config import get_settings_instance
+from api.config import get_settings_instance
 
 logger = logging.getLogger(__name__)
 

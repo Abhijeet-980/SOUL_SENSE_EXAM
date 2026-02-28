@@ -21,8 +21,10 @@ from datetime import timedelta
 from typing import AsyncGenerator, Optional
 
 import redis.asyncio as redis
+from jose import jwt, JWTError
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import text
 
 from ..config import get_settings_instance
 

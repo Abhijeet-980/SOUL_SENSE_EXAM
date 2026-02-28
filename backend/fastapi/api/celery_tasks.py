@@ -3,15 +3,15 @@ import os
 import logging
 from typing import Dict, Any
 from celery.exceptions import MaxRetriesExceededError
-from backend.fastapi.api.celery_app import celery_app
-from backend.fastapi.api.services.export_service_v2 import ExportServiceV2
-from backend.fastapi.api.services.background_task_service import BackgroundTaskService, TaskStatus
-from backend.fastapi.api.services.db_service import AsyncSessionLocal
+from api.celery_app import celery_app
+from api.services.export_service_v2 import ExportServiceV2
+from api.services.background_task_service import BackgroundTaskService, TaskStatus
+from api.services.db_service import AsyncSessionLocal
 from sqlalchemy import select
-from backend.fastapi.api.models import User, NotificationLog
-from backend.fastapi.api.services.data_archival_service import DataArchivalService
+from api.models import User, NotificationLog
+from api.services.data_archival_service import DataArchivalService
 import redis
-from backend.fastapi.api.config import get_settings_instance
+from api.config import get_settings_instance
 
 logger = logging.getLogger(__name__)
 

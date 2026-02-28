@@ -350,6 +350,11 @@ def create_app() -> FastAPI:
     # Version header middleware
     app.add_middleware(VersionHeaderMiddleware)
     
+    # Global Maintenance Mode Middleware (#1112)
+    # Blocks or restricts access during critical updates
+    from .middleware.maintenance import MaintenanceMiddleware
+    app.add_middleware(MaintenanceMiddleware)
+    
     # Mount static files for avatars
     from fastapi.staticfiles import StaticFiles
     import os

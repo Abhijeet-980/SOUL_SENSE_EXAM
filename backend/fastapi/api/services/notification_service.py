@@ -90,7 +90,7 @@ class NotificationOrchestrator:
                 if pref.push_enabled: channels_to_send.append('push')
                 if pref.in_app_enabled: channels_to_send.append('in_app')
                 
-        from backend.fastapi.api.celery_tasks import send_notification_task
+        from api.celery_tasks import send_notification_task
         
         # For each channel, create a pending log and attempt send
         log_ids = []
