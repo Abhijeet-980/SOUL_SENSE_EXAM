@@ -346,33 +346,48 @@ class AuthService:
             await self.db.rollback()
             logger.error(f"Failed to record login attempt: {e}")
 
-    async def register_user(self, user_data: 'UserCreate') -> Tuple[bool, Optional[User], str]:
-        """Register a new user and their personal profile."""
+    def register_user(self, user_data: 'UserCreate') -> Tuple[bool, Optional[User], str]:
+        """
+        Register a new user and their personal profile.
+        Standardizes identifiers and validates uniqueness.
+
+        Security:
+        - Generic status return to prevent enumeration.
+        - Timing jitter to prevent response-time analysis.
+        """
+        import time
         import random
-        await asyncio.sleep(random.uniform(0.1, 0.3))
+        from ..exceptions import APIException
+        from ..constants.errors import ErrorCode
+        from sqlalchemy.exc import OperationalError, DatabaseError
+
+        # Timing Jitter: Artificial delay baseline (100-300ms)
+        # This masks the difference between a DB hit (fast) and a bcrypt hash (slowish)
+        # Though bcrypt is ~100ms+, so we just add a bit of noise.
+        time.sleep(random.uniform(0.1, 0.3))
 
         username_lower = user_data.username.lower().strip()
         email_lower = user_data.email.lower().strip()
 
-        # 1. Validation
-        stmt_user = select(User).filter(User.username == username_lower)
-        res_user = await self.db.execute(stmt_user)
-        existing_username = res_user.scalar_one_or_none()
-
-        stmt_profile = select(PersonalProfile).filter(PersonalProfile.email == email_lower)
-        res_profile = await self.db.execute(stmt_profile)
-        existing_email = res_profile.scalar_one_or_none()
-
-        if existing_username or existing_email:
-            logger.info(f"Registration attempt for existing identity: {username_lower} / {email_lower}")
-            return True, None, "Account creation initiated. Please check your email for verification link."
-
-        from .security_service import SecurityService
-        if SecurityService.is_disposable_email(email_lower):
-            return False, None, "Registration with disposable email domains is not allowed"
-
         try:
-            hashed_pw = get_password_hash(user_data.password)
+            # 1. Validation (Does NOT leak existence if we return generic later)
+            # But we still do it for integrity.
+            existing_username = self.db.query(User).filter(User.username == username_lower).first()
+            existing_email = self.db.query(PersonalProfile).filter(PersonalProfile.email == email_lower).first()
+
+            if existing_username or existing_email:
+                # ENUMERATION PROTECTION:
+                # We don't raise an error. We return "Success" but don't create.
+                # In a real app, we would send an "Already registered" email here.
+                logger.info(f"Registration attempt for existing identity: {username_lower} / {email_lower}")
+                return True, None, "Account creation initiated. Please check your email for verification link."
+
+            # 2. Disposable Email Check (This remains an error as it's a policy failure, not enumeration)
+            from .security_service import SecurityService
+            if SecurityService.is_disposable_email(email_lower):
+                return False, None, "Registration with disposable email domains is not allowed"
+
+            hashed_pw = self.hash_password(user_data.password)
             new_user = User(
                 username=username_lower,
                 password_hash=hashed_pw
@@ -392,10 +407,21 @@ class AuthService:
                 gender=user_data.gender
             )
             self.db.add(new_profile)
-            await self.db.commit()
-            await self.db.refresh(new_user)
-            
+
+            self.db.commit()
+            self.db.refresh(new_user)
+
+            # In a real app, send "Welcome/Verify" email here
             return True, new_user, "Registration successful. Please verify your email."
+        except (OperationalError, DatabaseError) as e:
+            # Handle database connection/operational errors
+            self.db.rollback()
+            logger.error(f"Database connection error during registration: {str(e)}")
+            return False, None, "Service temporarily unavailable. Please try again later."
+        except AttributeError as e:
+            self.db.rollback()
+            logger.error(f"Registration Model Mismatch: {e}")
+            return False, None, "A configuration error occurred on the server."
         except Exception as e:
             await self.db.rollback()
             logger.error(f"Registration failed error: {str(e)}")
