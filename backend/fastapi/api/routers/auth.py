@@ -158,14 +158,16 @@ async def check_username_availability(
 async def register(
     request: Request,
     user: UserCreate,
+    db: AsyncSession = Depends(get_db),
     auth_service: AuthService = Depends()
-):
+) -> dict:
     """Register a new user. Rate limited to 5 requests per minute per IP/user."""
     success, new_user, message = auth_service.register_user(user)
-    
+
     if not success:
         raise BusinessLogicError(message=message, code="REGISTRATION_FAILED")
     return {"message": message}
+
 
 @router.post("/login", response_model=Token, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}, 202: {"model": TwoFactorAuthRequiredResponse}})
 @limiter.limit("5/minute")
