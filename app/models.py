@@ -337,12 +337,17 @@ class Score(Base):
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
     session_id = Column(String, nullable=True, index=True)
     
+    # Retake restriction fields (Issue #993)
+    attempt_number = Column(Integer, default=1, nullable=False, index=True)
+    status = Column(String, default="completed", nullable=False, index=True)  # "in_progress", "completed", "abandoned"
+    
     user = relationship("User", back_populates="scores")
     
     __table_args__ = (
         Index('idx_score_user_timestamp', 'user_id', 'timestamp'),
         Index('idx_score_age_score', 'age', 'total_score'),
         Index('idx_score_agegroup_score', 'detailed_age_group', 'total_score'),
+        Index('idx_score_user_status', 'user_id', 'status'),  # For retake restriction queries
     )
 
 class Response(Base):
@@ -364,7 +369,9 @@ class Response(Base):
     __table_args__ = (
         Index('idx_response_question_timestamp', 'question_id', 'timestamp'),
         Index('idx_response_user_timestamp', 'user_id', 'timestamp'),
-        Index('idx_response_agegroup_timestamp', 'detailed_age_group', 'timestamp'),        Index('idx_response_user_question', 'user_id', 'question_id', unique=True),  # Unique constraint for user-question pairs    )
+        Index('idx_response_agegroup_timestamp', 'detailed_age_group', 'timestamp'),
+        Index('idx_response_user_question', 'user_id', 'question_id', unique=True),  # Unique constraint for user-question pairs
+    )
 
 class Question(Base):
     __tablename__ = 'question_bank'

@@ -56,11 +56,6 @@ class AssessmentService:
         """
         stmt = select(Score)
         
-        # Apply filters — prefer user_id for session-bound isolation
-        if user_id is not None:
-            query = query.filter(Score.user_id == user_id)
-        elif username:
-            query = query.filter(Score.username == username)
         # Apply filters
         if username:
             stmt = stmt.filter(Score.username == username)
@@ -80,21 +75,6 @@ class AssessmentService:
         return list(assessments), total
     
     @staticmethod
-    def get_assessment_by_id(
-        db: Session, assessment_id: int, user_id: Optional[int] = None
-    ) -> Optional[Score]:
-        """Get a single assessment by ID, optionally scoped to a specific user."""
-        query = db.query(Score).filter(Score.id == assessment_id)
-        if user_id is not None:
-            query = query.filter(Score.user_id == user_id)
-        return query.first()
-    
-    @staticmethod
-    def get_assessment_stats(
-        db: Session,
-        user_id: Optional[int] = None,
-        username: Optional[str] = None
-    ) -> dict:
     async def get_assessment_by_id(db: AsyncSession, assessment_id: int) -> Optional[Score]:
         """Get a single assessment by ID."""
         stmt = select(Score).filter(Score.id == assessment_id)
@@ -105,17 +85,7 @@ class AssessmentService:
     async def get_assessment_stats(db: AsyncSession, username: Optional[str] = None) -> dict:
         """
         Get statistical summary of assessments.
-        When user_id is provided, stats are scoped to that user.
         """
-        query = db.query(Score)
-        
-        if user_id is not None:
-            query = query.filter(Score.user_id == user_id)
-        elif username:
-            query = query.filter(Score.username == username)
-        
-        # Calculate statistics
-        stats = query.with_entities(
         stmt = select(
             func.count(Score.id).label('total'),
             func.avg(Score.total_score).label('avg_score'),
@@ -131,18 +101,11 @@ class AssessmentService:
         stats = result.first()
         
         # Get age group distribution
-        age_query = db.query(
         age_stmt = select(
             Score.detailed_age_group,
             func.count(Score.id).label('count')
         )
         
-        if user_id is not None:
-            age_query = age_query.filter(Score.user_id == user_id)
-        elif username:
-            age_query = age_query.filter(Score.username == username)
-        
-        age_distribution = age_query.group_by(Score.detailed_age_group).all()
         if username:
             age_stmt = age_stmt.filter(Score.username == username)
         
@@ -162,23 +125,6 @@ class AssessmentService:
         }
     
     @staticmethod
-    def get_assessment_responses(
-        db: Session, assessment_id: int, user_id: Optional[int] = None
-    ) -> List[Response]:
-        """Get all responses for a specific assessment, scoped to user_id."""
-        query = db.query(Score).filter(Score.id == assessment_id)
-        if user_id is not None:
-            query = query.filter(Score.user_id == user_id)
-        assessment = query.first()
-        if not assessment:
-            return []
-        
-        resp_query = db.query(Response).filter(
-            Response.session_id == assessment.session_id
-        )
-        if user_id is not None:
-            resp_query = resp_query.filter(Response.user_id == user_id)
-        return resp_query.all()
     async def get_assessment_responses(db: AsyncSession, assessment_id: int) -> List[Response]:
         """Get all responses for a specific assessment."""
         stmt = select(Score).filter(Score.id == assessment_id)
@@ -259,7 +205,7 @@ class QuestionService:
             Question.is_active == 1,
             Question.min_age <= age,
             Question.max_age >= age
-        ).order_by(Question.id)
+        )
         
         if limit:
             stmt = stmt.limit(limit)
@@ -268,15 +214,64 @@ class QuestionService:
         return list(result.scalars().all())
     
     @staticmethod
-    async def get_categories(db: AsyncSession) -> List[QuestionCategory]:
-        """Get all question categories."""
-        stmt = select(QuestionCategory).order_by(QuestionCategory.id)
+    async def get_random_questions(
+        db: AsyncSession,
+        age: int,
+        count: int = 10
+    ) -> List[Question]:
+        """
+        Get random questions appropriate for age.
+        """
+        stmt = select(Question).filter(
+            Question.is_active == 1,
+            Question.min_age <= age,
+            Question.max_age >= age
+        ).order_by(func.random()).limit(count)
+        
         result = await db.execute(stmt)
         return list(result.scalars().all())
+
+
+class ResponseService:
+    """Service for managing responses."""
     
     @staticmethod
-    async def get_category_by_id(db: AsyncSession, category_id: int) -> Optional[QuestionCategory]:
-        """Get a category by ID."""
-        stmt = select(QuestionCategory).filter(QuestionCategory.id == category_id)
+    async def get_responses(
+        db: AsyncSession,
+        skip: int = 0,
+        limit: int = 100,
+        username: Optional[str] = None,
+        question_id: Optional[int] = None
+    ) -> Tuple[List[Response], int]:
+        """
+        Get responses with pagination and filters.
+        """
+        stmt = select(Response)
+        
+        if username:
+            stmt = stmt.filter(Response.username == username)
+        if question_id:
+            stmt = stmt.filter(Response.question_id == question_id)
+        
+        # Get total count
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar() or 0
+        
+        # Apply pagination
+        stmt = stmt.order_by(Response.timestamp.desc()).offset(skip).limit(limit)
         result = await db.execute(stmt)
-        return result.scalar_one_or_none()
+        responses = result.scalars().all()
+        
+        return list(responses), total
+
+
+# Export all services
+__all__ = [
+    'AssessmentService',
+    'QuestionService',
+    'ResponseService',
+    'get_db',
+    'engine',
+    'AsyncSessionLocal'
+]
