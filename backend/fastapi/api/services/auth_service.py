@@ -141,9 +141,9 @@ class AuthService:
         return user
 
     def create_access_token(self, data: dict, expires_delta: Optional[timedelta] = None) -> str:
-        """Create a new JWT access token with JTI for blacklist support."""
+        """Create a new JWT access token with unique JTI (#1101) and Tenant ID (#1084)."""
         from jose import jwt
-        import secrets
+        import uuid
 
         to_encode = data.copy()
         if expires_delta:
@@ -151,11 +151,16 @@ class AuthService:
         else:
             expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
             
+        jti = str(uuid.uuid4())
+        # Ensure tid is a string for JWT encoding
+        tid = to_encode.get("tid")
+        if tid and not isinstance(tid, str):
+            to_encode["tid"] = str(tid)
+            
         to_encode.update({
             "exp": expire,
-            "jti": secrets.token_urlsafe(16)  # JWT ID for blacklist support
+            "jti": jti
         })
-        # Use correct settings attributes as seen in router
         encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.jwt_algorithm)
         return encoded_jwt
 
@@ -681,26 +686,31 @@ class AuthService:
         await self.db.refresh(user)
         return user
     
-    async def generate_oauth_username(self, email_or_sub: str) -> str:
-        """Generate a unique username for OAuth user."""
-        base = email_or_sub.split("@")[0] if "@" in email_or_sub else email_or_sub
-        base = "".join(c for c in base if c.isalnum() or c == "_").lower()
-        if len(base) < 3:
-            base = "user" + base
-        username = base[:20]
-        
-        counter = 1
-        original = username
-        while True:
-            stmt = select(User).filter(User.username == username)
-            result = await self.db.execute(stmt)
-            if not result.scalar_one_or_none():
-                break
-            username = f"{original}{counter}"[:20]
-            counter += 1
-        
         return username
     
+    async def logout(self, token: str, db: AsyncSession):
+        """Revoke the current access token on logout (#1101)."""
+        from jose import jwt, JWTError
+        from .revocation_service import revocation_service
+        
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.jwt_algorithm])
+            jti = payload.get("jti")
+            exp = payload.get("exp")
+            
+            if jti and exp:
+                # Convert exp timestamp to datetime
+                expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
+                await revocation_service.revoke_token(jti, expires_at, db)
+                logger.info(f"Token {jti} revoked successfully on logout")
+                return True
+        except JWTError:
+            pass # Token already invalid
+        except Exception as e:
+            logger.error(f"Error during logout revocation: {e}")
+            
+        return False
+        
     def parse_name(self, name: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
         """Parse full name into first and last."""
         if not name:

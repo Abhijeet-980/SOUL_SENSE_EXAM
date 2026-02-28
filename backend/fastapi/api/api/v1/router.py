@@ -4,7 +4,7 @@ from ...routers import (
     auth, users, profiles, assessments, 
     questions, analytics, journal, health,
     settings_sync, community, contact, exams, export, deep_dive,
-    gamification, audit, tasks, consent, surveys, advanced_analytics, archival, notifications
+    gamification, audit, tasks, consent, surveys, advanced_analytics, archival, notifications, flags, search
 )
 
 api_router = APIRouter()
@@ -35,4 +35,5 @@ api_router.include_router(tasks.router, prefix="/tasks", tags=["Background Tasks
 api_router.include_router(consent.router, prefix="/consent", tags=["Consent"])
 api_router.include_router(surveys.router, prefix="/surveys", tags=["Surveys"])
 api_router.include_router(flags.router, prefix="/admin/flags", tags=["Feature Flags"])
+api_router.include_router(search.router, prefix="/search", tags=["Full-Text Search"])
 
