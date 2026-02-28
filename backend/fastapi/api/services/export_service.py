@@ -11,6 +11,7 @@ from sqlalchemy import select
 from ..models import User, Score, UserSession
 from ..utils.file_validation import sanitize_filename, validate_file_path
 from ..utils.atomic import atomic_write
+from ..utils.distributed_lock import require_lock
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ class ExportService:
         return list(result.scalars().all())
 
     @classmethod
+    @require_lock(name="export_v1_{user.id}_{format}", timeout=60)
     async def generate_export(cls, db: AsyncSession, user: User, format: str) -> Tuple[str, str]:
         """Generates an export file for the given user in the specified format."""
         if format.lower() not in ('json', 'csv'):

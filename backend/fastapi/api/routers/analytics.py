@@ -27,6 +27,7 @@ from ..middleware.rate_limiter import rate_limit_analytics
 from .auth import get_current_user, require_admin
 from ..models import User
 from ..utils.environment_context import get_current_environment
+from ..utils.network import get_real_ip
 
 logger = logging.getLogger("api.analytics")
 router = APIRouter(tags=["Analytics"])
@@ -36,10 +37,11 @@ router = APIRouter(tags=["Analytics"])
 async def track_event(
     event: AnalyticsEventCreate,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db)
 ):
     """Log a tracking event."""
-    await AnalyticsService.log_event(db, event.model_dump(), ip_address=request.client.host)
+    await AnalyticsService.log_event(db, event.model_dump(), ip_address=get_real_ip(request))
     return {"status": "ok"}
 
 

@@ -27,6 +27,7 @@ from ..models import (
 )
 from ..utils.file_validation import sanitize_filename, validate_file_path
 from ..utils.atomic import atomic_write
+from ..utils.distributed_lock import require_lock
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ class ExportServiceV2:
         )
 
     @classmethod
+    @require_lock(name="export_v2_{user.id}_{format}", timeout=60)
     async def generate_export(
         cls,
         db: AsyncSession,
