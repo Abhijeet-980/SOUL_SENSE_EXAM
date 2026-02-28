@@ -140,6 +140,19 @@ async def lifespan(app: FastAPI):
         purge_task = asyncio.create_task(purge_task_loop())
         app.state.purge_task = purge_task  # Store reference for cleanup
         print("[OK] Soft-delete cleanup task scheduled (runs every 24h)")
+
+        # Kafka producer and Audit Consumer initialization (#1085)
+        try:
+            from .services.kafka_producer import get_kafka_producer
+            from .services.audit_consumer import start_audit_loop
+            producer = get_kafka_producer()
+            await producer.start()
+            start_audit_loop()
+            app.state.kafka_producer = producer
+            print("[OK] Kafka Producer and Audit Consumer initialized")
+        except Exception as e:
+            logger.warning(f"Kafka/Audit initialization failed: {e}")
+            print(f"[WARNING] Event-sourced audit trail falling back to mock mode: {e}")
         
     except Exception as e:
         print(f"[ERROR] Database initialization failed: {e}")
@@ -182,6 +195,12 @@ async def lifespan(app: FastAPI):
             logger.info("Redis connection closed successfully")
         except Exception as e:
             logger.error(f"Error closing Redis connection: {e}")
+
+    # Stop Kafka Producer (#1085)
+    if hasattr(app.state, 'kafka_producer'):
+        logger.info("Stopping Kafka Producer...")
+        await app.state.kafka_producer.stop()
+        logger.info("Kafka Producer stopped successfully")
     
     # Dispose database engine if needed
     try:

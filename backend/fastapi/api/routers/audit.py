@@ -7,6 +7,11 @@ from ..services.audit_service import AuditService
 from ..models import User
 from ..routers.auth import get_current_user, require_admin
 from ..schemas import AuditLogResponse, AuditLogListResponse, AuditExportResponse
+from ..services.kafka_producer import get_kafka_producer
+from ..models import AuditSnapshot
+from fastapi.responses import StreamingResponse
+import asyncio
+import json
 
 router = APIRouter()
 
@@ -212,3 +217,41 @@ async def cleanup_expired_logs(
         "message": f"Cleaned up {deleted_count} expired audit logs",
         "deleted_count": deleted_count
     }
+
+async def event_generator(request: Request):
+    """Generator for live audit events using the internal Event Queue (#1085)."""
+    producer = get_kafka_producer()
+    while True:
+        if await request.is_disconnected():
+            break
+        # Wait for a new event from the producer's live queue
+        event_data = await producer.live_events.get()
+        yield f"data: {json.dumps(event_data)}\n\n"
+
+@router.get("/stream")
+async def audit_stream(request: Request, current_user: User = Depends(require_admin)):
+    """Admin-only SSE stream for live audit events."""
+    return StreamingResponse(event_generator(request), media_type="text/event-stream")
+
+@router.get("/snapshots", response_model=List[Dict[str, Any]])
+async def get_audit_snapshots(
+    entity: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Retrieve audit history from the compacted snapshot table."""
+    from sqlalchemy import select
+    query = select(AuditSnapshot).order_by(AuditSnapshot.timestamp.desc()).limit(100)
+    if entity:
+        query = query.filter(AuditSnapshot.entity == entity)
+    
+    result = await db.execute(query)
+    snapshots = result.scalars().all()
+    return [{
+        "id": s.id,
+        "type": s.event_type,
+        "entity": s.entity,
+        "entity_id": s.entity_id,
+        "payload": s.payload,
+        "timestamp": s.timestamp.isoformat() if s.timestamp else None
+    } for s in snapshots]
