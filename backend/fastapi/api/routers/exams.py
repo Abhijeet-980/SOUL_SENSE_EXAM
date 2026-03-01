@@ -160,6 +160,34 @@ async def submit_exam(
         )
         raise HTTPException(status_code=500, detail="Failed to persist exam responses.")
 
+    logger.info(
+        "Batch exam submission accepted",
+        extra={
+            "user_id": current_user.id,
+            "session_id": payload.session_id,
+            "answer_count": len(payload.answers),
+            "is_draft": payload.is_draft,
+        },
+    )
+
+    # ------------------------------------------------------------------
+    # Mark session as SUBMITTED if not a draft
+    # ------------------------------------------------------------------
+    if not payload.is_draft:
+        ExamService.mark_as_submitted(db, current_user.id, payload.session_id)
+
+    return {
+        "status": "accepted",
+        "session_id": payload.session_id,
+        "answer_count": len(payload.answers),
+        "is_draft": payload.is_draft,
+        "message": (
+            "Draft saved. Submit with is_draft=false to score your exam."
+            if payload.is_draft
+            else "Exam submitted successfully. Proceed to /complete to record your score."
+        ),
+    }
+
 
 @router.post("/{session_id}/responses", status_code=201)
 async def save_response(

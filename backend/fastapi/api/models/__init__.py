@@ -551,6 +551,25 @@ class Response(Base):
         Index('idx_response_agegroup_timestamp', 'detailed_age_group', 'timestamp'),
     )
 
+class ExamSession(Base):
+    """Tracks the state of an exam workflow to prevent business logic abuse."""
+    __tablename__ = 'exam_sessions'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String, unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    status = Column(String, default='STARTED') # STARTED, IN_PROGRESS, SUBMITTED, COMPLETED, ABANDONED
+    started_at = Column(DateTime, default=datetime.utcnow)
+    submitted_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    
+    user = relationship("User")
+
+    __table_args__ = (
+        Index('idx_exam_session_user_status', 'user_id', 'status'),
+    )
+
 class Question(Base):
     __tablename__ = 'question_bank'
     id = Column(Integer, primary_key=True, autoincrement=True)
