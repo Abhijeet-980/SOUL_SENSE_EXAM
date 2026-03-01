@@ -100,30 +100,20 @@ class UserEncryptionKey(Base):
 
 class TenantQuota(Base):
     """
-    Manages resource quotas and rate limits for individual tenants (#1135).
-    Supports different tiers (Free, Professional, Enterprise).
+    Multi-tenant rate limiting and quota management (#1135).
+    Replaces static fixed-rate limits with a Dynamic Token Bucket + Daily Quotas.
     """
     __tablename__ = 'tenant_quotas'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    tenant_id = Column(UUID(as_uuid=True), unique=True, index=True, nullable=False)
-    tier = Column(String, default="free") 
-    
-    # Rate Limiting (Token Bucket parameters)
-    max_tokens = Column(Integer, default=100)
-    refill_rate = Column(Float, default=1.0) # tokens per second
-    
-    # Daily Quotas
+    tenant_id = Column(UUID(as_uuid=True), primary_key=True, index=True)
+    tier = Column(String, default="free") # free, pro, enterprise
+    max_tokens = Column(Integer, default=50) # burst capacity
+    refill_rate = Column(Float, default=0.5) # tokens per second
     daily_request_limit = Column(Integer, default=1000)
+    ml_units_daily_limit = Column(Integer, default=20)
+    
+    # State
     daily_request_count = Column(Integer, default=0)
-    last_reset_date = Column(DateTime, default=lambda: datetime.now(UTC))
-    
-    # Heavy Compute (ML/NLP) Quotas
-    ml_units_daily_limit = Column(Integer, default=50)
     ml_units_daily_count = Column(Integer, default=0)
-    
-    is_active = Column(Boolean, default=True)
-    custom_settings = Column(JSON, nullable=True) 
     
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 

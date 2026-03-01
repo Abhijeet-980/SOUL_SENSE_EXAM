@@ -349,13 +349,15 @@ def create_app() -> FastAPI:
     from .middleware.feature_flags import feature_flag_middleware
     from .middleware.redaction_middleware import redaction_middleware
     
-    # Internal Middlewares (Inner to Outer)
-    # The last one added is the first one receiving the request.
-    # Order: App -> CircuitBreaker -> DynamicQuota -> RBAC
+    # --- Middleware Stack (Outer to Inner) ---
+    # In FastAPI, the LAST middleware added is the FIRST to receive the request.
+    # Logic: 1. RBAC (Auth) -> 2. Quota (Limits) -> 3. CircuitBreaker (Health)
+    
     from .middleware.circuit_breaker_middleware import CircuitBreakerMiddleware
-    app.add_middleware(CircuitBreakerMiddleware)
-    app.add_middleware(DynamicQuotaMiddleware)
-    app.add_middleware(BaseHTTPMiddleware, dispatch=rbac_middleware)
+    app.add_middleware(CircuitBreakerMiddleware) # Executed 3rd
+    app.add_middleware(DynamicQuotaMiddleware)   # Executed 2nd
+    app.add_middleware(BaseHTTPMiddleware, dispatch=rbac_middleware) # Executed 1st
+    
     app.add_middleware(BaseHTTPMiddleware, dispatch=feature_flag_middleware)
     app.add_middleware(BaseHTTPMiddleware, dispatch=redaction_middleware)
 
