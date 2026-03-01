@@ -222,8 +222,16 @@ class UserService:
                 user.is_deleted = True
                 user.is_active = False
                 user.deleted_at = datetime.now(UTC)
+                # Bump version to clear cache for deleted account (#1143)
+                user.version = (getattr(user, 'version', 0) or 0) + 1
                 
             await self.db.commit()
+            
+            if not permanent:
+                 from .cache_service import cache_service
+                 await cache_service.update_version("user", user.id, user.version)
+                 await cache_service.broadcast_invalidation(f"user_data:{user.id}", is_prefix=False)
+                 
             return True
         except Exception as e:
             await self.db.rollback()
@@ -246,10 +254,16 @@ class UserService:
         user.is_deleted = False
         user.is_active = True
         user.deleted_at = None
+        user.version = (getattr(user, 'version', 0) or 0) + 1
         
         try:
             await self.db.commit()
             await self.db.refresh(user)
+            
+            from .cache_service import cache_service
+            await cache_service.update_version("user", user.id, user.version)
+            await cache_service.broadcast_invalidation(f"user_data:{user.id}", is_prefix=False)
+            
             return user
         except Exception as e:
             await self.db.rollback()
@@ -330,8 +344,14 @@ class UserService:
         }
 
     async def update_last_login(self, user_id: int) -> None:
-        """Update user's last login timestamp."""
+        """Update user's last login timestamp and bump version for consistency."""
         user = await self.get_user_by_id(user_id)
         if user:
             user.last_login = datetime.now(UTC).isoformat()
+            user.version = (getattr(user, 'version', 0) or 1) + 1
             await self.db.commit()
+            
+            from .cache_service import cache_service
+            await cache_service.update_version("user", user.id, user.version)
+            # We don't necessarily broadcast invalidation for every login pulse
+            # unless we cache the 'last_login' value heavily.

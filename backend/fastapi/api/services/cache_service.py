@@ -187,11 +187,21 @@ class CacheService:
         cached_version = cached_data.get("version", 0)
         latest_version = await self.get_latest_version(entity_type, entity_id)
 
+        # Fallback for missing latest_version in Redis: assume at least 1 if entity exists
+        if latest_version == 0 and cached_version > 0:
+            logger.debug(f"[GenVersion] Missing latest_version in Redis for {entity_type}:{entity_id}. Assuming cached is acceptable.")
+            return cached_data
+
         if cached_version < latest_version:
             logger.info(f"[GenVersion] Cache stale for {key}: cached={cached_version} latest={latest_version}. Purging.")
             await self.delete(key)
             return None
         
         return cached_data
+
+    async def purge_stale_cache(self, key: str, entity_type: str, entity_id: Any):
+        """Forcefully purge an entry if it's known to be stale."""
+        await self.delete(key)
+        # We don't necessarily update_version here as this is a read-side cleanup
 
 cache_service = CacheService()

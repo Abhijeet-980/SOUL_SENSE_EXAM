@@ -273,7 +273,12 @@ class AuthService:
             user = result.scalar_one_or_none()
             if user:
                 user.is_2fa_enabled = True
+                user.version = (getattr(user, 'version', 0) or 1) + 1
                 await self.db.commit()
+                
+                from .cache_service import cache_service
+                await cache_service.update_version("user", user.id, user.version)
+                await cache_service.broadcast_invalidation(f"user_data:{user.id}", is_prefix=False)
                 return True
         return False
 
@@ -284,7 +289,12 @@ class AuthService:
         user = result.scalar_one_or_none()
         if user:
             user.is_2fa_enabled = False
+            user.version = (getattr(user, 'version', 0) or 1) + 1
             await self.db.commit()
+            
+            from .cache_service import cache_service
+            await cache_service.update_version("user", user.id, user.version)
+            await cache_service.broadcast_invalidation(f"user_data:{user.id}", is_prefix=False)
             return True
         return False
 
@@ -296,12 +306,16 @@ class AuthService:
             user = result.scalar_one_or_none()
             if user:
                 user.last_login = datetime.now(timezone.utc).isoformat()
+                user.version = (getattr(user, 'version', 0) or 1) + 1
                 await self.db.commit()
-                logger.info(f"Updated last_login for user_id={user_id}")
+                logger.info(f"Updated last_login for user_id={user_id} (v={user.version})")
+                
                 try:
+                    from .cache_service import cache_service
+                    await cache_service.update_version("user", user_id, user.version)
                     await mark_write(user.username)
                 except Exception as e:
-                    logger.warning(f"Failed to mark write in Redis: {e}")
+                    logger.warning(f"Failed to record version/mark write in Redis: {e}")
         except Exception as e:
             await self.db.rollback()
             logger.error(f"Failed to update last_login: {e}")
@@ -407,11 +421,13 @@ class AuthService:
             await self.db.commit()
             await self.db.refresh(new_user)
             
-            # CONSISTENCY: Guard subsequent reads for this user (Read-Your-Own-Writes)
+            # CONSISTENCY: Ensure initial version (1) is in Redis truth mapping (#1143)
             try:
+                from .cache_service import cache_service
+                await cache_service.update_version("user", new_user.id, new_user.version)
                 await mark_write(new_user.username)
             except Exception as e:
-                logger.warning(f"Failed to mark write in Redis: {e}")
+                logger.warning(f"Failed to seed version/mark write in Redis: {e}")
             
             return True, new_user, "Registration successful. Please verify your email."
         except Exception as e:
@@ -572,11 +588,16 @@ class AuthService:
                 return False, f"Cannot reuse any of your last {PASSWORD_HISTORY_LIMIT} passwords."
 
             user.password_hash = get_password_hash(new_password)
+            user.version = (getattr(user, 'version', 0) or 1) + 1
             self.db.add(PasswordHistory(user_id=user.id, password_hash=user.password_hash))
             await self.db.execute(
                 update(RefreshToken).filter(RefreshToken.user_id == user.id).values(is_revoked=True)
             )
             await self.db.commit()
+            
+            from .cache_service import cache_service
+            await cache_service.update_version("user", user.id, user.version)
+            await cache_service.broadcast_invalidation(f"user_data:{user.id}", is_prefix=False)
             return True, "Password reset successfully."
         except Exception as e:
             await self.db.rollback()
@@ -608,7 +629,12 @@ class AuthService:
                 user = user_res.scalar_one_or_none()
                 if user:
                     user.oauth_sub = sub
+                    user.version = (getattr(user, 'version', 0) or 1) + 1
                     await self.db.commit()
+                    
+                    from .cache_service import cache_service
+                    await cache_service.update_version("user", user.id, user.version)
+                    await cache_service.broadcast_invalidation(f"user_data:{user.id}", is_prefix=False)
                     return user
         
         username = await self.generate_oauth_username(email or sub)
