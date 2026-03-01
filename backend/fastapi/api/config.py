@@ -100,6 +100,11 @@ class BaseAppSettings(BaseSettings):
     )
 
     @property
+    def is_production(self) -> bool:
+        """Alias for checking if environment is production."""
+        return self.app_env == "production"
+
+    @property
     def ENVIRONMENT(self) -> str:
         """Alias for app_env to match issue requirements."""
         return self.app_env
