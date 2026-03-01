@@ -63,6 +63,9 @@ async def run_cqrs_worker():
                 async with PrimarySessionLocal() as db:
                     await CQRSService.process_event(db, event_type, entity, event_data.get('payload', {}))
                     # logger.info(f"[CQRS] Updated projections for {entity} {event_type}")
+            
+            # Yield control to prevent CPU starvation during high-frequency events
+            await asyncio.sleep(0)
 
         except asyncio.CancelledError:
             if consumer: await consumer.stop()

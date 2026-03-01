@@ -35,6 +35,14 @@ class KafkaProducerService:
         if self.producer:
             await self.producer.stop()
 
+    def subscribe(self):
+        """Subscribe to the live events queue for local event consumption."""
+        return self.live_events
+
+    def unsubscribe(self, q):
+        """Unsubscribe from the live events queue (no-op for shared queue)."""
+        pass
+
     def queue_event(self, event_data: dict):
         """Called by SQLAlchemy listeners. Non-blocking."""
         asyncio.create_task(self.send_event(event_data))
