@@ -344,12 +344,17 @@ def create_app() -> FastAPI:
 
     # Server-side RBAC enforcement middleware
     from starlette.middleware.base import BaseHTTPMiddleware
+    from .middleware.quota_middleware import DynamicQuotaMiddleware
     from .middleware.rbac_middleware import rbac_middleware
     from .middleware.feature_flags import feature_flag_middleware
-    from .middleware.rate_limiter_sliding import sliding_rate_limit_middleware
     from .middleware.redaction_middleware import redaction_middleware
     
-    app.add_middleware(BaseHTTPMiddleware, dispatch=sliding_rate_limit_middleware)
+    # Internal Middlewares (Inner to Outer)
+    # The last one added is the first one receiving the request.
+    # Order: App -> CircuitBreaker -> DynamicQuota -> RBAC
+    from .middleware.circuit_breaker_middleware import CircuitBreakerMiddleware
+    app.add_middleware(CircuitBreakerMiddleware)
+    app.add_middleware(DynamicQuotaMiddleware)
     app.add_middleware(BaseHTTPMiddleware, dispatch=rbac_middleware)
     app.add_middleware(BaseHTTPMiddleware, dispatch=feature_flag_middleware)
     app.add_middleware(BaseHTTPMiddleware, dispatch=redaction_middleware)
