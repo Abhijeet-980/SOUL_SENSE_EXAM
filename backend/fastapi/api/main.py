@@ -184,6 +184,17 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Failed to start cache invalidation listener: {e}")
             print(f"[WARNING] Distributed cache invalidation unavailable: {e}")
         
+        # Initialize Search Index Outbox Relay (#1146)
+        try:
+            from .services.outbox_relay_service import OutboxRelayService
+            from .services.db_service import AsyncSessionLocal
+            relay_task = asyncio.create_task(OutboxRelayService.start_relay_worker(AsyncSessionLocal))
+            app.state.outbox_relay_task = relay_task
+            print("[OK] Search Index Outbox Relay worker started")
+        except Exception as e:
+            logger.warning(f"Failed to start Search Index Outbox Relay: {e}")
+            print(f"[WARNING] Search indexing might drift without outbox relay: {e}")
+
     except Exception as e:
         logger.error(f"Database initialization failed: {e}", exc_info=True)
         # Re-raise to crash the application - don't start with broken DB
@@ -212,6 +223,14 @@ async def lifespan(app: FastAPI):
             await app.state.invalidation_task
         except asyncio.CancelledError:
             logger.info("Cache invalidation listener cancelled successfully")
+
+    if hasattr(app.state, 'outbox_relay_task'):
+        logger.info("Stopping Search Index Outbox Relay worker...")
+        app.state.outbox_relay_task.cancel()
+        try:
+            await app.state.outbox_relay_task
+        except asyncio.CancelledError:
+            logger.info("Search Index Outbox Relay worker cancelled successfully")
     
     # Stop analytics scheduler
     if hasattr(app.state, 'analytics_scheduler'):

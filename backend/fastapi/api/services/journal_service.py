@@ -219,12 +219,20 @@ class JournalService:
         except Exception as e:
             logger.error(f"Gamification update failed: {e}")
             
-        # Trigger Semantic Vector Embedding
-        if generate_journal_embedding_task:
-            try:
-                generate_journal_embedding_task.delay(entry.id)
-            except Exception as e:
-                logger.error(f"Failed to queue embedding task: {e}")
+        # Transactional Outbox: Write indexing job within the same transaction
+        from ..models import OutboxEvent
+        try:
+            self.db.add(OutboxEvent(
+                topic="search_indexing",
+                payload={
+                    "journal_id": entry.id,
+                    "action": "upsert",
+                    "timestamp": datetime.now(UTC).isoformat()
+                }
+            ))
+            # No manual commit needed; outer code commits or we committed above
+        except Exception as e:
+            logger.error(f"Failed to write OutboxEvent: {e}")
 
         return entry
 
@@ -354,12 +362,20 @@ class JournalService:
         # Attach dynamic fields
         entry.reading_time_mins = round(entry.word_count / 200, 2)
         
-        # Trigger Semantic Vector Embedding Re-calculation if content changed
-        if content is not None and generate_journal_embedding_task:
-            try:
-                generate_journal_embedding_task.delay(entry.id)
-            except Exception as e:
-                logger.error(f"Failed to queue embedding task: {e}")
+        # Outbox Pattern: Queue for indexing if content changed
+        if content is not None:
+             from ..models import OutboxEvent
+             try:
+                 self.db.add(OutboxEvent(
+                     topic="search_indexing",
+                     payload={
+                         "journal_id": entry.id,
+                         "action": "upsert",
+                         "timestamp": datetime.now(UTC).isoformat()
+                     }
+                 ))
+             except Exception as e:
+                 logger.error(f"Failed to write OutboxEvent for update: {e}")
 
         return entry
 
@@ -369,6 +385,21 @@ class JournalService:
         
         entry.is_deleted = True
         entry.deleted_at = datetime.now(UTC)
+        
+        # Outbox Pattern: Job for removal from search index
+        from ..models import OutboxEvent
+        try:
+            self.db.add(OutboxEvent(
+                topic="search_indexing",
+                payload={
+                    "journal_id": entry.id,
+                    "action": "delete",
+                    "timestamp": datetime.now(UTC).isoformat()
+                }
+            ))
+        except Exception as e:
+            logger.error(f"Failed to queue outbox delete for search index: {e}")
+
         await self.db.commit()
         
         return True
