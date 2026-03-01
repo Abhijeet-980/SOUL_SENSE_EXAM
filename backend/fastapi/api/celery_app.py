@@ -1,6 +1,30 @@
 import os
+import signal
+import multiprocessing
+import logging
 from celery import Celery
 from api.config import get_settings_instance
+
+logger = logging.getLogger(__name__)
+
+# Set multiprocessing start method to 'spawn' to prevent zombie processes
+multiprocessing.set_start_method('spawn', force=True)
+
+# Handle SIGCHLD to reap zombie processes
+def sigchld_handler(signum, frame):
+    """Reap zombie processes to prevent accumulation."""
+    try:
+        while True:
+            pid, status = os.waitpid(-1, os.WNOHANG)
+            if pid == 0:
+                break
+            logger.info(f"Reaped zombie process {pid} with status {status}")
+    except OSError:
+        # No child processes
+        pass
+
+# Register the signal handler
+signal.signal(signal.SIGCHLD, sigchld_handler)
 
 settings = get_settings_instance()
 
