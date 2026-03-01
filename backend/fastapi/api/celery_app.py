@@ -48,6 +48,12 @@ celery_app.conf.update(
     task_acks_late=True, # Important for idempotent tasks; won't ack until successful
     task_reject_on_worker_lost=True,
     task_default_retry_delay=5, # Overriden by task exponential backoff
+    # Memory management to prevent fragmentation
+    worker_max_tasks_per_child=50,  # Restart worker after 50 tasks to prevent memory bloat
+    worker_prefetch_multiplier=1,   # Prefetch only 1 task per worker
+    task_time_limit=3600,           # Kill tasks that run longer than 1 hour
+    task_soft_time_limit=3300,      # Soft time limit 55 minutes
+    worker_disable_rate_limits=False,  # Enable rate limiting
 )
 
 from celery.schedules import crontab

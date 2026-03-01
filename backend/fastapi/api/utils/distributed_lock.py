@@ -2,6 +2,7 @@ import time
 import logging
 import uuid
 import threading
+import asyncio
 from typing import Optional, Any, List
 import redis
 from redlock import Redlock
@@ -12,6 +13,32 @@ logger = logging.getLogger(__name__)
 class DistributedLockError(Exception):
     """Base exception for distributed lock errors."""
     pass
+
+class AsyncLock:
+    """
+    Async lock that ensures release in finally block, even during exceptions.
+    Wraps asyncio.Lock with proper exception handling.
+    """
+    def __init__(self, lock: asyncio.Lock = None, timeout: float = None):
+        self._lock = lock or asyncio.Lock()
+        self._timeout = timeout
+        self._acquired = False
+
+    async def __aenter__(self):
+        if self._timeout:
+            try:
+                await asyncio.wait_for(self._lock.acquire(), timeout=self._timeout)
+            except asyncio.TimeoutError:
+                raise RuntimeError(f"Lock acquisition timed out after {self._timeout}s")
+        else:
+            await self._lock.acquire()
+        self._acquired = True
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self._acquired:
+            self._lock.release()
+            self._acquired = False
 
 class DistributedLock:
     """
