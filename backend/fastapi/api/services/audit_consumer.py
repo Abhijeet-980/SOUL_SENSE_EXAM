@@ -34,6 +34,9 @@ async def run_audit_consumer():
                 db.add(snapshot)
                 await db.commit()
                 # logger.debug(f"Audit event persisted: {event_data['entity']} {event_data['type']}")
+            
+            # Yield control to prevent CPU starvation
+            await asyncio.sleep(0)
 
         except asyncio.CancelledError:
             break

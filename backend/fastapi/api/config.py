@@ -99,6 +99,14 @@ class BaseAppSettings(BaseSettings):
             return url.replace("sqlite:///", "sqlite+aiosqlite:///")
         return url
 
+    # Redis configuration
+    redis_host: str = Field(default="localhost", description="Redis host")
+    redis_port: int = Field(default=6379, ge=1, le=65535, description="Redis port")
+    redis_password: Optional[str] = Field(default=None, description="Redis password")
+    redis_db: int = Field(default=0, description="Redis database index")
+    redis_url: Optional[str] = Field(default=None, description="Redis URL (if set, overrides individual host/port)")
+    redis_ttl_seconds: int = Field(default=60, description="Default lock TTL in seconds")
+
     # Deletion Grace Period
     deletion_grace_period_days: int = Field(default=30, ge=0, description="Grace period for account deletion in days")
 
@@ -332,6 +340,11 @@ class StagingSettings(BaseAppSettings):
     database_user: str = Field(..., description="Database user")
     database_password: str = Field(..., description="Database password")
 
+    # Redis staging settings
+    redis_host: str = Field(..., description="Redis host")
+    redis_port: int = Field(default=6379, ge=1, le=65535, description="Redis port")
+    redis_password: str = Field(..., description="Redis password")
+
     @field_validator('database_host')
     @classmethod
     def validate_database_host(cls, v: str) -> str:
@@ -357,6 +370,11 @@ class ProductionSettings(BaseAppSettings):
     database_name: str = Field(..., description="Database name")
     database_user: str = Field(..., description="Database user")
     database_password: str = Field(..., description="Database password")
+
+    # Redis production settings
+    redis_host: str = Field(..., description="Redis host")
+    redis_port: int = Field(default=6379, ge=1, le=65535, description="Redis port")
+    redis_password: str = Field(..., description="Redis password")
 
     @field_validator('database_host')
     @classmethod
