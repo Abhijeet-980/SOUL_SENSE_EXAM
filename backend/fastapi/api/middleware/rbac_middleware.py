@@ -126,12 +126,29 @@ async def rbac_middleware(request: Request, call_next: Callable):
             )
 
         # ── 4a. Sidecar cache lookup (no DB) ────────────────────────────
-        cached_is_admin = await rbac_permission_cache.get(username)
+        user_id_for_version = payload.get("uid")
+
+        if not user_id_for_version:
+             # Legacy token fallback: No user_id in JWT
+             log.debug("[RBAC] Legacy token (no uid) — performing one-time DB lookup for ID")
+             from sqlalchemy import select
+             from ..models import User
+             from ..services.db_service import AsyncSessionLocal
+             async with AsyncSessionLocal() as db:
+                 id_stmt = select(User.id).filter(User.username == username)
+                 id_res = await db.execute(id_stmt)
+                 user_id_for_version = id_res.scalar()
+
+        if user_id_for_version:
+            cached_is_admin = await rbac_permission_cache.get(username, user_id_for_version)
+        else:
+            cached_is_admin = None
 
         if cached_is_admin is not None:
-            # Cache hit — validate JWT claim against cached value
-            db_is_admin = cached_is_admin
-            log.debug("[RBAC] Cache hit for %s → is_admin=%s", username, db_is_admin)
+             # Cache hit — validate JWT claim against cached value
+             db_is_admin = cached_is_admin
+             log.debug("[RBAC] Cache hit for %s → is_admin=%s", username, db_is_admin)
+             request.state.user_id = user_id_for_version
         else:
             # ── 4b. Cache miss — open independent DB session ─────────────
             log.debug("[RBAC] Cache miss for %s — querying DB", username)
@@ -140,7 +157,7 @@ async def rbac_middleware(request: Request, call_next: Callable):
             from ..services.db_service import AsyncSessionLocal
 
             async with AsyncSessionLocal() as db:
-                stmt = select(User.id, User.is_admin).filter(User.username == username)
+                stmt = select(User.id, User.is_admin, User.version).filter(User.username == username)
                 result = await db.execute(stmt)
                 row = result.first()
 
@@ -149,13 +166,17 @@ async def rbac_middleware(request: Request, call_next: Callable):
                     status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
                 )
 
-            user_id_from_db, db_is_admin = row.id, row.is_admin
+            user_id_from_db, db_is_admin, current_v = row.id, row.is_admin, row.version
 
             # Populate user_id from DB (more reliable than JWT claim)
             request.state.user_id = user_id_from_db
 
-            # Write to sidecar cache for future requests
-            await rbac_permission_cache.set(username, bool(db_is_admin))
+            # Write to sidecar cache with authoritative version
+            await rbac_permission_cache.set(username, bool(db_is_admin), version=current_v)
+            
+            # Ensure Redis truth mapping is also populated for future version checks
+            from ..services.cache_service import cache_service
+            await cache_service.update_version("user", user_id_from_db, current_v)
 
         # ── 5. Privilege-escalation check ───────────────────────────────
         if bool(token_is_admin) != bool(db_is_admin):

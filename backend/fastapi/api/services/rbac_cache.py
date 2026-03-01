@@ -7,6 +7,7 @@ only on a cache miss. This decouples the RBAC check from the primary
 database session, eliminating deadlock risk under high concurrency.
 """
 
+import json
 import logging
 from typing import Optional
 from datetime import timedelta
@@ -47,27 +48,58 @@ class RBACPermissionCache:
             logger.warning(f"[RBAC Cache] Redis unavailable: {e}")
             return None
 
-    async def get(self, username: str) -> Optional[bool]:
-        """Return cached is_admin value or None on miss/error."""
+    async def get(self, username: str, user_id: int) -> Optional[bool]:
+        """
+        Return cached is_admin value with version check.
+        Decouples permission read from DB while maintaining version-consistency (#1143).
+        """
         try:
             redis = await self._get_redis()
             if redis is None:
                 return None
+            
             val = await redis.get(self._get_key(username))
             if val is None:
                 return None
-            return val == "1"
+            
+            # SIDE-EFFECT: check against global version if available
+            try:
+                data = json.loads(val)
+                cached_version = data.get("version", 0)
+                cached_is_admin = data.get("is_admin", False)
+                
+                # Get truth from Redis mapping (no DB)
+                from .cache_service import cache_service
+                latest_version = await cache_service.get_latest_version("user", user_id)
+                
+                if cached_version < latest_version:
+                    logger.info(f"[RBAC Cache] Stale permission for {username} (v{cached_version} < v{latest_version}). Invalidating.")
+                    await self.invalidate(username)
+                    return None
+                    
+                return cached_is_admin
+            except (ValueError, json.JSONDecodeError):
+                # Fallback for old "1"/"0" plain strings
+                logger.debug(f"[RBAC Cache] Legacy plain-string value for {username}. Purging.")
+                await self.invalidate(username)
+                return None
+                
         except Exception as e:
-            logger.debug(f"[RBAC Cache] get miss for {username}: {e}")
+            logger.debug(f"[RBAC Cache] get error for {username}: {e}")
             return None
 
-    async def set(self, username: str, is_admin: bool) -> None:
-        """Store the permission flag in Redis with a TTL."""
+    async def set(self, username: str, is_admin: bool, version: int = 1) -> None:
+        """Store the permission flag and version in Redis with a TTL."""
         try:
             redis = await self._get_redis()
             if redis is None:
                 return
-            await redis.setex(self._get_key(username), RBAC_CACHE_TTL_SECONDS, "1" if is_admin else "0")
+            
+            data = json.dumps({
+                "is_admin": bool(is_admin),
+                "version": int(version)
+            })
+            await redis.setex(self._get_key(username), RBAC_CACHE_TTL_SECONDS, data)
         except Exception as e:
             logger.debug(f"[RBAC Cache] set failed for {username}: {e}")
 
