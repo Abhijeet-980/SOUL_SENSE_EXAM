@@ -276,7 +276,10 @@ class OutboxEvent(Base):
     topic = Column(String, default="audit_trail", nullable=False)
     payload = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    status = Column(String, default='pending', index=True) # pending, processed
+    status = Column(String, default='pending', index=True) # pending, processed, failed
+    processed_at = Column(DateTime, nullable=True)
+    retry_count = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
 
 class AnalyticsEvent(Base):
     """Track user behavior events (e.g., signup drop-off).
@@ -536,6 +539,7 @@ class JournalEntry(Base):
     energy_level = Column(Integer, nullable=True)
     work_hours = Column(Float, nullable=True)
     stress_level = Column(Integer, nullable=True)
+    stress_triggers = Column(Text, nullable=True)
     screen_time_mins = Column(Integer, nullable=True)
     daily_schedule = Column(Text, nullable=True)
     tags = Column(Text, nullable=True)
