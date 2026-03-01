@@ -268,6 +268,7 @@ class OutboxEvent(Base):
 class AnalyticsEvent(Base):
     """Track user behavior events (e.g., signup drop-off).
     Uses anonymous_id for pre-signup tracking.
+    Environment column ensures strict separation between staging and production data.
     """
     __tablename__ = 'analytics_events'
     tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
@@ -279,7 +280,14 @@ class AnalyticsEvent(Base):
     event_data = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     ip_address = Column(String, nullable=True)
+    # Environment separation: development, staging, production
+    environment = Column(String, default="development", nullable=False, index=True)
     user = relationship("User")
+    
+    __table_args__ = (
+        Index('idx_analytics_env_timestamp', 'environment', 'timestamp'),
+        Index('idx_analytics_env_event', 'environment', 'event_name'),
+    )
 
 # ==========================================
 # CQRS READ MODELS (ISSUE-1124)
@@ -510,10 +518,13 @@ class Score(Base):
     timestamp = Column(String, default=lambda: datetime.utcnow().isoformat(), index=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
     session_id = Column(String, nullable=True, index=True)
+    # Environment separation: development, staging, production
+    environment = Column(String, default="development", nullable=False, index=True)
     
     __table_args__ = (
         Index('idx_score_age_score', 'age', 'total_score'),
         Index('idx_score_agegroup_score', 'detailed_age_group', 'total_score'),
+        Index('idx_score_env_timestamp', 'environment', 'timestamp'),
     )
 
 class Response(Base):
