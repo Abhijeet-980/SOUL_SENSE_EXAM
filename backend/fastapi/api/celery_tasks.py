@@ -319,6 +319,14 @@ async def _execute_journal_embedding(journal_entry_id: int):
                 entry.last_indexed_at = datetime.utcnow()
                 await db.commit()
                 logger.info(f"Successfully generated embedding for journal entry {journal_entry_id}")
+                
+                # Proactive Predictive Analytics for Burnout (#1133)
+                try:
+                    from .ml.burnout_detection_service import BurnoutDetectionService
+                    bs = BurnoutDetectionService(db)
+                    await bs.run_anomaly_detection(entry.user_id)
+                except Exception as e:
+                    logger.error(f"Burnout detection failed for user {entry.user_id}: {e}")
             
         except Exception as e:
             logger.error(f"Failed to generate embedding for entry {journal_entry_id}: {e}")
