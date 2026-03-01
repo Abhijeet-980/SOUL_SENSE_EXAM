@@ -188,7 +188,7 @@ class ExamService:
             raise e
 
     @staticmethod
-    async def get_history(db: AsyncSession, user: User, skip: int = 0, limit: int = 10) -> Tuple[List[Score], int]:
+    async def get_history(db: AsyncSession, user: User, skip: int = 0, limit: int = 10):
         """Retrieves paginated exam history for the specified user."""
         limit = min(limit, 100)  # Guard: cap at 100 to prevent unbounded queries
         

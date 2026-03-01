@@ -297,6 +297,7 @@ class JournalService:
         """Get a specific journal entry by ID."""
         stmt = select(JournalEntry).filter(
             JournalEntry.id == entry_id,
+            JournalEntry.user_id == current_user.id,
             JournalEntry.is_deleted == False
         )
         result = await self.db.execute(stmt)

@@ -70,16 +70,24 @@ class SurveyService:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_template_by_id(self, template_id: int) -> Optional[SurveyTemplate]:
+    async def get_template_by_id(self, template_id: int, admin_access: bool = False) -> Optional[SurveyTemplate]:
         stmt = select(SurveyTemplate).options(
             selectinload(SurveyTemplate.sections).selectinload(SurveySection.questions)
         ).where(SurveyTemplate.id == template_id)
+        
+        if not admin_access:
+            # Public access: only published and active surveys
+            stmt = stmt.where(
+                SurveyTemplate.is_active == True,
+                SurveyTemplate.status == SurveyStatus.PUBLISHED
+            )
+        
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
     async def publish_template(self, template_id: int) -> SurveyTemplate:
         """Mark a template as published. Encompasses versioning logic."""
-        template = await self.get_template_by_id(template_id)
+        template = await self.get_template_by_id(template_id, admin_access=True)
         if not template:
             raise ValueError("Template not found")
         
@@ -98,7 +106,7 @@ class SurveyService:
 
     async def create_new_version(self, template_id: int, user_id: int) -> SurveyTemplate:
         """Create a DRAFT clone of an existing template for modification."""
-        old = await self.get_template_by_id(template_id)
+        old = await self.get_template_by_id(template_id, admin_access=True)
         if not old:
             raise ValueError("Original template not found")
 
