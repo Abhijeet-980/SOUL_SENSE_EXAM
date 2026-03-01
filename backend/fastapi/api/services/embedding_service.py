@@ -42,13 +42,24 @@ class EmbeddingService:
         if self.use_openai:
             return await self._generate_openai_embedding(text)
         else:
-            return self._generate_local_embedding(text)
+            return await self._generate_local_embedding_via_proxy(text)
 
-    def _generate_local_embedding(self, text: str) -> List[float]:
-        self._load_local_model()
-        # SentenceTransformer.encode returns a numpy array, we convert to list
-        embedding = self._model.encode(text)
-        return embedding.tolist()
+    async def _generate_local_embedding_via_proxy(self, text: str) -> List[float]:
+        """ Delegates embedding generation to the isolated ML process. """
+        from ..ml.inference_server import inference_proxy
+        try:
+            embedding = inference_proxy.run_inference(
+                "generate_embedding", 
+                {"text": text, "model_name": self.model_name}
+            )
+            return embedding
+        except Exception as e:
+            logger.error(f"Inference proxy failed for embedding: {e}. Falling back to local load.")
+            # Fallback to loading it in the current process if proxy fails for some reason
+            self._load_local_model()
+            embedding = self._model.encode(text)
+            return embedding.tolist()
+
 
     async def _generate_openai_embedding(self, text: str) -> List[float]:
         try:

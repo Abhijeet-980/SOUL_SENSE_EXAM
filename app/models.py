@@ -10,6 +10,14 @@ from sqlalchemy.engine import Engine, Connection
 from typing import List, Optional, Any, Dict, Tuple, Union
 from datetime import datetime, timedelta, UTC
 import logging
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    # Mock Vector for non-postgres environments
+    class Vector(Text):
+        def __init__(self, dim):
+            self.dim = dim
+            super().__init__()
 
 # Define Base
 Base = declarative_base()
@@ -405,6 +413,9 @@ class JournalEntry(Base):
     deleted_at = Column(DateTime(timezone=True), nullable=True)
     privacy_level = Column(String, default="private", index=True)
     word_count = Column(Integer, default=0)
+    embedding = Column(Vector(384), nullable=True) # Default dimension for all-MiniLM-L6-v2
+    embedding_model = Column(String, nullable=True) # Track which model was used
+    last_indexed_at = Column(DateTime, nullable=True)
 
 class SatisfactionRecord(Base):
     __tablename__ = 'satisfaction_records'
