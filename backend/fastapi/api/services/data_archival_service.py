@@ -168,87 +168,50 @@ class DataArchivalService:
     @staticmethod
     async def execute_hard_purges(db: AsyncSession) -> int:
         """
-        Background worker function to permanently delete users whose 30-day grace period has expired.
-        Returns the number of users purged.
+        Idempotent worker factor:
+        1. Find new users past the 30-day grace period and start their saga.
+        2. Find and resume any 'PENDING', 'ASSETS_DELETED', or 'FAILED' sagas.
         """
+        # --- PHASE 1: Start new sagas for expired users ---
         threshold_date = datetime.now(UTC) - timedelta(days=30)
         stmt = select(User.id).where(
             User.is_deleted == True,
             User.deleted_at <= threshold_date
         )
         result = await db.execute(stmt)
-        user_ids_to_purge = result.scalars().all()
+        user_ids = result.scalars().all()
+        
+        # --- PHASE 2: Re-fetch user_ids from incomplete sagas to ensure progress ---
+        saga_stmt = select(GDPRScrubLog.user_id).where(
+            GDPRScrubLog.status.in_(['PENDING', 'ASSETS_DELETED', 'FAILED'])
+        )
+        saga_res = await db.execute(saga_stmt)
+        pending_ids = saga_res.scalars().all()
+        
+        # Combine and deduplicate
+        all_ids_to_process = list(set(user_ids) | set(pending_ids))
         
         count = 0
-        for user_id in user_ids_to_purge:
+        for user_id in all_ids_to_process:
             try:
-                # Use Distributed Scrubber to purge all stores (Storage, SQL, Vector)
+                # scrub_user is now idempotent and saga-based
                 await scrubber_service.scrub_user(db, user_id)
-                count += 1
-                logger.info(f"GDPR: Hard purge completed for user {user_id}")
+                
+                # Check if it actually completed to count it
+                status = await scrubber_service.get_scrub_status_by_user(db, user_id)
+                if status == 'COMPLETED':
+                    count += 1
+                    logger.info(f"GDPR: Hard purge completed for user {user_id}")
             except Exception as e:
-                logger.error(f"Failed to hard purge user {user_id}: {e}")
+                logger.error(f"GDPR: Saga execution failed for user {user_id}: {e}")
                 continue
             
         return count
 
     @staticmethod
-    async def archive_stale_journals(db: AsyncSession) -> int:
-        """
-        Automated Cold Storage Archival Pipeline (#1125).
-        Moves 2+ year old journals to S3.
-        """
-        from ..config import get_settings_instance
-        from .storage_service import get_storage_service
-        
-        settings = get_settings_instance()
-        storage = get_storage_service()
-        threshold = datetime.now(UTC) - timedelta(days=settings.archival_threshold_years * 365)
-        
-        # We fetch 50 entries at a time to avoid overwhelming the worker or database
-        stmt = select(JournalEntry).filter(
-            JournalEntry.is_deleted == False,
-            JournalEntry.archive_pointer == None
-        ).limit(50)
-        
+    async def get_scrub_status_by_user(db: AsyncSession, user_id: int) -> Optional[str]:
+        """Helper to get status by user_id."""
+        from ..models import GDPRScrubLog
+        stmt = select(GDPRScrubLog.status).where(GDPRScrubLog.user_id == user_id).order_by(GDPRScrubLog.updated_at.desc())
         res = await db.execute(stmt)
-        entries = res.scalars().all()
-        
-        archived_count = 0
-        for entry in entries:
-            try:
-                # Parse timestamp (SQLite stores as ISO String)
-                ts = entry.timestamp
-                if not ts: continue
-                entry_date = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-                
-                if entry_date > threshold:
-                    continue
-                
-                # 1. Transmit encrypted ciphertext to S3
-                key = f"archives/journals/{entry.tenant_id or 'global'}/{entry.user_id}/{entry.id}.enc"
-                metadata = {
-                    "user_id": str(entry.user_id),
-                    "tenant_id": str(entry.tenant_id),
-                    "archived_at": datetime.now(UTC).isoformat()
-                }
-                
-                pointer = storage.upload_encrypted_content(
-                    key=key,
-                    content=entry.content, # Preserves ENC: ciphertext
-                    metadata=metadata
-                )
-                
-                # 2. Update DB: Store pointer and clear hot content
-                entry.archive_pointer = pointer
-                entry.content = None 
-                archived_count += 1
-                
-            except Exception as e:
-                logger.error(f"Failed to archive journal {entry.id}: {e}")
-                
-        if archived_count > 0:
-            await db.commit()
-            logger.info(f"Archival Pipeline: Successfully moved {archived_count} journals to cold storage.")
-        
-        return archived_count
+        return res.scalar_one_or_none()

@@ -47,6 +47,7 @@ class User(Base):
     otp_secret = Column(String, nullable=True) # TOTP Secret
     is_2fa_enabled = Column(Boolean, default=False, nullable=False)
     last_activity = Column(String, nullable=True) # Track idle time
+    version = Column(Integer, default=1, nullable=False) # Generation-based caching (#1143)
 
     # RBAC Roles
     is_admin = Column(Boolean, default=False, nullable=False)
@@ -96,6 +97,25 @@ class UserEncryptionKey(Base):
     wrapped_dek = Column(String, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     user = relationship("User", back_populates="encryption_key")
+
+class TenantQuota(Base):
+    """
+    Multi-tenant rate limiting and quota management (#1135).
+    Replaces static fixed-rate limits with a Dynamic Token Bucket + Daily Quotas.
+    """
+    __tablename__ = 'tenant_quotas'
+    tenant_id = Column(UUID(as_uuid=True), primary_key=True, index=True)
+    tier = Column(String, default="free") # free, pro, enterprise
+    max_tokens = Column(Integer, default=50) # burst capacity
+    refill_rate = Column(Float, default=0.5) # tokens per second
+    daily_request_limit = Column(Integer, default=1000)
+    ml_units_daily_limit = Column(Integer, default=20)
+    
+    # State
+    daily_request_count = Column(Integer, default=0)
+    ml_units_daily_count = Column(Integer, default=0)
+    
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
 class NotificationPreference(Base):
     """User preferences for notification channels."""
@@ -280,6 +300,35 @@ class OutboxEvent(Base):
     processed_at = Column(DateTime, nullable=True)
     retry_count = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
+
+class GDPRScrubLog(Base):
+    """
+    Saga Pattern for GDPR Scrubbing (Right to be Forgotten #1144).
+    Tracks the state of a multi-system "Hard Purge" (SQL, S3, Vector).
+    """
+    __tablename__ = 'gdpr_scrub_logs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    username = Column(String, nullable=False)
+    scrub_id = Column(String, unique=True, index=True, nullable=False)
+    
+    # State Machine: PENDING, ASSETS_DELETED, SQL_PURGED, FAILED
+    status = Column(String, default='PENDING', index=True)
+    
+    # Checkpoints for idempotency
+    storage_deleted = Column(Boolean, default=False)
+    vector_deleted = Column(Boolean, default=False)
+    sql_deleted = Column(Boolean, default=False)
+    
+    # Store references to external files (S3 paths, local paths)
+    assets_to_delete = Column(JSON, nullable=True)
+    
+    # Failure tracking
+    retry_count = Column(Integer, default=0)
+    last_error = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class AnalyticsEvent(Base):
     """Track user behavior events (e.g., signup drop-off).

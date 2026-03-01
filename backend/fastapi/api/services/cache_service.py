@@ -148,4 +148,50 @@ class CacheService:
             await pubsub.unsubscribe("soulsense_cache_invalidation")
             await pubsub.close()
 
+    # ==========================================
+    # Generation-based Versioning (ISSUE-1143)
+    # ==========================================
+
+    async def update_version(self, entity_type: str, entity_id: Any, version: int):
+        """Update the authoritative version for an entity in Redis."""
+        await self.connect()
+        try:
+            key = f"version:{entity_type}:{entity_id}"
+            await self.redis.set(key, version) # No TTL, this is the persistent truth
+            logger.debug(f"[GenVersion] Updated {key} -> {version}")
+        except Exception as e:
+            logger.error(f"[GenVersion] Update failed for {entity_type}:{entity_id}: {e}")
+
+    async def get_latest_version(self, entity_type: str, entity_id: Any) -> int:
+        """Get the authoritative version for an entity from Redis."""
+        await self.connect()
+        try:
+            key = f"version:{entity_type}:{entity_id}"
+            val = await self.redis.get(key)
+            return int(val) if val else 0
+        except Exception as e:
+            logger.error(f"[GenVersion] Get failed for {entity_type}:{entity_id}: {e}")
+            return 0
+
+    async def get_with_version_check(self, key: str, entity_type: str, entity_id: Any) -> Optional[Any]:
+        """
+        Retrieves data from cache and verifies it against the 
+        global authoritative generation/version from Redis.
+        Ensures nodes that missed invalidation eventually catch up.
+        """
+        cached_data = await self.get(key)
+        if not cached_data:
+            return None
+        
+        # Verify version
+        cached_version = cached_data.get("version", 0)
+        latest_version = await self.get_latest_version(entity_type, entity_id)
+
+        if cached_version < latest_version:
+            logger.info(f"[GenVersion] Cache stale for {key}: cached={cached_version} latest={latest_version}. Purging.")
+            await self.delete(key)
+            return None
+        
+        return cached_data
+
 cache_service = CacheService()

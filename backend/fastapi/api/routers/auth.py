@@ -65,6 +65,7 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
             raise TokenExpiredError("Token has been revoked")
 
         username: str = payload.get("sub")
+        user_id_from_token = payload.get("uid") # New field for GenVersion (#1143)
         if not username:
             raise InvalidCredentialsError()
     except JWTError:
@@ -77,7 +78,13 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
 
     from ..services.cache_service import cache_service
     cache_key = f"user_rbac:{username}"
-    user_data = await cache_service.get(cache_key)
+    # Use version-based check to catch stale nodes that missed invalidation (#1143)
+    user_data = None
+    if user_id_from_token:
+        user_data = await cache_service.get_with_version_check(cache_key, "user", user_id_from_token)
+    else:
+        # Fallback for legacy tokens without uid: check normally but don't assume versioning is safe
+        user_data = await cache_service.get(cache_key)
 
     if user_data:
         class CachedUser:
@@ -101,9 +108,12 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
             "is_deleted": user.is_deleted,
             "deleted_at": user.deleted_at.isoformat() if user.deleted_at else None,
             "is_admin": getattr(user, 'is_admin', False),
-            "onboarding_completed": getattr(user, 'onboarding_completed', False)
+            "onboarding_completed": getattr(user, 'onboarding_completed', False),
+            "version": getattr(user, 'version', 1) # Include version for generation check
         }
         await cache_service.set(cache_key, user_data, 3600)
+        # Ensure authoritative version is also in Redis mapping
+        await cache_service.update_version("user", user.id, user_data["version"])
     
     request.state.user_id = user.id
     if not getattr(user, 'is_active', True):
@@ -198,22 +208,11 @@ async def login(
         response.status_code = status.HTTP_202_ACCEPTED
         return TwoFactorAuthRequiredResponse(pre_auth_token=pre_auth_token)
 
-    # PR 10: Session Fixation Protection - Revoke any existing session cookie
-    old_refresh_token = request.cookies.get("refresh_token")
-    if old_refresh_token:
-        auth_service.revoke_refresh_token(old_refresh_token)
-
-    # Standard Login
-    access_token = auth_service.create_access_token(
-        data={"sub": user.username}
-    )
-    
-    refresh_token = auth_service.create_refresh_token(user.id)
-    has_multiple_sessions = auth_service.has_multiple_active_sessions(user.id)
-
-    
-    # Set refresh token in HttpOnly cookie with security flags from settings
-    access_token = auth_service.create_access_token(data={"sub": user.username, "tid": str(user.tenant_id) if user.tenant_id else None})
+    access_token = auth_service.create_access_token(data={
+        "sub": user.username, 
+        "uid": user.id, 
+        "tid": str(user.tenant_id) if user.tenant_id else None
+    })
     refresh_token = await auth_service.create_refresh_token(user.id)
     has_multiple_sessions = await auth_service.has_multiple_active_sessions(user.id)
 
@@ -563,7 +562,10 @@ async def oauth_login(
         user = await auth_service.get_or_create_oauth_user(user_info)
         
         # Issue tokens
-        new_access_token = auth_service.create_access_token(data={"sub": user.username})
+        new_access_token = auth_service.create_access_token(data={
+            "sub": user.username, 
+            "uid": user.id
+        })
         refresh_token = await auth_service.create_refresh_token(user.id)
         
         response.set_cookie(
