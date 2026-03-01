@@ -13,11 +13,17 @@ from ..config import get_settings_instance, get_settings
 
 settings = get_settings_instance()
 
-# Create async engine
+# Create async engine with optimized connection pooling for high concurrency
 engine = create_async_engine(
     settings.async_database_url,
     echo=settings.debug,
     future=True,
+    # Connection pooling configuration for high concurrency
+    pool_size=20,                    # Core pool size - maintain 20 persistent connections
+    max_overflow=10,                 # Allow up to 10 additional connections when pool is full
+    pool_timeout=30,                 # Wait up to 30 seconds for a connection from the pool
+    pool_pre_ping=True,              # Verify connections are alive before using them
+    pool_recycle=3600,               # Recycle connections after 1 hour to prevent stale connections
     connect_args={"check_same_thread": False} if settings.database_type == "sqlite" else {}
 )
 

@@ -58,12 +58,29 @@ class BaseAppSettings(BaseSettings):
     replica_database_url: Optional[str] = Field(
         default=None, 
         description="Read-replica database URL"
-    )
-
+    )    # Connection pooling configuration
+    use_pgbouncer: bool = Field(default=False, description="Use PgBouncer for connection pooling")
+    pgbouncer_host: str = Field(default="localhost", description="PgBouncer host")
+    pgbouncer_port: int = Field(default=6432, description="PgBouncer port")
     @property
     def async_database_url(self) -> str:
         """Construct asynchronous database URL."""
         url = self.database_url
+
+        # Use PgBouncer for PostgreSQL in production
+        if self.use_pgbouncer and url.startswith("postgresql://"):
+            # Replace host and port with PgBouncer settings
+            import re
+            # Extract current host and port
+            match = re.match(r'postgresql://([^:/@]+)(?::(\d+))?', url)
+            if match:
+                current_host = match.group(1)
+                current_port = match.group(2) or "5432"
+                # Replace with PgBouncer host and port
+                url = url.replace(f"{current_host}:{current_port}", f"{self.pgbouncer_host}:{self.pgbouncer_port}")
+                url = url.replace(f"{current_host}", f"{self.pgbouncer_host}:{self.pgbouncer_port}")
+
+        # Convert to async driver
         if url.startswith("postgresql://"):
             return url.replace("postgresql://", "postgresql+asyncpg://")
         elif url.startswith("sqlite:///"):
