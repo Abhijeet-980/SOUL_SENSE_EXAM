@@ -281,6 +281,35 @@ class OutboxEvent(Base):
     retry_count = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
 
+class GDPRScrubLog(Base):
+    """
+    Saga Pattern for GDPR Scrubbing (Right to be Forgotten #1144).
+    Tracks the state of a multi-system "Hard Purge" (SQL, S3, Vector).
+    """
+    __tablename__ = 'gdpr_scrub_logs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    username = Column(String, nullable=False)
+    scrub_id = Column(String, unique=True, index=True, nullable=False)
+    
+    # State Machine: PENDING, ASSETS_DELETED, SQL_PURGED, FAILED
+    status = Column(String, default='PENDING', index=True)
+    
+    # Checkpoints for idempotency
+    storage_deleted = Column(Boolean, default=False)
+    vector_deleted = Column(Boolean, default=False)
+    sql_deleted = Column(Boolean, default=False)
+    
+    # Store references to external files (S3 paths, local paths)
+    assets_to_delete = Column(JSON, nullable=True)
+    
+    # Failure tracking
+    retry_count = Column(Integer, default=0)
+    last_error = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class AnalyticsEvent(Base):
     """Track user behavior events (e.g., signup drop-off).
     Uses anonymous_id for pre-signup tracking.
