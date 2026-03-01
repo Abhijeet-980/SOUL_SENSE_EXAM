@@ -13,6 +13,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import OperationalError, DatabaseError
 from fastapi import HTTPException, status
 

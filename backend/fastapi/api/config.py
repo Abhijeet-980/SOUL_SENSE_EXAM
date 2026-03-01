@@ -5,7 +5,7 @@ import secrets
 from typing import Optional, Any
 
 from dotenv import load_dotenv
-from pydantic import Field, field_validator, ValidationError
+from pydantic import Field, field_validator, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
@@ -137,16 +137,13 @@ class BaseAppSettings(BaseSettings):
         description="Allowed origins for CORS"
     )
 
-    # Security Configuration
-    ALLOWED_HOSTS: list[str] = Field(
-        default=["localhost", "127.0.0.1", "0.0.0.0"],
-        description="List of valid hostnames for Host header validation"
+    # CORS Security Settings
+    cors_allow_credentials: bool = Field(default=True, description="Allow credentials in CORS requests")
+    cors_max_age: int = Field(default=3600, description="Max age for preflight cache (seconds)")
+    cors_expose_headers: list[str] = Field(
+        default=["X-API-Version", "X-Request-ID", "X-Process-Time"],
+        description="Headers to expose via CORS"
     )
-    TRUSTED_PROXIES: list[str] = Field(
-        default=["127.0.0.1"],
-        description="List of trusted proxy IP addresses"
-    )
-
     # Redis Configuration (for rate limiting and caching)
     redis_host: str = Field(default="localhost", description="Redis host")
     redis_port: int = Field(default=6379, ge=1, le=65535, description="Redis port")
@@ -182,6 +179,74 @@ class BaseAppSettings(BaseSettings):
                     return [v]
             return v
         raise ValueError(v)
+
+    @field_validator("BACKEND_CORS_ORIGINS", mode="after")
+    @classmethod
+    def validate_cors_origins_security(cls, v: list[str], info) -> list[str]:
+        """Validate CORS origins for security issues."""
+        values = info.data
+
+        # Validate origin formats
+        for origin in v:
+            if not origin:
+                raise ValueError(
+                    f"Invalid CORS origin format: {origin}. "
+                    "Origins cannot be empty."
+                )
+            if not origin.startswith(("http://", "https://", "tauri://")) and origin != "*":
+                raise ValueError(
+                    f"Invalid CORS origin format: {origin}. "
+                    "Origins must use http://, https://, or tauri:// protocols."
+                )
+            # Check for incomplete URLs (protocol only)
+            if origin in ["http://", "https://", "tauri://"]:
+                raise ValueError(
+                    f"Invalid CORS origin format: {origin}. "
+                    "Origins must include a valid host."
+                )
+
+        # Warn about localhost in production (but don't block)
+        if values.get("app_env") == "production":
+            localhost_origins = [o for o in v if "localhost" in o or "127.0.0.1" in o]
+            if localhost_origins:
+                import warnings
+                warnings.warn(
+                    f"Production environment contains localhost origins: {localhost_origins}. "
+                    "Consider removing these for security."
+                )
+
+        return v
+
+        # Validate origin formats
+        for origin in v:
+            if not origin.startswith(("http://", "https://", "tauri://")) and origin != "*":
+                raise ValueError(
+                    f"Invalid CORS origin format: {origin}. "
+                    "Origins must use http://, https://, or tauri:// protocols."
+                )
+
+        # Warn about localhost in production (but don't block)
+        if values.get("app_env") == "production":
+            localhost_origins = [o for o in v if "localhost" in o or "127.0.0.1" in o]
+            if localhost_origins:
+                import warnings
+                warnings.warn(
+                    f"Production environment contains localhost origins: {localhost_origins}. "
+                    "Consider removing these for security."
+                )
+
+        return v
+
+    @model_validator(mode="after")
+    def validate_cors_security(self) -> "BaseAppSettings":
+        """Validate CORS security after all fields are set."""
+        if self.cors_allow_credentials and "*" in self.BACKEND_CORS_ORIGINS:
+            raise ValueError(
+                "CORS security violation: Cannot use wildcard origin (*) when allow_credentials=True. "
+                "This would allow any website to make authenticated requests to your API, "
+                "potentially leading to CSRF attacks and token theft."
+            )
+        return self
 
     model_config = SettingsConfigDict(
         env_file=str(ENV_FILE),

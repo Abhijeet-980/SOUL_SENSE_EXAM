@@ -1,7 +1,8 @@
 """Analytics service for aggregated, non-sensitive data analysis."""
 from sqlalchemy import func, case, distinct, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Dict, Tuple, Optional
+from sqlalchemy.orm import Session
+from typing import List, Dict, Tuple, Optional, Any
 from datetime import datetime, timedelta, UTC
 
 from ..models import Score, User, AnalyticsEvent
@@ -477,7 +478,7 @@ class AnalyticsService:
         event_data: Optional[Dict] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
-    ) -> ConsentEvent:
+    ) -> AnalyticsEvent:
         """
         Track a consent event (consent_given or consent_revoked).
 
@@ -499,14 +500,13 @@ class AnalyticsService:
         # Serialize event_data to JSON
         data_payload = json.dumps(event_data) if event_data else None
 
-        event = ConsentEvent(
+        event = AnalyticsEvent(
             anonymous_id=anonymous_id,
             event_type=event_type,
-            consent_type=consent_type,
-            consent_version=consent_version,
+            event_name=f"consent_{consent_type}_{event_type}",
             event_data=data_payload,
             ip_address=ip_address,
-            user_agent=user_agent,
+            environment=get_current_environment(),
             timestamp=datetime.utcnow()
         )
 

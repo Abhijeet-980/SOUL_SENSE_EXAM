@@ -430,36 +430,16 @@ class AuthService:
                 self.db.add(new_profile)
             # ─────────────────────────────────────────────────────────────────
 
+            # Refresh to get the latest data after transaction commit
             self.db.refresh(new_user)
-
-            # In a real app, send "Welcome/Verify" email here
-            new_user = User(
-                username=username_lower,
-                password_hash=hashed_pw
-            )
-            self.db.add(new_user)
-            self.db.flush()
-
-            # Record initial password in history
-            self.db.add(PasswordHistory(user_id=new_user.id, password_hash=hashed_pw))
-
-            new_profile = PersonalProfile(
-                user_id=new_user.id,
-                email=email_lower,
-                first_name=user_data.first_name,
-                last_name=user_data.last_name,
-                age=user_data.age,
-                gender=user_data.gender
-            )
-            self.db.add(new_profile)
-            await self.db.commit()
-            await self.db.refresh(new_user)
             
             # CONSISTENCY: Guard subsequent reads for this user (Read-Your-Own-Writes)
-            try:
-                await mark_write(new_user.username)
-            except Exception as e:
-                logger.warning(f"Failed to mark write in Redis: {e}")
+            # Note: mark_write is async but this method is sync, so we skip it for now
+            # TODO: Consider making this method async or handling mark_write differently
+            # try:
+            #     await mark_write(new_user.username)
+            # except Exception as e:
+            #     logger.warning(f"Failed to mark write in Redis: {e}")
             
             return True, new_user, "Registration successful. Please verify your email."
         except (OperationalError, DatabaseError) as e:

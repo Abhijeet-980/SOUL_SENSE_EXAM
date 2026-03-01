@@ -359,23 +359,46 @@ def create_app() -> FastAPI:
     app.add_middleware(BaseHTTPMiddleware, dispatch=rbac_middleware)
     app.add_middleware(BaseHTTPMiddleware, dispatch=feature_flag_middleware)
 
-    # CORS middleware
-    # In debug mode, allow all origins for easier development
+    # CORS middleware with security hardening
+    # Environment-specific configuration for security
     if settings.debug:
-        origins = ["*"]
-        allow_credentials = False  # Must be False when using wildcard origins
+        # Development: Allow localhost origins only, no credentials
+        origins = [
+            "http://localhost:3000",
+            "http://localhost:3005",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3005",
+            "tauri://localhost"
+        ]
+        allow_credentials = False  # Must be False when allowing specific origins in dev
     else:
+        # Production: Use configured origins with credential support
         origins = settings.BACKEND_CORS_ORIGINS
-        allow_credentials = True
-    
+        allow_credentials = settings.cors_allow_credentials
+
+        # Security validation: ensure no wildcard with credentials
+        if allow_credentials and "*" in origins:
+            raise ValueError(
+                "CORS configuration error: Cannot enable credentials with wildcard origins. "
+                "This creates a severe security vulnerability allowing any website to steal user tokens."
+            )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=allow_credentials,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
-        expose_headers=["X-API-Version", "X-Request-ID", "X-Process-Time", "ETag"],  # Expose request ID for frontend tracing
-        max_age=3600,  # Cache preflight requests for 1 hour
+        allow_headers=[
+            "Content-Type",
+            "Authorization",
+            "Accept",
+            "Origin",
+            "X-Requested-With",
+            "X-API-Key",
+            "X-Request-ID"
+        ],
+        expose_headers=settings.cors_expose_headers,
+        max_age=settings.cors_max_age,  # Configurable preflight cache
     )
     
     # Version header middleware
