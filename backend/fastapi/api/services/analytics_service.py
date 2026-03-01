@@ -6,7 +6,7 @@ from typing import List, Dict, Tuple, Optional, Any
 from datetime import datetime, timedelta, UTC
 
 from ..models import Score, User, AnalyticsEvent
-from ..utils.environment_context import get_current_environment
+from ..utils.telemetry import get_telemetry_exporter
 
 
 class AnalyticsService:
@@ -41,6 +41,18 @@ class AnalyticsService:
         db.add(event)
         await db.commit()
         await db.refresh(event)
+
+        # Emit telemetry event via the reliable exporter (Issue #1193)
+        exporter = get_telemetry_exporter()
+        exporter.emit(
+            event_name=f"event.{event_data['event_type']}",
+            value=1,
+            tags={
+                "name": event_data['event_name'],
+                "anonymous_id": event_data['anonymous_id']
+            }
+        )
+
         return event
 
     @staticmethod

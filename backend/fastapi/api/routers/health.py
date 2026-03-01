@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..schemas import HealthResponse, ServiceStatus
 from ..services.db_service import get_db
 from ..config import get_settings
+from poison_resistant_lock import PoisonResistantLock, register_lock
 
 router = APIRouter()
 logger = logging.getLogger("api.health")
@@ -36,7 +37,10 @@ class HealthCache:
         self.ttl = ttl_seconds
         self._cache: Dict[str, Any] = {}
         self._timestamp: float = 0
-        self._lock = threading.Lock()
+        self._lock = PoisonResistantLock()
+        
+        # Register lock for monitoring
+        register_lock(self._lock)
     
     def get(self) -> Optional[Dict[str, Any]]:
         """Get cached result if still valid."""
