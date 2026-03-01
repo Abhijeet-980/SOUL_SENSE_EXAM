@@ -21,8 +21,10 @@ class BurnoutDetectionService:
     async def run_anomaly_detection(self, user_id: int) -> Dict[str, Any]:
         """
         Analyzes a sliding 30-day window of sentiment_score and stress_level.
-        Implements Z-Score based trend analysis to detect significant negative deviations.
+        Implements Z-Score based trend analysis via a dedicated Inference Proxy.
         """
+        from .inference_server import inference_proxy
+
         # 1. Fetch historical data (Personal Baseline)
         thirty_days_ago = (datetime.now(UTC) - timedelta(days=30)).strftime("%Y-%m-%d")
         
@@ -40,10 +42,9 @@ class BurnoutDetectionService:
             # Need at least 5 points for a statistical baseline
             return {"status": "insufficient_data", "count": len(entries)}
 
-        # 2. Extract metrics
+        # 2. Extract metrics (Baseline Prep)
         stats = []
         for e in entries:
-             # Using 0.0 as default for sentiment, but stress must be present
              if e.sentiment_score is not None and e.stress_level is not None:
                  stats.append({
                      "sentiment": float(e.sentiment_score),
@@ -53,30 +54,34 @@ class BurnoutDetectionService:
         if len(stats) < 5:
              return {"status": "insufficient_metrics", "count": len(stats)}
 
-        # 3. Calculate Baseline vs Current (Z-Score Analysis)
-        sentiments = [s["sentiment"] for s in stats]
-        stresses = [s["stress"] for s in stats]
-        
-        # Calculate mean and std from history (excluding the very latest entry)
-        baseline_sent_mean = np.mean(sentiments[:-1])
-        baseline_sent_std = np.std(sentiments[:-1]) or 1.0
-        
-        baseline_stress_mean = np.mean(stresses[:-1])
-        baseline_stress_std = np.std(stresses[:-1]) or 1.0
-        
-        # Current (the entry that triggered this check)
-        current_sent = sentiments[-1]
-        current_stress = stresses[-1]
-        
-        # Calculate Z-Scores: (x - mean) / std
-        z_sent = (current_sent - baseline_sent_mean) / baseline_sent_std
-        z_stress = (current_stress - baseline_stress_mean) / baseline_stress_std
-        
+        # 3. Offload Inference to Dedicated Process
+        # This isolates the main memory from heavy ML libs if they were used
+        try:
+            inference_result = inference_proxy.run_inference(
+                "burnout_detection", 
+                {"stats": stats}
+            )
+            
+            z_sent = inference_result["z_sentiment"]
+            z_stress = inference_result["z_stress"]
+            baseline_sent_mean = inference_result["baseline_sent_mean"]
+            baseline_stress_mean = inference_result["baseline_stress_mean"]
+            
+        except Exception as e:
+            logger.error(f"Inference Proxy failed: {e}. Falling back to local calculation.")
+            # Fallback to local calculation if proxy fails
+            sentiments = [s["sentiment"] for s in stats]
+            stresses = [s["stress"] for s in stats]
+            baseline_sent_mean = np.mean(sentiments[:-1])
+            baseline_sent_std = np.std(sentiments[:-1]) or 1.0
+            baseline_stress_mean = np.mean(stresses[:-1])
+            baseline_stress_std = np.std(stresses[:-1]) or 1.0
+            z_sent = (sentiments[-1] - baseline_sent_mean) / baseline_sent_std
+            z_stress = (stresses[-1] - baseline_stress_mean) / baseline_stress_std
+
         # 4. Burnout Decision Matrix
-        # Negative deviation in sentiment (z_sent < -1.5) 
-        # Positive deviation in stress (z_stress > 1.5)
         is_burnout = z_sent < -1.5 and z_stress > 1.5
-        is_crisis = z_sent < -2.5 or z_stress > 2.5 # Violent swing
+        is_crisis = z_sent < -2.5 or z_stress > 2.5 
         
         alert_payload = {
             "user_id": user_id,

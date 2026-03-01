@@ -15,6 +15,7 @@ from api.services.data_archival_service import DataArchivalService
 import redis
 import json
 from api.utils.distributed_lock import require_lock
+from api.utils.memory_guard import enforce_memory_limit
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,8 @@ def execute_async_export_task(self, job_id: str, user_id: int, username: str, fo
 
 @require_lock(name="job_{job_id}", timeout=60)
 async def _execute_async_export_db(job_id: str, user_id: int, username: str, format: str, options: Dict[str, Any]):
+    # Proactive memory guard before starting heavy export
+    enforce_memory_limit(threshold_mb=1024) 
     async with AsyncSessionLocal() as db:
         try:
             # Check for idempotency: if it's already completed
@@ -298,6 +301,8 @@ def generate_journal_embedding_task(self, journal_entry_id: int):
         self.retry(exc=exc, countdown=backoff_delay)
 
 async def _execute_journal_embedding(journal_entry_id: int):
+    # Proactive memory guard for ML task
+    enforce_memory_limit(threshold_mb=768)
     from datetime import datetime
     async with AsyncSessionLocal() as db:
         stmt = select(JournalEntry).where(JournalEntry.id == journal_entry_id)
