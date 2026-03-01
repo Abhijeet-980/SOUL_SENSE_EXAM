@@ -281,6 +281,7 @@ class OutboxEvent(Base):
 class AnalyticsEvent(Base):
     """Track user behavior events (e.g., signup drop-off).
     Uses anonymous_id for pre-signup tracking.
+    Environment column ensures strict separation between staging and production data.
     """
     __tablename__ = 'analytics_events'
     tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
@@ -478,6 +479,7 @@ class Score(Base):
     __table_args__ = (
         Index('idx_score_age_score', 'age', 'total_score'),
         Index('idx_score_agegroup_score', 'detailed_age_group', 'total_score'),
+        Index('idx_score_env_timestamp', 'environment', 'timestamp'),
     )
 
 class Response(Base):
