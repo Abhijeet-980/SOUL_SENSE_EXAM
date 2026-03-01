@@ -1,4 +1,4 @@
-"""API router for Team Vision collaborative document management."""
+"""API router for Team Vision collaborative document management (#1178)."""
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,6 @@ from ..schemas.team_vision import (
 )
 
 logger = logging.getLogger("api.routers.team_vision")
-
 router = APIRouter(tags=["Team EI - Vision Documents"])
 
 

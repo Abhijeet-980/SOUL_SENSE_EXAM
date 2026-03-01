@@ -3,9 +3,10 @@ import asyncio
 import logging
 import uuid
 import time
+import traceback
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 # Triggering reload for new community routes
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -56,16 +57,35 @@ except Exception as e:
 async def lifespan(app: FastAPI):
     """Application lifespan context manager for startup and shutdown events."""
     logger = logging.getLogger("api.lifespan")
-    
+
     # STARTUP LOGIC
     logger.info("LIFESPAN BOOT STARTED")
-    
+
     app.state.settings = settings
-    
+
     # Generate a unique instance ID for this server session
     # All JWTs will include this ID; tokens from previous instances are rejected
     app.state.server_instance_id = str(uuid.uuid4())
     logger.info(f"Server instance ID: {app.state.server_instance_id}")
+
+    # Initialize FD Resource Manager and Event Loop Health Monitor (#1183)
+    try:
+        from event_loop_health_monitor import init_fastapi_monitor
+        fd_monitor = init_fastapi_monitor(app)
+        app.state.fd_monitor = fd_monitor
+        print("[OK] FD Resource Manager and Event Loop Health Monitor initialized")
+    except Exception as e:
+        logger.warning(f"FD monitoring initialization failed: {e}")
+        print(f"[WARNING] FD monitoring not available: {e}")
+
+    # Initialize Clock Skew Monitor (#1195)
+    try:
+        from clock_skew_monitor import init_clock_monitoring
+        await init_clock_monitoring()
+        print("[OK] Clock Skew Monitor initialized for distributed lock TTL protection")
+    except Exception as e:
+        logger.warning(f"Clock skew monitoring initialization failed: {e}")
+        print(f"[WARNING] Clock skew monitoring not available: {e}")
     
     # Initialize database tables
     try:
@@ -163,13 +183,12 @@ async def lifespan(app: FastAPI):
             app.state.kafka_producer = producer
             print("[OK] Kafka Producer, Audit Consumer, and CQRS Worker initialized")
             
-            # ES Search initialization (#1087)
-            from .services.es_sync import register_es_listeners
+            # ES Search initialization (#1087) — Removed unreliable listener logic
+            # Search Indexing is now handled via Transactional Outbox Pattern (#1146)
             from .services.es_service import get_es_service
-            register_es_listeners()
             es = get_es_service()
             await es.create_index()
-            print("[OK] Elasticsearch Sync Listeners and Index ready")
+            print("[OK] Elasticsearch Index ready (Relay worker active)")
         except Exception as e:
             logger.warning(f"Kafka/Audit initialization failed: {e}")
             print(f"[WARNING] Event-sourced audit trail falling back to mock mode: {e}")
@@ -206,6 +225,21 @@ async def lifespan(app: FastAPI):
     
     # SHUTDOWN LOGIC
     logger.info("LIFESPAN TEARDOWN STARTED")
+
+    # Stop FD Resource Manager and Event Loop Health Monitor (#1183)
+    if hasattr(app.state, 'fd_monitor'):
+        logger.info("Shutting down FD Resource Manager and Event Loop Health Monitor...")
+        await app.state.fd_monitor.health_monitor.stop_monitoring()
+        app.state.fd_monitor.fd_manager.shutdown()
+        logger.info("FD monitoring shutdown successfully")
+
+    # Stop Clock Skew Monitor (#1195)
+    try:
+        from clock_skew_monitor import shutdown_clock_monitoring
+        await shutdown_clock_monitoring()
+        logger.info("Clock skew monitoring shutdown successfully")
+    except Exception as e:
+        logger.warning(f"Clock skew monitoring shutdown failed: {e}")
     
     # Cancel background tasks
     if hasattr(app.state, 'purge_task'):
@@ -374,15 +408,13 @@ def create_app() -> FastAPI:
     from .middleware.feature_flags import feature_flag_middleware
     from .middleware.redaction_middleware import redaction_middleware
     
-    # --- Middleware Stack (Outer to Inner) ---
-    # In FastAPI, the LAST middleware added is the FIRST to receive the request.
-    # Logic: 1. RBAC (Auth) -> 2. Quota (Limits) -> 3. CircuitBreaker (Health)
-    
+    # Internal Middlewares (Inner to Outer)
+    # The last one added is the first one receiving the request.
+    # Order: App -> CircuitBreaker -> DynamicQuota -> RBAC
     from .middleware.circuit_breaker_middleware import CircuitBreakerMiddleware
-    app.add_middleware(CircuitBreakerMiddleware) # Executed 3rd
-    app.add_middleware(DynamicQuotaMiddleware)   # Executed 2nd
-    app.add_middleware(BaseHTTPMiddleware, dispatch=rbac_middleware) # Executed 1st
-    
+    app.add_middleware(CircuitBreakerMiddleware)
+    app.add_middleware(DynamicQuotaMiddleware)
+    app.add_middleware(BaseHTTPMiddleware, dispatch=rbac_middleware)
     app.add_middleware(BaseHTTPMiddleware, dispatch=feature_flag_middleware)
 
     # CORS middleware with security hardening

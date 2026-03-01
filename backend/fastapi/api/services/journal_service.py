@@ -166,10 +166,14 @@ class JournalService:
         # Calculate word count synchronously
         word_count = calculate_word_count(content)
         
-        # Create entry (sentiment_score defaults to 0.0 or processing state)
+        # Extract fields to local variables to avoid detached instance errors after commit
+        u_id = current_user.id
+        u_name = current_user.username
+
+        # Create entry
         entry = JournalEntry(
-            username=current_user.username,
-            user_id=current_user.id,
+            username=u_name,
+            user_id=u_id,
             content=content,
             sentiment_score=0.0, # Will be updated asynchronously
             emotional_patterns="[]",
@@ -186,9 +190,29 @@ class JournalService:
             stress_triggers=stress_triggers,
             daily_schedule=daily_schedule
         )
-        
+
+        # Step 1: Add entry to the session and flush to the DB to obtain a real PK (id).
+        # This is required BEFORE writing the outbox payload, which references entry.id.
+        # Without flush(), entry.id is None and the payload would contain null. (#1176)
+        self.db.add(entry)
+        await self.db.flush()  # Assigns entry.id without committing
+
+        # Step 2: Write outbox event in the SAME transaction so they commit atomically.
+        import uuid as _uuid
+        from ..models import OutboxEvent
+        self.db.add(OutboxEvent(
+            topic="search_indexing",
+            payload={
+                "event_id": str(_uuid.uuid4()),  # Stable idempotency key for at-least-once delivery
+                "journal_id": entry.id,           # Safe: entry.id is real after flush
+                "action": "upsert",
+                "event_version": 1,               # Explicit version for ES upsert idempotency
+                "timestamp": datetime.now(UTC).isoformat()
+            }
+        ))
+
+        # Step 3: Commit both entry + outbox atomically.
         try:
-            self.db.add(entry)
             await self.db.commit()
             db_id = entry.id # Keep reference
             await self.db.refresh(entry)
@@ -206,57 +230,21 @@ class JournalService:
                 logger.warning(f"No background_tasks for journal {entry.id}, skipping async analysis.")
         except Exception as e:
             await self.db.rollback()
+            logger.error(f"Transaction failed during journal create_entry: {e}")
             raise e
-        
-        # Attach dynamic fields
+
+        # Attach dynamic fields (non-SQL)
         entry.reading_time_mins = round(entry.word_count / 200, 2)
-        
-        # Trigger Gamification
+
+        # Trigger Gamification Post-Commit
         try:
-            await GamificationService.award_xp(self.db, current_user.id, 50, "Journal entry")
-            await GamificationService.update_streak(self.db, current_user.id, "journal")
-            await GamificationService.check_achievements(self.db, current_user.id, "journal")
+            await GamificationService.award_xp(self.db, u_id, 50, "Journal entry")
+            await GamificationService.update_streak(self.db, u_id, "journal")
+            await GamificationService.check_achievements(self.db, u_id, "journal")
         except Exception as e:
-            logger.error(f"Gamification update failed: {e}")
-            
-        # Transactional Outbox: Write indexing job within the same transaction
-        from ..models import OutboxEvent
-        try:
-            self.db.add(OutboxEvent(
-                topic="search_indexing",
-                payload={
-                    "journal_id": entry.id,
-                    "action": "upsert",
-                    "timestamp": datetime.now(UTC).isoformat()
-                }
-            ))
-            # No manual commit needed; outer code commits or we committed above
-        except Exception as e:
-            logger.error(f"Failed to write OutboxEvent: {e}")
+            logger.debug(f"Post-commit gamification update failed: {e}")
 
         return entry
-
-    async def async_sentiment_update(self, entry_id: int, content: str, user_id: int):
-        """
-        Background task to perform gRPC sentiment analysis and update DB (#1126).
-        """
-        from .nlp_client import get_nlp_client
-        from api.services.db_router import PrimarySessionLocal
-        
-        logger.info(f"Starting async sentiment analysis for journal {entry_id} via gRPC")
-        client = get_nlp_client()
-        result = await client.analyze_sentiment(content, entry_id, user_id)
-        
-        async with PrimarySessionLocal() as db:
-            stmt = select(JournalEntry).filter(JournalEntry.id == entry_id)
-            res = await db.execute(stmt)
-            entry = res.scalar_one_or_none()
-            if entry:
-                entry.sentiment_score = result["score"]
-                entry.emotional_patterns = json.dumps(result["patterns"])
-                await db.commit()
-                logger.info(f"Updated journal {entry_id} with gRPC sentiment score: {result['score']}")
-
 
     async def get_entries(
         self,
@@ -356,27 +344,28 @@ class JournalService:
             if value is not None and hasattr(entry, field):
                 setattr(entry, field, value)
         
+        # Outbox Pattern: Write indexing event in same transaction as the update (#1176).
+        # entry.id is already set (entry was fetched from DB), so no flush needed here.
+        if content is not None:
+            import uuid as _uuid
+            from ..models import OutboxEvent
+            self.db.add(OutboxEvent(
+                topic="search_indexing",
+                payload={
+                    "event_id": str(_uuid.uuid4()),  # Stable idempotency key
+                    "journal_id": entry.id,
+                    "action": "upsert",
+                    "event_version": 1,
+                    "timestamp": datetime.now(UTC).isoformat()
+                }
+            ))
+
         await self.db.commit()
         await self.db.refresh(entry)
         
         # Attach dynamic fields
         entry.reading_time_mins = round(entry.word_count / 200, 2)
         
-        # Outbox Pattern: Queue for indexing if content changed
-        if content is not None:
-             from ..models import OutboxEvent
-             try:
-                 self.db.add(OutboxEvent(
-                     topic="search_indexing",
-                     payload={
-                         "journal_id": entry.id,
-                         "action": "upsert",
-                         "timestamp": datetime.now(UTC).isoformat()
-                     }
-                 ))
-             except Exception as e:
-                 logger.error(f"Failed to write OutboxEvent for update: {e}")
-
         return entry
 
     async def delete_entry(self, entry_id: int, current_user: User) -> bool:
@@ -386,22 +375,22 @@ class JournalService:
         entry.is_deleted = True
         entry.deleted_at = datetime.now(UTC)
         
-        # Outbox Pattern: Job for removal from search index
+        # Outbox Pattern: Write delete event in same transaction as the soft-delete (#1176).
+        # entry.id is set (fetched from DB), so no flush needed.
+        import uuid as _uuid
         from ..models import OutboxEvent
-        try:
-            self.db.add(OutboxEvent(
-                topic="search_indexing",
-                payload={
-                    "journal_id": entry.id,
-                    "action": "delete",
-                    "timestamp": datetime.now(UTC).isoformat()
-                }
-            ))
-        except Exception as e:
-            logger.error(f"Failed to queue outbox delete for search index: {e}")
-
-        await self.db.commit()
+        self.db.add(OutboxEvent(
+            topic="search_indexing",
+            payload={
+                "event_id": str(_uuid.uuid4()),  # Stable idempotency key
+                "journal_id": entry.id,
+                "action": "delete",
+                "event_version": 1,
+                "timestamp": datetime.now(UTC).isoformat()
+            }
+        ))
         
+        await self.db.commit()
         return True
 
     async def search_entries(

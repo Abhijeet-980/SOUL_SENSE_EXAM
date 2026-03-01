@@ -1,8 +1,8 @@
 import uuid
 import logging
 from typing import Optional, Tuple
-from datetime import datetime, UTC
 from ..services.cache_service import cache_service
+from ....clock_skew_monitor import get_clock_monitor
 
 logger = logging.getLogger("api.utils.redlock")
 
@@ -38,6 +38,7 @@ class RedlockService:
 
     def __init__(self):
         self._lock_prefix = "lock:team_vision:"
+        self._clock_monitor = get_clock_monitor()
 
     def _lock_key(self, resource_id: str) -> str:
         return f"{self._lock_prefix}{resource_id}"
