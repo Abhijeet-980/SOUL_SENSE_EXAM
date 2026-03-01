@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Request
 import asyncio
 import logging
-import traceback
 import uuid
 import time
+from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse
 # Triggering reload for new community routes
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -17,6 +17,7 @@ from .utils.limiter import limiter
 from .utils.logging_config import setup_logging
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from .services.websocket_manager import manager as ws_manager
 
 # Initialize centralized logging
 setup_logging()
@@ -24,6 +25,31 @@ logger = logging.getLogger("api.main")
 
 # Load and validate settings on import
 settings = get_settings_instance()
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+FAVICON_PATH = STATIC_DIR / "favicon.svg"
+
+# Initialize FastAPI Cache early (before router imports)
+try:
+    import redis.asyncio as redis
+    redis_client = redis.from_url(
+        settings.redis_url,
+        encoding="utf-8",
+        decode_responses=True
+    )
+    from fastapi_cache import FastAPICache
+    from fastapi_cache.backends.redis import RedisBackend
+    FastAPICache.init(RedisBackend(redis_client), prefix="fastapi-cache")
+    print("[OK] FastAPI Cache initialized with Redis backend")
+except Exception as e:
+    print(f"[WARNING] FastAPI Cache initialization failed: {e}")
+    # Initialize with in-memory backend as fallback
+    try:
+        from fastapi_cache import FastAPICache
+        from fastapi_cache.backends.memory import MemoryBackend
+        FastAPICache.init(MemoryBackend(), prefix="fastapi-cache")
+        print("[OK] FastAPI Cache initialized with in-memory backend")
+    except Exception as e2:
+        print(f"[ERROR] FastAPI Cache fallback initialization failed: {e2}")
 
 
 @asynccontextmanager
@@ -43,26 +69,76 @@ async def lifespan(app: FastAPI):
     
     # Initialize database tables
     try:
-        from .services.db_service import Base, engine, SessionLocal
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables initialized/verified")
+        from .models import Base
+        from .services.db_service import engine, AsyncSessionLocal
+        # Note: In a production app, we would use migrations, but for this exercise we can auto-create
+        # Base.metadata.create_all(bind=engine) # Synchronous metadata create requires synchronous engine
+        print("[OK] Initializing/verifying database")
         
         # Verify database connectivity before starting background tasks
-        with SessionLocal() as db:
+        async with AsyncSessionLocal() as db:
             from sqlalchemy import text
-            db.execute(text("SELECT 1"))
-            logger.info("Database connectivity verified")
+            await db.execute(text("SELECT 1"))
+            print("[OK] Database connectivity verified")
+        
+        # Initialize Redis for rate limiting
+        try:
+            import redis.asyncio as redis
+            redis_client = redis.from_url(
+                settings.redis_url,
+                encoding="utf-8",
+                decode_responses=True
+            )
+            # Test Redis connectivity
+            await redis_client.ping()
+            app.state.redis_client = redis_client
+            
+            # Configure slowapi limiter with Redis storage
+            limiter._storage_uri = settings.redis_url
+            print(f"[OK] Redis connected for rate limiting: {settings.redis_host}:{settings.redis_port}")
+            
+            # Initialize JWT blacklist
+            from .utils.jwt_blacklist import init_jwt_blacklist
+            init_jwt_blacklist(redis_client)
+            print("[OK] JWT blacklist initialized")
+            
+        except Exception as e:
+            logger.warning(f"Redis initialization failed: {e}")
+            print(f"[WARNING] Redis not available, rate limiting will use in-memory fallback: {e}")
+            # SlowAPI will automatically fall back to in-memory storage if Redis is unavailable
+            
+        # Initialize analytics scheduler
+        try:
+            from app.ml.scheduler_service import get_scheduler
+            scheduler = get_scheduler()
+            scheduler.start()
+            app.state.analytics_scheduler = scheduler
+            print("[OK] Analytics scheduler initialized and started")
+        except Exception as e:
+            logger.warning(f"Analytics scheduler initialization failed: {e}")
+            print(f"[WARNING] Analytics scheduler not available: {e}")
+            
+        # Initialize WebSocket Manager
+        app.state.ws_manager = ws_manager
+        try:
+            await ws_manager.connect_redis()
+            print("[OK] WebSocket Manager initialized with Redis Pub/Sub")
+        except Exception as e:
+            logger.warning(f"[WARNING] WebSocket Manager failing Redis connection: {e}. Falling back to local.")
+            print(f"[WARNING] WebSocket Manager Redis connect failed: {e}")
+
         
         # Start background task for soft-delete cleanup
         async def purge_task_loop():
             while True:
                 try:
-                    logger.info("Starting scheduled purge of expired accounts...", extra={"task": "cleanup"})
-                    with SessionLocal() as db:
+                    print("[CLEANUP] Starting scheduled purge of expired accounts...")
+                    from .services.db_service import AsyncSessionLocal
+                    async with AsyncSessionLocal() as db:
                         from .services.user_service import UserService
                         user_service = UserService(db)
-                        user_service.purge_deleted_users(settings.deletion_grace_period_days)
-                    logger.info("Scheduled purge completed successfully", extra={"task": "cleanup"})
+                        await user_service.purge_deleted_users(settings.deletion_grace_period_days)
+                    print("[CLEANUP] Scheduled purge completed successfully")
                 except Exception as e:
                     logger = logging.getLogger("api.purge_task")
                     logger.error(f"Soft-delete cleanup task failed: {e}", exc_info=True)
@@ -73,7 +149,40 @@ async def lifespan(app: FastAPI):
         
         purge_task = asyncio.create_task(purge_task_loop())
         app.state.purge_task = purge_task  # Store reference for cleanup
-        logger.info("Soft-delete cleanup task scheduled (runs every 24h)")
+        print("[OK] Soft-delete cleanup task scheduled (runs every 24h)")
+
+        # Kafka producer and Audit Consumer initialization (#1085)
+        try:
+            from .services.kafka_producer import get_kafka_producer
+            from .services.audit_consumer import start_audit_loop
+            from .services.cqrs_worker import start_cqrs_worker
+            producer = get_kafka_producer()
+            await producer.start()
+            start_audit_loop()
+            start_cqrs_worker()
+            app.state.kafka_producer = producer
+            print("[OK] Kafka Producer, Audit Consumer, and CQRS Worker initialized")
+            
+            # ES Search initialization (#1087)
+            from .services.es_sync import register_es_listeners
+            from .services.es_service import get_es_service
+            register_es_listeners()
+            es = get_es_service()
+            await es.create_index()
+            print("[OK] Elasticsearch Sync Listeners and Index ready")
+        except Exception as e:
+            logger.warning(f"Kafka/Audit initialization failed: {e}")
+            print(f"[WARNING] Event-sourced audit trail falling back to mock mode: {e}")
+        
+        # Initialize Cache Invalidation Listener (#1123)
+        try:
+            from .services.cache_service import cache_service
+            invalidation_task = asyncio.create_task(cache_service.start_invalidation_listener())
+            app.state.invalidation_task = invalidation_task
+            print("[OK] Distributed Cache Invalidation listener started via Redis Pub/Sub")
+        except Exception as e:
+            logger.warning(f"Failed to start cache invalidation listener: {e}")
+            print(f"[WARNING] Distributed cache invalidation unavailable: {e}")
         
     except Exception as e:
         logger.error(f"Database initialization failed: {e}", exc_info=True)
@@ -95,6 +204,41 @@ async def lifespan(app: FastAPI):
             await app.state.purge_task
         except asyncio.CancelledError:
             logger.info("Background purge task cancelled successfully")
+            
+    if hasattr(app.state, 'invalidation_task'):
+        logger.info("Cancelling distributed cache invalidation listener...")
+        app.state.invalidation_task.cancel()
+        try:
+            await app.state.invalidation_task
+        except asyncio.CancelledError:
+            logger.info("Cache invalidation listener cancelled successfully")
+    
+    # Stop analytics scheduler
+    if hasattr(app.state, 'analytics_scheduler'):
+        logger.info("Stopping analytics scheduler...")
+        app.state.analytics_scheduler.stop()
+        logger.info("Analytics scheduler stopped successfully")
+        
+    # Close WebSocket Manager
+    if hasattr(app.state, 'ws_manager'):
+        logger.info("Shutting down WebSocket Manager...")
+        await app.state.ws_manager.shutdown()
+        logger.info("WebSocket Manager shutdown successfully")
+    
+    # Close Redis connection
+    if hasattr(app.state, 'redis_client'):
+        logger.info("Closing Redis connection...")
+        try:
+            await app.state.redis_client.close()
+            logger.info("Redis connection closed successfully")
+        except Exception as e:
+            logger.error(f"Error closing Redis connection: {e}")
+
+    # Stop Kafka Producer (#1085)
+    if hasattr(app.state, 'kafka_producer'):
+        logger.info("Stopping Kafka Producer...")
+        await app.state.kafka_producer.stop()
+        logger.info("Kafka Producer stopped successfully")
     
     # Dispose database engine if needed
     try:
@@ -173,13 +317,18 @@ def create_app() -> FastAPI:
 
     # Correlation ID middleware (outermost for logging reference)
     app.add_middleware(CorrelationIDMiddleware)
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        return FileResponse(FAVICON_PATH, media_type="image/svg+xml")
 
     # Attach slowapi limiter
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    # Performance Monitoring Middleware (inner-most for accurate timing)
-    app.add_middleware(PerformanceMonitoringMiddleware)
+    # Request Logging Middleware (inner-most for full request lifecycle tracking)
+    # Provides: Request IDs, JSON logging, PII protection, X-Request-ID headers
+    from .middleware.logging_middleware import RequestLoggingMiddleware
+    app.add_middleware(RequestLoggingMiddleware)
 
     # GZip compression middleware for response optimization
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
@@ -188,24 +337,91 @@ def create_app() -> FastAPI:
     from .middleware.security import SecurityHeadersMiddleware
     app.add_middleware(SecurityHeadersMiddleware)
 
-    # CORS middleware
-    origins = settings.BACKEND_CORS_ORIGINS
+    # Consent Validation Middleware for privacy compliance
+    # Blocks analytics data collection without user consent
+    from .middleware.consent_middleware import ConsentValidationMiddleware
+    app.add_middleware(ConsentValidationMiddleware)
+
+    # ETag Middleware for HTTP caching optimization
+    # Adds ETag headers to static resources (questions, prompts, translations)
+    # Returns 304 Not Modified when content hasn't changed, saving bandwidth
+    from .middleware.etag_middleware import ETagMiddleware
+    app.add_middleware(ETagMiddleware)
+
+    # Server-side RBAC enforcement middleware
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from .middleware.rbac_middleware import rbac_middleware
+    from .middleware.feature_flags import feature_flag_middleware
+    # from .middleware.rate_limiter_sliding import sliding_rate_limit_middleware
+    from .middleware.redaction_middleware import redaction_middleware
     
+    # app.add_middleware(BaseHTTPMiddleware, dispatch=sliding_rate_limit_middleware)
+    app.add_middleware(BaseHTTPMiddleware, dispatch=rbac_middleware)
+    app.add_middleware(BaseHTTPMiddleware, dispatch=feature_flag_middleware)
+
+    # CORS middleware with security hardening
+    # Environment-specific configuration for security
+    if settings.debug:
+        # Development: Allow localhost origins only, no credentials
+        origins = [
+            "http://localhost:3000",
+            "http://localhost:3005",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3005",
+            "tauri://localhost"
+        ]
+        allow_credentials = False  # Must be False when allowing specific origins in dev
+    else:
+        # Production: Use configured origins with credential support
+        origins = settings.BACKEND_CORS_ORIGINS
+        allow_credentials = settings.cors_allow_credentials
+
+        # Security validation: ensure no wildcard with credentials
+        if allow_credentials and "*" in origins:
+            raise ValueError(
+                "CORS configuration error: Cannot enable credentials with wildcard origins. "
+                "This creates a severe security vulnerability allowing any website to steal user tokens."
+            )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-        allow_credentials=True,
+        allow_credentials=allow_credentials,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
-        expose_headers=["X-API-Version"],
-        max_age=3600,  # Cache preflight requests for 1 hour
+        allow_headers=[
+            "Content-Type",
+            "Authorization",
+            "Accept",
+            "Origin",
+            "X-Requested-With",
+            "X-API-Key",
+            "X-Request-ID"
+        ],
+        expose_headers=settings.cors_expose_headers,
+        max_age=settings.cors_max_age,  # Configurable preflight cache
     )
     
     # Version header middleware
-    app.add_middleware(VersionHeaderMiddleware)
+    # app.add_middleware(VersionHeaderMiddleware)
     
+    # Global Maintenance Mode Middleware (#1112)
+    # Blocks or restricts access during critical updates
+    from .middleware.maintenance import MaintenanceMiddleware
+    app.add_middleware(MaintenanceMiddleware)
+    
+    # Mount static files for avatars
+    from fastapi.staticfiles import StaticFiles
+    import os
+    avatars_path = os.path.join(os.getcwd(), "app_data", "avatars")
+    os.makedirs(avatars_path, exist_ok=True)
+    app.mount("/api/v1/avatars", StaticFiles(directory=avatars_path), name="avatars")
+
     # Register V1 API Router
     app.include_router(api_v1_router, prefix="/api/v1")
+    
+    # Register WebSocket Router
+    from .routers.websockets import router as ws_router
+    app.include_router(ws_router, prefix="/api/v1/stream", tags=["WebSockets"])
 
     # Register Health endpoints at root level for orchestration
     app.include_router(health_router, tags=["Health"])
@@ -251,6 +467,9 @@ def create_app() -> FastAPI:
                 "details": error_details
             }
         )
+        # Register standardized exception handlers
+    # import removed: register_exception_handlers not needed for current setup
+    # register_exception_handlers(app)
 
 
     # Root endpoint - version discovery
