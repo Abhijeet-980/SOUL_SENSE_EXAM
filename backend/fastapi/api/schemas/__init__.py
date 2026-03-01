@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 import json
-from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator, model_validator
 
 from ..utils.sanitization import sanitize_string, clean_identifier
 
@@ -226,6 +226,68 @@ class ErrorResponse(BaseModel):
     message: str = Field(..., description="Human-readable error message")
     details: Optional[Dict[str, Any]] = Field(None, description="Additional context or debugging info")
     fields: Optional[List[FieldError]] = Field(None, description="Granular field-level errors for forms")
+
+
+# ============================================================================
+# Exam Submission Schemas (Issue 6.5 — API Answer Validation)
+# ============================================================================
+
+class AnswerSubmit(BaseModel):
+    """Schema for a single answer item within an exam submission payload."""
+    question_id: int = Field(
+        ...,
+        ge=1,
+        description="ID of the question being answered",
+    )
+    value: int = Field(
+        ...,
+        ge=1,
+        le=5,
+        description="Likert scale answer value (1-5)",
+    )
+
+
+class ExamSubmit(BaseModel):
+    """Schema for a batch exam submission payload.
+
+    Validates structural geometry of the answers array:
+    - Duplicate question_id values are rejected immediately with a 422.
+    - Completeness against expected question count is enforced in the router
+      after a DB lookup so that async context issues are avoided cleanly.
+    """
+
+    session_id: str = Field(
+        ...,
+        min_length=1,
+        description="Active exam session identifier",
+    )
+    answers: List[AnswerSubmit] = Field(
+        ...,
+        min_length=1,
+        description="List of question/answer pairs — must be non-empty and duplicate-free",
+    )
+    is_draft: bool = Field(
+        default=False,
+        description="When True, completeness validation is skipped (draft saves are allowed)",
+    )
+
+    @model_validator(mode="after")
+    def check_question_uniqueness(self) -> "ExamSubmit":
+        """Reject payloads that submit the same question_id more than once.
+
+        A hacker submitting question_id=5 twenty times must receive a 422 before
+        any database write occurs.  Draft status does NOT exempt this check because
+        duplicate IDs are always a structural error regardless of draft vs. final.
+        """
+        question_ids = [a.question_id for a in self.answers]
+        if len(question_ids) != len(set(question_ids)):
+            from collections import Counter
+            dupes = [qid for qid, count in Counter(question_ids).items() if count > 1]
+            raise ValueError(
+                f"Submitted payload contains duplicate question answers for "
+                f"question_id(s): {dupes}.  Each question may only be answered once."
+            )
+        return self
 
 
 # ============================================================================

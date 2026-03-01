@@ -15,6 +15,7 @@ from sqlalchemy import select, update, delete, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import OperationalError
 from .audit_service import AuditService
+from ..utils.db_transaction import transactional, retry_on_transient
 from ..utils.security import get_password_hash, verify_password, is_hashed, check_password_history
 from ..models import User, LoginAttempt, PersonalProfile, RefreshToken, PasswordHistory
 from ..constants.security_constants import PASSWORD_HISTORY_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS
@@ -404,6 +405,33 @@ class AuthService:
                 return False, None, "Registration with disposable email domains is not allowed"
 
             hashed_pw = self.hash_password(user_data.password)
+
+            # ── ATOMIC WRITE ─────────────────────────────────────────────────
+            # User + PersonalProfile must both succeed or neither persists.
+            # A failure mid-way (e.g. FK violation, DB crash) would otherwise
+            # leave an orphan User row with no associated PersonalProfile.
+            with transactional(self.db):
+                new_user = User(
+                    username=username_lower,
+                    password_hash=hashed_pw
+                )
+                self.db.add(new_user)
+                self.db.flush()  # Populate new_user.id before creating profile
+
+                new_profile = PersonalProfile(
+                    user_id=new_user.id,
+                    email=email_lower,
+                    first_name=user_data.first_name,
+                    last_name=user_data.last_name,
+                    age=user_data.age,
+                    gender=user_data.gender
+                )
+                self.db.add(new_profile)
+            # ─────────────────────────────────────────────────────────────────
+
+            self.db.refresh(new_user)
+
+            # In a real app, send "Welcome/Verify" email here
             new_user = User(
                 username=username_lower,
                 password_hash=hashed_pw
@@ -439,10 +467,10 @@ class AuthService:
             logger.error(f"Database connection error during registration: {str(e)}")
             return False, None, "Service temporarily unavailable. Please try again later."
         except AttributeError as e:
-            self.db.rollback()
             logger.error(f"Registration Model Mismatch: {e}")
             return False, None, "A configuration error occurred on the server."
         except Exception as e:
+            import traceback
             self.db.rollback()
             logger.error(f"Registration failed error: {str(e)}")
             return False, None, "An internal error occurred. Please try again later."
@@ -495,6 +523,28 @@ class AuthService:
              raise AuthException(code=ErrorCode.AUTH_INVALID_TOKEN, message="User not found")
         
         try:
+            # ── ATOMIC TOKEN ROTATION ────────────────────────────────────────
+            # Revocation of the old token and creation of the new one must be
+            # committed as a single unit.  If the commit fails after revocation
+            # but before the new token is stored, the user would be logged out
+            # with no valid refresh token to recover from.
+            with transactional(self.db):
+                # Revoke current token
+                db_token.is_revoked = True
+
+                # Create new tokens (added to session but not committed yet)
+                access_token = self.create_access_token(data={"sub": user.username})
+                new_refresh_token = self.create_refresh_token(user.id, commit=False)
+            # ─────────────────────────────────────────────────────────────────
+
+            return access_token, new_refresh_token
+
+        except Exception as e:
+            logger.error(f"Failed to rotate refresh token for user {db_token.user_id}: {str(e)}")
+            raise AuthException(
+                code=ErrorCode.AUTH_TOKEN_ROTATION_FAILED,
+                message="Token rotation failed. Please try logging in again."
+            )
             db_token.is_revoked = True
             access_token = self.create_access_token(data={"sub": user.username})
             new_refresh_token = await self.create_refresh_token(user.id, commit=False)

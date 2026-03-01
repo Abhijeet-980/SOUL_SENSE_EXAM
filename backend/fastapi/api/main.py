@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
     # Generate a unique instance ID for this server session
     # All JWTs will include this ID; tokens from previous instances are rejected
     app.state.server_instance_id = str(uuid.uuid4())
-    print(f"[OK] Server instance ID: {app.state.server_instance_id}")
+    logger.info(f"Server instance ID: {app.state.server_instance_id}")
     
     # Initialize database tables
     try:
@@ -155,11 +155,21 @@ async def lifespan(app: FastAPI):
         try:
             from .services.kafka_producer import get_kafka_producer
             from .services.audit_consumer import start_audit_loop
+            from .services.cqrs_worker import start_cqrs_worker
             producer = get_kafka_producer()
             await producer.start()
             start_audit_loop()
+            start_cqrs_worker()
             app.state.kafka_producer = producer
-            print("[OK] Kafka Producer and Audit Consumer initialized")
+            print("[OK] Kafka Producer, Audit Consumer, and CQRS Worker initialized")
+            
+            # ES Search initialization (#1087)
+            from .services.es_sync import register_es_listeners
+            from .services.es_service import get_es_service
+            register_es_listeners()
+            es = get_es_service()
+            await es.create_index()
+            print("[OK] Elasticsearch Sync Listeners and Index ready")
         except Exception as e:
             logger.warning(f"Kafka/Audit initialization failed: {e}")
             print(f"[WARNING] Event-sourced audit trail falling back to mock mode: {e}")
@@ -461,7 +471,7 @@ def create_app() -> FastAPI:
     
     # Host Header Validation
     from fastapi.middleware.trustedhost import TrustedHostMiddleware
-    print(f"[SECURITY] Loading TrustedHostMiddleware with allowed_hosts: {settings.ALLOWED_HOSTS}")
+    logger.info(f"Loading TrustedHostMiddleware with allowed_hosts: {settings.ALLOWED_HOSTS}")
     app.add_middleware(
         TrustedHostMiddleware, 
         allowed_hosts=settings.ALLOWED_HOSTS

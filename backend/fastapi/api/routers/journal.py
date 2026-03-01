@@ -13,7 +13,7 @@ Provides authenticated API endpoints for journal management:
 
 from datetime import datetime, UTC
 from typing import Annotated, List, Optional
-from fastapi import APIRouter, Depends, Query, status, Request
+from fastapi import APIRouter, Depends, Query, status, Request, BackgroundTasks
 from fastapi.responses import Response as FastApiResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,20 +48,22 @@ async def get_journal_service(db: AsyncSession = Depends(get_db)):
 # Journal CRUD Endpoints
 # ============================================================================
 
-@router.post("/", response_model=JournalResponse, status_code=status.HTTP_201_CREATED, summary="Create Journal Entry")
+@router.post("/", response_model=JournalResponse, status_code=status.HTTP_202_ACCEPTED, summary="Create Journal Entry")
 @limiter.limit("10/minute")
 async def create_journal(
     request: Request,
     journal_data: JournalCreate,
+    background_tasks: Annotated[BackgroundTasks, Depends()],
     current_user: Annotated[User, Depends(get_current_user)],
     journal_service: Annotated[JournalService, Depends(get_journal_service)]
 ):
     """
-    Create a new journal entry with AI sentiment analysis.
+    Create a new journal entry. AI sentiment analysis starts asynchronously via gRPC.
     """
     return await journal_service.create_entry(
         current_user=current_user,
         content=journal_data.content,
+        background_tasks=background_tasks,
         tags=journal_data.tags,
         privacy_level=journal_data.privacy_level,
         sleep_hours=journal_data.sleep_hours,

@@ -14,8 +14,8 @@ import logging
 
 try:
     from ..services.encryption_service import EncryptedString
-except ImportError:
-    pass
+except (ImportError, ValueError):
+    EncryptedString = Text
 
 # Define Base
 Base = declarative_base()
@@ -295,6 +295,56 @@ class AnalyticsEvent(Base):
     ip_address = Column(String, nullable=True)
     user = relationship("User", back_populates="analytics_events")
 
+# ==========================================
+# CQRS READ MODELS (ISSUE-1124)
+# Pre-computed materializations for fast /analytics/* queries
+# ==========================================
+
+class CQRSGlobalStats(Base):
+    """Pre-computed global dashboard aggregates."""
+    __tablename__ = 'cqrs_global_stats'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    total_assessments = Column(Integer, default=0)
+    unique_users = Column(Integer, default=0)
+    global_average_score = Column(Float, default=0.0)
+    global_average_sentiment = Column(Float, default=0.0)
+    rushed_assessments = Column(Integer, default=0)
+    inconsistent_assessments = Column(Integer, default=0)
+    p25_score = Column(Float, default=0.0)
+    p50_score = Column(Float, default=0.0)  # Median
+    p75_score = Column(Float, default=0.0)
+    p90_score = Column(Float, default=0.0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+class CQRSAgeGroupStats(Base):
+    """Pre-computed age group statistics."""
+    __tablename__ = 'cqrs_age_group_stats'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    age_group = Column(String, index=True, unique=True)
+    total_assessments = Column(Integer, default=0)
+    average_score = Column(Float, default=0.0)
+    min_score = Column(Float, default=0.0)
+    max_score = Column(Float, default=0.0)
+    average_sentiment = Column(Float, default=0.0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+class CQRSDistributionStats(Base):
+    """Pre-computed score distribution percentages."""
+    __tablename__ = 'cqrs_distribution_stats'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    score_range = Column(String, index=True, unique=True)
+    count = Column(Integer, default=0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+class CQRSTrendAnalytics(Base):
+    """Pre-computed daily trend metrics."""
+    __tablename__ = 'cqrs_trend_analytics'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    period = Column(String, index=True, unique=True)  # YYYY-MM
+    average_score = Column(Float, default=0.0)
+    assessment_count = Column(Integer, default=0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
 class OTP(Base):
     """One-Time Passwords for Password Reset and 2FA challenges."""
     __tablename__ = 'otp_codes'
@@ -526,7 +576,7 @@ class JournalEntry(Base):
     username = Column(String, index=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
     title = Column(String, nullable=True)
-    content = Column(EncryptedString, nullable=False)
+    content = Column(EncryptedString, nullable=True) # Allow null after archival
     sentiment_score = Column(Float, default=0.0)
     emotional_patterns = Column(Text, nullable=True) # JSON list
     timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)
@@ -538,6 +588,7 @@ class JournalEntry(Base):
     energy_level = Column(Integer, nullable=True)
     work_hours = Column(Float, nullable=True)
     stress_level = Column(Integer, nullable=True)
+    stress_triggers = Column(Text, nullable=True)
     screen_time_mins = Column(Integer, nullable=True)
     daily_schedule = Column(Text, nullable=True)
     tags = Column(Text, nullable=True)
