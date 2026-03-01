@@ -28,6 +28,7 @@ from app.core import (
     ResourceAlreadyExistsError,
     BusinessLogicError
 )
+from ..utils.race_condition_protection import check_idempotency, complete_idempotency
 import secrets
 
 logger = logging.getLogger(__name__)
@@ -293,22 +294,39 @@ async def refresh(
     response: Response,
     auth_service: AuthService = Depends(get_auth_service)
 ):
+    """Refresh access token using refresh token with race condition protection."""
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
         raise AuthenticationError(message="Refresh token missing", code="REFRESH_TOKEN_MISSING")
-        
-    access_token, new_refresh_token = await auth_service.refresh_access_token(refresh_token)
-    
-    response.set_cookie(
-        key="refresh_token",
-        value=new_refresh_token,
-        httponly=True,
-        secure=settings.is_production,
-        samesite="lax",
-        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
-    )
-    
-    return Token(access_token=access_token, token_type="bearer", refresh_token=new_refresh_token)
+
+    # Check for idempotency to prevent concurrent refresh operations
+    cached_response = await check_idempotency(request, "token_refresh", ttl_seconds=60)  # 1 minute
+    if cached_response:
+        logger.info(f"Returning cached token refresh response")
+        return cached_response
+
+    try:
+        access_token, new_refresh_token = await auth_service.refresh_access_token(refresh_token)
+
+        response.set_cookie(
+            key="refresh_token",
+            value=new_refresh_token,
+            httponly=True,
+            secure=settings.is_production,
+            samesite="lax",
+            max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+        )
+
+        token_response = Token(access_token=access_token, token_type="bearer", refresh_token=new_refresh_token)
+
+        # Cache the successful response for idempotency
+        await complete_idempotency(request, token_response.model_dump_json())
+
+        return token_response
+
+    except Exception as e:
+        logger.error(f"Token refresh failed: {str(e)}")
+        raise
 
 @router.post("/logout")
 async def logout(

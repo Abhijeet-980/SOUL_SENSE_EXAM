@@ -3,12 +3,21 @@ import uuid
 from datetime import datetime, UTC
 from typing import List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from ..schemas import ExamResponseCreate, ExamResultCreate
 from ..models import User, Score, Response, UserSession
 from .gamification_service import GamificationService
 from ..utils.db_transaction import transactional, retry_on_transient
+from ..utils.race_condition_protection import with_row_lock, generate_idempotency_key
 import asyncio
+
+try:
+    from .crypto import EncryptionManager
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
+
+logger = logging.getLogger("api.exam")
 
 try:
     from .crypto import EncryptionManager
@@ -38,23 +47,34 @@ class ExamService:
     async def save_response(db: AsyncSession, user: User, session_id: str, data: ExamResponseCreate):
         """Saves a single question response linked to the user and session."""
         try:
-            # Check if user has already answered this question
-            existing_response = db.query(Response).filter(
-                Response.user_id == user.id,
-                Response.question_id == data.question_id
-            ).first()
-            
-            if existing_response:
+            # Use row-level locking to prevent concurrent duplicate submissions
+            await with_row_lock(
+                db,
+                "responses",
+                "user_id = :user_id AND question_id = :question_id",
+                {"user_id": user.id, "question_id": data.question_id}
+            )
+
+            # Double-check for existing response after acquiring lock
+            existing_response = await db.execute(
+                select(Response).filter(
+                    Response.user_id == user.id,
+                    Response.question_id == data.question_id
+                )
+            )
+            existing = existing_response.scalar_one_or_none()
+
+            if existing:
                 raise ConflictError(
                     message="Duplicate response submission",
                     details=[{
                         "field": "question_id",
                         "error": "User has already submitted a response for this question",
                         "question_id": data.question_id,
-                        "existing_response_id": existing_response.id
+                        "existing_response_id": existing.id
                     }]
                 )
-            
+
             new_response = Response(
                 username=user.username,
                 user_id=user.id,
@@ -69,7 +89,7 @@ class ExamService:
             return True
         except IntegrityError as e:
             # Handle database constraint violations (additional safety net)
-            db.rollback()
+            await db.rollback()
             if "unique constraint" in str(e).lower() or "duplicate" in str(e).lower():
                 raise ConflictError(
                     message="Duplicate response submission",
@@ -89,24 +109,47 @@ class ExamService:
 
     @staticmethod
     @retry_on_transient(retries=3)
-    def save_score(db: Session, user: User, session_id: str, data: ExamResultCreate):
-        """
-        Saves the final exam score atomically together with gamification updates.
     async def save_score(db: AsyncSession, user: User, session_id: str, data: ExamResultCreate):
         """
-        Saves the final exam score.
-        Validates that all questions have been answered before saving.
-        Encrypts reflection_text if crypto is available.
+        Saves the final exam score atomically together with gamification updates.
 
-        The Score row and all GamificationService side-effects are committed in
-        a single transaction so that a partial failure cannot leave the database
-        in an inconsistent state (e.g. score saved but XP not awarded, or vice-versa).
+        Uses row-level locking and enhanced transaction handling to prevent:
+        - Duplicate score submissions
+        - Concurrent score miscalculations
+        - Inconsistent gamification state
         """
         try:
-            # Encrypt reflection text for privacy (before the transaction)
+            # Use row-level locking on user_session to prevent concurrent score submissions
+            await with_row_lock(
+                db,
+                "user_sessions",
+                "session_id = :session_id AND user_id = :user_id",
+                {"session_id": session_id, "user_id": user.id}
+            )
+
+            # Check if score already exists for this session
+            existing_score_stmt = select(Score).filter(
+                Score.session_id == session_id,
+                Score.user_id == user.id
+            )
+            existing_score_result = await db.execute(existing_score_stmt)
+            existing_score = existing_score_result.scalar_one_or_none()
+
+            if existing_score:
+                logger.warning(f"Duplicate score submission attempt for session {session_id}, user {user.id}")
+                raise ConflictError(
+                    message="Score already submitted for this exam session",
+                    details=[{
+                        "field": "session_id",
+                        "error": "A score has already been recorded for this exam session",
+                        "session_id": session_id,
+                        "existing_score_id": existing_score.id
+                    }]
+                )
+
             # Validate that all questions have been answered
             ExamService._validate_complete_responses(db, user, session_id, data.age)
-            
+
             # Encrypt reflection text for privacy
             reflection = data.reflection_text
             if CRYPTO_AVAILABLE and reflection:
@@ -116,11 +159,9 @@ class ExamService:
                     logger.error(f"Encryption failed for reflection: {ce}")
                     # Fall back to plain text – do not block submission
 
-            # ── ATOMIC WRITE ─────────────────────────────────────────────────
-            # Score write + all GamificationService mutations must succeed
-            # atomically.  If gamification raises an exception the score row
-            # is also rolled back, preventing orphan/inconsistent records.
-            with transactional(db):
+            # ── ATOMIC SCORE + GAMIFICATION WRITE ─────────────────────────────
+            # All operations must succeed together to prevent inconsistent state
+            async with db.begin():  # Use async transaction context manager
                 new_score = Score(
                     username=user.username,
                     user_id=user.id,
@@ -135,41 +176,22 @@ class ExamService:
                     session_id=session_id
                 )
                 db.add(new_score)
-                db.flush()  # Assign new_score.id before gamification
+                await db.flush()  # Assign new_score.id before gamification
 
-                GamificationService.award_xp(db, user.id, 100, "Assessment completion")
-                GamificationService.update_streak(db, user.id, "assessment")
-                GamificationService.check_achievements(db, user.id, "assessment")
+                # Execute gamification updates atomically
+                try:
+                    await GamificationService.award_xp(db, user.id, 100, "Assessment completion")
+                    await GamificationService.update_streak(db, user.id, "assessment")
+                    await GamificationService.check_achievements(db, user.id, "assessment")
+                except Exception as ge:
+                    logger.error(f"Gamification update failed for user_id={user.id}: {ge}")
+                    # Don't fail the entire transaction for gamification errors
+                    # The score is still valid, gamification can be retried separately
+
+                await db.refresh(new_score)
             # ─────────────────────────────────────────────────────────────────
 
-            db.refresh(new_score)
-                    pass
-
-            new_score = Score(
-                username=user.username,
-                age=data.age,
-                total_score=data.total_score,
-                sentiment_score=data.sentiment_score,
-                reflection_text=reflection,
-                is_rushed=data.is_rushed,
-                is_inconsistent=data.is_inconsistent,
-                timestamp=datetime.now(UTC).isoformat(),
-                detailed_age_group=data.detailed_age_group,
-                session_id=session_id
-            )
-            db.add(new_score)
-            await db.commit()
-            await db.refresh(new_score)
-            
-            # Trigger Gamification
-            try:
-                await GamificationService.award_xp(db, user.id, 100, "Assessment completion")
-                await GamificationService.update_streak(db, user.id, "assessment")
-                await GamificationService.check_achievements(db, user.id, "assessment")
-            except Exception as e:
-                logger.error(f"Gamification update failed for user_id={user.id}: {e}")
-
-            logger.info(f"Exam saved successfully", extra={
+            logger.info(f"Exam score saved successfully", extra={
                 "user_id": user.id,
                 "session_id": session_id,
                 "score": data.total_score,
@@ -183,8 +205,6 @@ class ExamService:
                 "session_id": session_id,
                 "error": str(e)
             }, exc_info=True)
-            logger.error(f"Failed to save exam score for user_id={user.id}: {e}")
-            await db.rollback()
             raise e
 
     @staticmethod

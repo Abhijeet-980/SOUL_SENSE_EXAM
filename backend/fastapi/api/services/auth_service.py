@@ -17,6 +17,7 @@ from sqlalchemy.exc import OperationalError
 from .audit_service import AuditService
 from ..utils.db_transaction import transactional, retry_on_transient
 from ..utils.security import get_password_hash, verify_password, is_hashed, check_password_history
+from ..utils.race_condition_protection import with_row_lock
 from ..models import User, LoginAttempt, PersonalProfile, RefreshToken, PasswordHistory
 from ..constants.security_constants import PASSWORD_HISTORY_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS
 from .db_router import mark_write
@@ -503,56 +504,60 @@ class AuthService:
     async def refresh_access_token(self, refresh_token: str) -> Tuple[str, str]:
         """Validate a refresh token and return a new access token + new refresh token (Rotation)."""
         token_hash = hashlib.sha256(refresh_token.encode()).hexdigest()
-        
-        stmt = select(RefreshToken).filter(
-            RefreshToken.token_hash == token_hash,
-            RefreshToken.is_revoked == False,
-            RefreshToken.expires_at > datetime.now(timezone.utc)
-        )
-        result = await self.db.execute(stmt)
-        db_token = result.scalar_one_or_none()
-        
-        if not db_token:
-            raise AuthException(code=ErrorCode.AUTH_INVALID_TOKEN, message="Invalid or expired refresh token")
-            
-        user_stmt = select(User).filter(User.id == db_token.user_id)
-        user_result = await self.db.execute(user_stmt)
-        user = user_result.scalar_one_or_none()
-        
-        if not user:
-             raise AuthException(code=ErrorCode.AUTH_INVALID_TOKEN, message="User not found")
-        
-        try:
-            # ── ATOMIC TOKEN ROTATION ────────────────────────────────────────
-            # Revocation of the old token and creation of the new one must be
-            # committed as a single unit.  If the commit fails after revocation
-            # but before the new token is stored, the user would be logged out
-            # with no valid refresh token to recover from.
-            with transactional(self.db):
+
+        # Use row-level locking to prevent concurrent refresh operations
+        async with self.db.begin():
+            # Lock the refresh token row to prevent concurrent operations
+            lock_stmt = text("""
+                SELECT id FROM refresh_tokens
+                WHERE token_hash = :token_hash AND is_revoked = false AND expires_at > NOW()
+                FOR UPDATE
+            """)
+            await self.db.execute(lock_stmt, {"token_hash": token_hash})
+
+            # Now check if token exists and is valid
+            stmt = select(RefreshToken).filter(
+                RefreshToken.token_hash == token_hash,
+                RefreshToken.is_revoked == False,
+                RefreshToken.expires_at > datetime.now(timezone.utc)
+            )
+            result = await self.db.execute(stmt)
+            db_token = result.scalar_one_or_none()
+
+            if not db_token:
+                raise AuthException(code=ErrorCode.AUTH_INVALID_TOKEN, message="Invalid or expired refresh token")
+
+            user_stmt = select(User).filter(User.id == db_token.user_id)
+            user_result = await self.db.execute(user_stmt)
+            user = user_result.scalar_one_or_none()
+
+            if not user:
+                 raise AuthException(code=ErrorCode.AUTH_INVALID_TOKEN, message="User not found")
+
+            try:
+                # ── ATOMIC TOKEN ROTATION ────────────────────────────────────────
+                # Revocation of the old token and creation of the new one must be
+                # committed as a single unit.  If the commit fails after revocation
+                # but before the new token is stored, the user would be logged out
+                # with no valid refresh token to recover from.
                 # Revoke current token
                 db_token.is_revoked = True
 
                 # Create new tokens (added to session but not committed yet)
                 access_token = self.create_access_token(data={"sub": user.username})
                 new_refresh_token = self.create_refresh_token(user.id, commit=False)
-            # ─────────────────────────────────────────────────────────────────
+                # ─────────────────────────────────────────────────────────────────
 
-            return access_token, new_refresh_token
+                await self.db.commit()
+                return access_token, new_refresh_token
 
-        except Exception as e:
-            logger.error(f"Failed to rotate refresh token for user {db_token.user_id}: {str(e)}")
-            raise AuthException(
-                code=ErrorCode.AUTH_TOKEN_ROTATION_FAILED,
-                message="Token rotation failed. Please try logging in again."
-            )
-            db_token.is_revoked = True
-            access_token = self.create_access_token(data={"sub": user.username})
-            new_refresh_token = await self.create_refresh_token(user.id, commit=False)
-            await self.db.commit()
-            return access_token, new_refresh_token
-        except Exception as e:
-            await self.db.rollback()
-            raise AuthException(code=ErrorCode.AUTH_TOKEN_ROTATION_FAILED, message="Token rotation failed")
+            except Exception as e:
+                await self.db.rollback()
+                logger.error(f"Failed to rotate refresh token for user {db_token.user_id}: {str(e)}")
+                raise AuthException(
+                    code=ErrorCode.AUTH_TOKEN_ROTATION_FAILED,
+                    message="Token rotation failed. Please try logging in again."
+                )
 
     async def revoke_refresh_token(self, refresh_token: str) -> None:
         """Manually revoke a refresh token."""
