@@ -1,7 +1,7 @@
 import asyncio
 import os
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from celery.exceptions import MaxRetriesExceededError
 from api.celery_app import celery_app
 from api.services.export_service_v2 import ExportServiceV2
