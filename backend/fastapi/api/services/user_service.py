@@ -145,12 +145,18 @@ class UserService:
         # Note: Added for Cache Invalidation pattern (#1123)
 
         try:
+            # Increment version for cache consistency (#1143)
+            user.version = (getattr(user, 'version', 0) or 0) + 1
+            
             await self.db.commit()
             await self.db.refresh(user)
             
-            # Broadcast cache invalidation across distributed nodes (#1123)
+            # Broadcast cache invalidation and set authoritative version (#1143)
             try:
                 from .cache_service import cache_service
+                # Set latest version in Redis as the 'source of truth'
+                await cache_service.update_version("user", user.id, user.version)
+                # Still broadcast invalidation for nodes that *can* hear it
                 await cache_service.broadcast_invalidation(f"user_data:{user.id}", is_prefix=False)
                 await cache_service.broadcast_invalidation(f"user_role:{user.id}", is_prefix=False)
             except ImportError:
@@ -182,11 +188,15 @@ class UserService:
             user.role = "pii_viewer" if pii_viewer else ("admin" if is_admin else "user")
             
         try:
+            # Increment version for cache consistency (#1143)
+            user.version = (getattr(user, 'version', 0) or 0) + 1
+            
             await self.db.commit()
             await self.db.refresh(user)
             
-            # Distribute Cache Invalidation immediately (#1123)
+            # Distribute Cache Invalidation and set authoritative version (#1143)
             from .cache_service import cache_service
+            await cache_service.update_version("user", user.id, user.version)
             await cache_service.broadcast_invalidation(f"user_role:{user_id}", is_prefix=False)
             
             return user

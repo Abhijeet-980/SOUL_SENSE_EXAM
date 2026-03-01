@@ -47,6 +47,7 @@ class User(Base):
     otp_secret = Column(String, nullable=True) # TOTP Secret
     is_2fa_enabled = Column(Boolean, default=False, nullable=False)
     last_activity = Column(String, nullable=True) # Track idle time
+    version = Column(Integer, default=1, nullable=False) # Generation-based caching (#1143)
 
     # RBAC Roles
     is_admin = Column(Boolean, default=False, nullable=False)
