@@ -392,6 +392,10 @@ def create_app() -> FastAPI:
     from .middleware.logging_middleware import RequestLoggingMiddleware
     app.add_middleware(RequestLoggingMiddleware)
 
+    # Session cleanup middleware: safety-net to close leaked DB sessions
+    from .middleware.session_middleware import SessionCleanupMiddleware
+    app.add_middleware(SessionCleanupMiddleware)
+
     # GZip compression middleware for response optimization
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
 

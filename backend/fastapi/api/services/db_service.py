@@ -36,6 +36,27 @@ else:
 
 engine = create_async_engine(settings.async_database_url, **engine_kwargs)
 
+try:
+    # Attach pool event logging to help diagnose exhaustion under load
+    from sqlalchemy import event
+
+    def _pool_connect(dbapi_con, con_record):
+        logging.getLogger("sqlalchemy.pool").debug("Pool connect: %s", con_record)
+
+    def _pool_checkout(dbapi_con, con_record, con_proxy):
+        logging.getLogger("sqlalchemy.pool").debug("Pool checkout: %s", con_record)
+
+    def _pool_checkin(dbapi_con, con_record):
+        logging.getLogger("sqlalchemy.pool").debug("Pool checkin: %s", con_record)
+
+    if hasattr(engine, "sync_engine") and getattr(engine.sync_engine, "pool", None) is not None:
+        event.listen(engine.sync_engine.pool, "connect", _pool_connect)
+        event.listen(engine.sync_engine.pool, "checkout", _pool_checkout)
+        event.listen(engine.sync_engine.pool, "checkin", _pool_checkin)
+except Exception:
+    # Non-critical: if event hooks fail, we still continue without pool logging
+    logging.getLogger("api.services.db_service").debug("Pool event logging not enabled")
+
 AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,

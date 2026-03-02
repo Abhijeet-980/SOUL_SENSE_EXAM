@@ -93,6 +93,30 @@ if settings.async_replica_database_url:
 else:
     log.warning("No replica_database_url configured – all reads will hit primary.")
 
+try:
+    from sqlalchemy import event
+
+    def _pool_connect(dbapi_con, con_record):
+        log.debug("Pool connect: %s", con_record)
+
+    def _pool_checkout(dbapi_con, con_record, con_proxy):
+        log.debug("Pool checkout: %s", con_record)
+
+    def _pool_checkin(dbapi_con, con_record):
+        log.debug("Pool checkin: %s", con_record)
+
+    if hasattr(_primary_engine, "sync_engine") and getattr(_primary_engine.sync_engine, "pool", None) is not None:
+        event.listen(_primary_engine.sync_engine.pool, "connect", _pool_connect)
+        event.listen(_primary_engine.sync_engine.pool, "checkout", _pool_checkout)
+        event.listen(_primary_engine.sync_engine.pool, "checkin", _pool_checkin)
+
+    if _ReplicaSessionLocal and hasattr(_replica_engine, "sync_engine") and getattr(_replica_engine.sync_engine, "pool", None) is not None:
+        event.listen(_replica_engine.sync_engine.pool, "connect", _pool_connect)
+        event.listen(_replica_engine.sync_engine.pool, "checkout", _pool_checkout)
+        event.listen(_replica_engine.sync_engine.pool, "checkin", _pool_checkin)
+except Exception:
+    log.debug("Replica/Primary pool event logging not enabled")
+
 # ------------------------------------------------------------------
 # 2️⃣ Redis helper – recent‑write guard
 # ------------------------------------------------------------------
