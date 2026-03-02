@@ -5,6 +5,8 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, desc
 from ..models import AuditLog
+from sqlalchemy import select, delete
+from ..models import AuditLog, User
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +17,7 @@ class AuditService:
 
     # Allowed fields in details JSON to prevent PII leakage
     ALLOWED_DETAIL_FIELDS = {
-        "status", "reason", "method", "device", "location", "changed_field", "old_value"
+        "status", "reason", "method", "device", "location", "changed_field", "old_value", "outcome"
     }
 
     @classmethod
@@ -29,6 +31,12 @@ class AuditService:
         """
         if db_session is None:
             logger.error("Async db_session must be provided to log_event")
+                 db_session: Optional[AsyncSession] = None) -> bool:
+        """
+        Log a security-critical event.
+        """
+        if not db_session:
+            logger.error("AuditLog requires a db_session")
             return False
 
         try:
@@ -67,10 +75,45 @@ class AuditService:
 
     @staticmethod
     async def get_user_logs(user_id: int, page: int = 1, per_page: int = 20, db_session: AsyncSession = None) -> List[AuditLog]:
+            await db_session.rollback()
+            return False
+
+    @classmethod
+    async def log_auth_event(cls, action: str, username: str,
+                      ip_address: Optional[str] = "SYSTEM",
+                      user_agent: Optional[str] = None,
+                      details: Optional[Dict[str, Any]] = None,
+                      db_session: Optional[AsyncSession] = None) -> bool:
+        """
+        Log an auth event by username (finds user_id first).
+        """
+        if not db_session:
+             return False
+             
+        stmt = select(User.id).filter(User.username == username)
+        result = await db_session.execute(stmt)
+        user_id = result.scalar()
+        
+        if not user_id:
+            logger.warning(f"AuditLog: Could not find user_id for username {username}")
+            return False
+            
+        return await cls.log_event(
+            user_id=user_id,
+            action=action.upper(),
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details=details,
+            db_session=db_session
+        )
+
+    @staticmethod
+    async def get_user_logs(user_id: int, page: int = 1, per_page: int = 20, db_session: Optional[AsyncSession] = None) -> List[AuditLog]:
         """
         Retrieve audit logs for a specific user with pagination (Async).
         """
         if db_session is None:
+        if not db_session:
             return []
 
         try:
@@ -79,6 +122,7 @@ class AuditService:
                 AuditLog.user_id == user_id
             ).order_by(
                 desc(AuditLog.timestamp)
+                AuditLog.timestamp.desc()
             ).limit(per_page).offset(offset)
             
             result = await db_session.execute(stmt)
@@ -101,10 +145,18 @@ class AuditService:
             result = await db_session.execute(stmt)
             await db_session.commit()
             
+        Delete logs older than retention period.
+        """
+        try:
+            cutoff_date = datetime.now(UTC) - timedelta(days=days)
+            stmt = delete(AuditLog).filter(AuditLog.timestamp < cutoff_date)
+            result = await db_session.execute(stmt)
+            await db_session.commit()
             deleted_count = result.rowcount
             logger.info(f"Cleaned up {deleted_count} old audit logs.")
             return deleted_count
         except Exception as e:
             await db_session.rollback()
             logger.error(f"Audit cleanup failed: {e}")
+            return 0
             return 0
