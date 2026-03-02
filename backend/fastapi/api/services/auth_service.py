@@ -15,7 +15,7 @@ from sqlalchemy import select, update, delete, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import OperationalError
 from .audit_service import AuditService
-from ..utils.db_transaction import transactional, retry_on_transient
+from ..utils.db_transaction import transactional, async_transactional, retry_on_transient
 from ..utils.security import get_password_hash, verify_password, is_hashed, check_password_history
 from ..utils.race_condition_protection import with_row_lock
 from ..utils.timestamps import utc_now_iso
@@ -379,7 +379,7 @@ class AuthService:
             await self.db.rollback()
             logger.error(f"Failed to record login attempt: {e}")
 
-    def register_user(self, user_data: 'UserCreate') -> Tuple[bool, Optional[User], str]:
+    async def register_user(self, user_data: 'UserCreate') -> Tuple[bool, Optional[User], str]:
         """
         Register a new user and their personal profile.
         Standardizes identifiers and validates uniqueness.
@@ -397,7 +397,7 @@ class AuthService:
         # Timing Jitter: Artificial delay baseline (100-300ms)
         # This masks the difference between a DB hit (fast) and a bcrypt hash (slowish)
         # Though bcrypt is ~100ms+, so we just add a bit of noise.
-        time.sleep(random.uniform(0.1, 0.3))
+        await asyncio.sleep(random.uniform(0.1, 0.3))
 
         username_lower = user_data.username.lower().strip()
         email_lower = user_data.email.lower().strip()
@@ -405,8 +405,14 @@ class AuthService:
         try:
             # 1. Validation (Does NOT leak existence if we return generic later)
             # But we still do it for integrity.
-            existing_username = self.db.query(User).filter(User.username == username_lower).first()
-            existing_email = self.db.query(PersonalProfile).filter(PersonalProfile.email == email_lower).first()
+            from sqlalchemy import select
+            stmt = select(User).filter(User.username == username_lower)
+            result = await self.db.execute(stmt)
+            existing_username = result.scalar_one_or_none()
+            
+            stmt = select(PersonalProfile).filter(PersonalProfile.email == email_lower)
+            result = await self.db.execute(stmt)
+            existing_email = result.scalar_one_or_none()
 
             if existing_username or existing_email:
                 # ENUMERATION PROTECTION:
@@ -426,13 +432,13 @@ class AuthService:
             # User + PersonalProfile must both succeed or neither persists.
             # A failure mid-way (e.g. FK violation, DB crash) would otherwise
             # leave an orphan User row with no associated PersonalProfile.
-            with transactional(self.db):
+            async with async_transactional(self.db):
                 new_user = User(
                     username=username_lower,
                     password_hash=hashed_pw
                 )
                 self.db.add(new_user)
-                self.db.flush()  # Populate new_user.id before creating profile
+                await self.db.flush()  # Populate new_user.id before creating profile
 
                 new_profile = PersonalProfile(
                     user_id=new_user.id,
@@ -446,7 +452,7 @@ class AuthService:
             # ─────────────────────────────────────────────────────────────────
 
             # Refresh to get the latest data after transaction commit
-            self.db.refresh(new_user)
+            await self.db.refresh(new_user)
             
             # CONSISTENCY: Ensure initial version (1) is in Redis truth mapping (#1143)
             try:
@@ -459,7 +465,7 @@ class AuthService:
             return True, new_user, "Registration successful. Please verify your email."
         except (OperationalError, DatabaseError) as e:
             # Handle database connection/operational errors
-            self.db.rollback()
+            await self.db.rollback()
             logger.error(f"Database connection error during registration: {str(e)}")
             return False, None, "Service temporarily unavailable. Please try again later."
         except AttributeError as e:
@@ -467,7 +473,7 @@ class AuthService:
             return False, None, "A configuration error occurred on the server."
         except Exception as e:
             import traceback
-            self.db.rollback()
+            await self.db.rollback()
             logger.error(f"Registration failed error: {str(e)}")
             return False, None, "An internal error occurred. Please try again later."
 

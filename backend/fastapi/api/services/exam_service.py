@@ -2,23 +2,15 @@ import logging
 import uuid
 from datetime import datetime, UTC, timedelta
 from typing import List, Tuple, Optional
-from sqlalchemy.orm import Session
-from fastapi import status
-from ..schemas import ExamResponseCreate, ExamResultCreate
-from ..models import User, Score, Response, ExamSession, Question
-from ..exceptions import APIException
-from ..constants.errors import ErrorCode
-from .db_service import get_db
-from .gamification_service import GamificationService
-from ..utils.db_transaction import transactional, retry_on_transient
-from datetime import datetime, UTC
-from typing import List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
+from fastapi import status
 from ..schemas import ExamResponseCreate, ExamResultCreate
 from ..models import User, Score, Response, UserSession
+from ..exceptions import APIException
+from ..constants.errors import ErrorCode
 from .gamification_service import GamificationService
-from ..utils.db_transaction import transactional, retry_on_transient
+from ..utils.db_transaction import transactional, async_transactional, retry_on_transient, async_retry_on_transient
 from ..utils.race_condition_protection import with_row_lock, generate_idempotency_key
 import asyncio
 
@@ -46,18 +38,21 @@ class ExamService:
     EXAM_DURATION_MINUTES = 60  # Maximum time allowed for an exam
 
     @staticmethod
-    def start_exam(db: Session, user: User) -> str:
+    async def start_exam(db: AsyncSession, user: User):
         """
         Initiates a new exam session, persists it to DB, and returns session_id.
         Prevents multiple active sessions if necessary (policy decision).
         """
         # 1. Check for existing active sessions to prevent 'multiple attempts' bypass
         # (Optional: allow resumed sessions if they haven't expired)
-        active_session = db.query(ExamSession).filter(
+        from sqlalchemy import select
+        stmt = select(ExamSession).filter(
             ExamSession.user_id == user.id,
             ExamSession.status.in_(['STARTED', 'IN_PROGRESS']),
             ExamSession.expires_at > datetime.now(UTC)
-        ).first()
+        )
+        result = await db.execute(stmt)
+        active_session = result.scalar_one_or_none()
 
         if active_session:
              logger.info(f"User resumed existing exam session", extra={
@@ -67,8 +62,6 @@ class ExamService:
              return active_session.session_id
 
         # 2. Create new session
-    async def start_exam(db: AsyncSession, user: User):
-        """Standardizes session initiation and returns a new session_id."""
         session_id = str(uuid.uuid4())
         now = datetime.now(UTC)
         expires_at = now + timedelta(minutes=ExamService.EXAM_DURATION_MINUTES)
@@ -83,7 +76,7 @@ class ExamService:
         
         try:
             db.add(new_session)
-            db.commit()
+            await db.commit()
             logger.info(f"New exam session created", extra={
                 "user_id": user.id,
                 "session_id": session_id,
@@ -91,16 +84,17 @@ class ExamService:
             })
             return session_id
         except Exception as e:
-            db.rollback()
+            await db.rollback()
             logger.error(f"Failed to create exam session: {e}")
             raise APIException(ErrorCode.INTERNAL_SERVER_ERROR, "Failed to initiate exam")
 
     @staticmethod
-    def _get_valid_session(db: Session, user_id: int, session_id: str, allowed_statuses: List[str]) -> ExamSession:
+    async def _get_valid_session(db: AsyncSession, user_id: int, session_id: str, allowed_statuses: List[str]) -> ExamSession:
         """Helper to fetch and validate an exam session."""
-        session = db.query(ExamSession).filter(
-            ExamSession.session_id == session_id
-        ).first()
+        from sqlalchemy import select
+        stmt = select(ExamSession).filter(ExamSession.session_id == session_id)
+        result = await db.execute(stmt)
+        session = result.scalar_one_or_none()
 
         if not session:
             logger.warning(f"Exam session not found: {session_id}", extra={"user_id": user_id})
@@ -137,36 +131,6 @@ class ExamService:
             )
 
         return session
-
-    @staticmethod
-    def save_response(db: Session, user: User, session_id: str, data: ExamResponseCreate):
-        """Saves a single question response with session state validation."""
-        # 1. Validate session state
-        session = ExamService._get_valid_session(db, user.id, session_id, ['STARTED', 'IN_PROGRESS'])
-
-        try:
-            # 2. Update session status to IN_PROGRESS if it was STARTED
-            if session.status == 'STARTED':
-                session.status = 'IN_PROGRESS'
-
-            # 3. Save the response
-            response = Response(
-                user_id=user.id,
-                question_id=data.question_id,
-                session_id=session_id,
-                response_text=data.response_text,
-                response_value=data.response_value,
-                timestamp=utc_now_iso()
-            )
-            db.add(response)
-            db.commit()
-            return response
-        except IntegrityError:
-            db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Response already exists for this question"
-            )
 
     @staticmethod
     async def save_response(db: AsyncSession, user: User, session_id: str, data: ExamResponseCreate):
@@ -233,7 +197,7 @@ class ExamService:
             raise e
 
     @staticmethod
-    @retry_on_transient(retries=3)
+    @async_retry_on_transient(retries=3)
     async def save_score(db: AsyncSession, user: User, session_id: str, data: ExamResultCreate):
         """
         Saves the final exam score with strict state checking.
@@ -246,7 +210,7 @@ class ExamService:
         - Inconsistent gamification state
         """
         # 1. Validate session state (Must be SUBMITTED before scoring allowed)
-        session = ExamService._get_valid_session(db, user.id, session_id, ['SUBMITTED'])
+        session = await ExamService._get_valid_session(db, user.id, session_id, ['SUBMITTED'])
 
         try:
             # Check for Replay Attack (Already completed)
@@ -346,21 +310,15 @@ class ExamService:
             raise e
 
     @staticmethod
-    def mark_as_submitted(db: Session, user_id: int, session_id: str):
+    async def mark_as_submitted(db: AsyncSession, user_id: int, session_id: str):
         """Transitions a session to SUBMITTED state."""
-        session = ExamService._get_valid_session(db, user_id, session_id, ['STARTED', 'IN_PROGRESS'])
+        session = await ExamService._get_valid_session(db, user_id, session_id, ['STARTED', 'IN_PROGRESS'])
         session.status = 'SUBMITTED'
         session.submitted_at = datetime.now(UTC)
-        db.commit()
+        await db.commit()
         logger.info(f"Exam session marked as SUBMITTED", extra={"user_id": user_id, "session_id": session_id})
 
     @staticmethod
-    def get_history(db: Session, user: User, skip: int = 0, limit: int = 10) -> Tuple[List[Score], int]:
-        """Retrieves paginated exam history for the specified user."""
-        limit = min(limit, 100)
-        query = db.query(Score).filter(Score.user_id == user.id)
-        total = query.count()
-        results = query.order_by(Score.timestamp.desc()).offset(skip).limit(limit).all()
     async def get_history(db: AsyncSession, user: User, skip: int = 0, limit: int = 10):
         """Retrieves paginated exam history for the specified user."""
         limit = min(limit, 100)  # Guard: cap at 100 to prevent unbounded queries

@@ -177,7 +177,7 @@ async def register(
     auth_service: AuthService = Depends(get_auth_service)
 ) -> dict:
     """Register a new user. Rate limited to 5 requests per minute per IP/user."""
-    success, new_user, message = auth_service.register_user(user)
+    success, new_user, message = await auth_service.register_user(user)
 
     if not success:
         raise BusinessLogicError(message=message, code="REGISTRATION_FAILED")
