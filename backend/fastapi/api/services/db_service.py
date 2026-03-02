@@ -62,6 +62,37 @@ from ..config import get_settings_instance, get_settings
 
 settings = get_settings_instance()
 
+# Configure connect_args based on DB type
+connect_args = {}
+if settings.database_type == "sqlite":
+    connect_args["check_same_thread"] = False
+    # SQLite connection timeout (waits if DB is locked)
+    connect_args["timeout"] = settings.database_pool_timeout
+elif "postgresql" in settings.database_url:
+    # Postgres-specific statement timeout (milliseconds)
+    connect_args["options"] = f"-c statement_timeout={settings.database_statement_timeout}"
+
+# Create engine with production-ready pooling
+engine_args = {
+    "connect_args": connect_args,
+}
+
+if settings.database_type == "sqlite":
+    # For SQLite, use StaticPool to avoid issues with multiple threads 
+    # and connection management, as single-file DBs have their own locking.
+    from sqlalchemy.pool import StaticPool
+    engine_args["poolclass"] = StaticPool
+else:
+    # Production pooling options for Postgres/MySQL
+    engine_args.update({
+        "pool_size": settings.database_pool_size,
+        "max_overflow": settings.database_max_overflow,
+        "pool_timeout": settings.database_pool_timeout,
+        "pool_recycle": settings.database_pool_recycle,
+        "pool_pre_ping": settings.database_pool_pre_ping,
+    })
+
+engine = create_engine(settings.database_url, **engine_args)
 # Create async engine with optimized connection pooling for high concurrency
 engine_kwargs = {
     "echo": settings.debug,
@@ -125,6 +156,20 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
         yield existing_session
         return
 
+def get_db():
+    """Dependency to get database session."""
+    db = SessionLocal()
+    try:
+        yield db
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Database session error: {e}", extra={
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc()
+        })
+        raise
+    finally:
+        db.close()
     timeout_seconds = int(getattr(settings, "db_request_timeout_seconds", 30))
 
     async with AsyncSessionLocal() as db:
@@ -185,6 +230,25 @@ def db_timeout(seconds: float = 5.0):
                 raise Exception(f"Database operation timed out: {func.__name__}")
         return wrapper
     return decorator
+
+def get_pool_status():
+    """
+    Get metrics about the connection pool status to monitor for exhaustion.
+    """
+    from sqlalchemy.pool import QueuePool
+    
+    if isinstance(engine.pool, QueuePool):
+        return {
+            "pool_size": engine.pool.size(),
+            "checkedin": engine.pool.checkedin(),
+            "checkedout": engine.pool.checkedout(),
+            "overflow": engine.pool.overflow(),
+            "pool_timeout": engine.pool.timeout(),
+            "pool_recycle": engine.pool.recycle,
+            "can_spawn_more": engine.pool.overflow() < engine.pool.max_overflow() if hasattr(engine.pool, 'max_overflow') else False
+        }
+    return {"pool_type": type(engine.pool).__name__, "message": "Metrics not supported for this pool type"}
+
 
 class AssessmentService:
     """Service for managing assessments (scores) using AsyncSession."""
