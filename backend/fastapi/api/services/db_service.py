@@ -4,7 +4,13 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy import func, select, update, delete, text
 from sqlalchemy.orm import Session
 from typing import List, Optional, Tuple, Any
+"""Database service for assessments and questions."""
+import asyncio
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import select, func
+from typing import List, Optional, Tuple, AsyncGenerator
 from datetime import datetime
+from fastapi import HTTPException, Request, status
 import logging
 import traceback
 import time
@@ -52,6 +58,139 @@ else:
 # Initialize Async Engine
 engine = create_async_engine(database_url, **engine_args)
 
+from ..config import get_settings_instance, get_settings
+
+settings = get_settings_instance()
+
+# Configure connect_args based on DB type
+connect_args = {}
+if settings.database_type == "sqlite":
+    connect_args["check_same_thread"] = False
+    # SQLite connection timeout (waits if DB is locked)
+    connect_args["timeout"] = settings.database_pool_timeout
+elif "postgresql" in settings.database_url:
+    # Postgres-specific statement timeout (milliseconds)
+    connect_args["options"] = f"-c statement_timeout={settings.database_statement_timeout}"
+
+# Create engine with production-ready pooling
+engine_args = {
+    "connect_args": connect_args,
+}
+
+if settings.database_type == "sqlite":
+    # For SQLite, use StaticPool to avoid issues with multiple threads 
+    # and connection management, as single-file DBs have their own locking.
+    from sqlalchemy.pool import StaticPool
+    engine_args["poolclass"] = StaticPool
+else:
+    # Production pooling options for Postgres/MySQL
+    engine_args.update({
+        "pool_size": settings.database_pool_size,
+        "max_overflow": settings.database_max_overflow,
+        "pool_timeout": settings.database_pool_timeout,
+        "pool_recycle": settings.database_pool_recycle,
+        "pool_pre_ping": settings.database_pool_pre_ping,
+    })
+
+engine = create_engine(settings.database_url, **engine_args)
+# Create async engine with optimized connection pooling for high concurrency
+engine_kwargs = {
+    "echo": settings.debug,
+    "future": True,
+}
+
+if settings.database_type == "sqlite":
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    engine_kwargs.update(
+        {
+            "pool_size": 20,       # Core pool size - maintain 20 persistent connections
+            "max_overflow": 10,    # Allow up to 10 additional connections when pool is full
+            "pool_timeout": 30,    # Wait up to 30 seconds for a connection from the pool
+            "pool_pre_ping": True, # Verify connections are alive before using them
+            "pool_recycle": 3600,  # Recycle connections after 1 hour to prevent stale connections
+        }
+    )
+
+engine = create_async_engine(settings.async_database_url, **engine_kwargs)
+
+try:
+    # Attach pool event logging to help diagnose exhaustion under load
+    from sqlalchemy import event
+
+    def _pool_connect(dbapi_con, con_record):
+        logging.getLogger("sqlalchemy.pool").debug("Pool connect: %s", con_record)
+
+    def _pool_checkout(dbapi_con, con_record, con_proxy):
+        logging.getLogger("sqlalchemy.pool").debug("Pool checkout: %s", con_record)
+
+    def _pool_checkin(dbapi_con, con_record):
+        logging.getLogger("sqlalchemy.pool").debug("Pool checkin: %s", con_record)
+
+    if hasattr(engine, "sync_engine") and getattr(engine.sync_engine, "pool", None) is not None:
+        event.listen(engine.sync_engine.pool, "connect", _pool_connect)
+        event.listen(engine.sync_engine.pool, "checkout", _pool_checkout)
+        event.listen(engine.sync_engine.pool, "checkin", _pool_checkin)
+except Exception:
+    # Non-critical: if event hooks fail, we still continue without pool logging
+    logging.getLogger("api.services.db_service").debug("Pool event logging not enabled")
+
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False
+)
+
+
+async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
+    """Async dependency to get a request-scoped database session.
+
+    Guarantees:
+    - single AsyncSession per request context (nested dependencies share same session)
+    - rollback on exceptions/timeouts
+    - timeout guard to prevent stalled sessions starving the pool
+    """
+    existing_session = getattr(request.state, "db_session", None)
+    if existing_session is not None:
+        yield existing_session
+        return
+
+def get_db():
+    """Dependency to get database session."""
+    db = SessionLocal()
+    try:
+        yield db
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Database session error: {e}", extra={
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc()
+        })
+        raise
+    finally:
+        db.close()
+    timeout_seconds = int(getattr(settings, "db_request_timeout_seconds", 30))
+
+    async with AsyncSessionLocal() as db:
+        request.state.db_session = db
+        try:
+            async with asyncio.timeout(timeout_seconds):
+                yield db
+        except TimeoutError as exc:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="Database operation timed out",
+            ) from exc
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            if getattr(request.state, "db_session", None) is db:
+                delattr(request.state, "db_session")
+            await db.close()
+
 # Async Session Factory
 AsyncSessionLocal = async_sessionmaker(
     bind=engine, 
@@ -92,6 +231,44 @@ def db_timeout(seconds: float = 5.0):
         return wrapper
     return decorator
 
+def get_pool_status():
+    """
+    Get metrics about the connection pool status to monitor for exhaustion.
+    """
+    from sqlalchemy.pool import QueuePool
+    
+    if isinstance(engine.pool, QueuePool):
+        return {
+            "pool_size": engine.pool.size(),
+            "checkedin": engine.pool.checkedin(),
+            "checkedout": engine.pool.checkedout(),
+            "overflow": engine.pool.overflow(),
+            "pool_timeout": engine.pool.timeout(),
+            "pool_recycle": engine.pool.recycle,
+            "can_spawn_more": engine.pool.overflow() < engine.pool.max_overflow() if hasattr(engine.pool, 'max_overflow') else False
+        }
+    return {"pool_type": type(engine.pool).__name__, "message": "Metrics not supported for this pool type"}
+
+
+def get_pool_status():
+    """
+    Get metrics about the connection pool status to monitor for exhaustion.
+    """
+    from sqlalchemy.pool import QueuePool
+    
+    if isinstance(engine.pool, QueuePool):
+        return {
+            "pool_size": engine.pool.size(),
+            "checkedin": engine.pool.checkedin(),
+            "checkedout": engine.pool.checkedout(),
+            "overflow": engine.pool.overflow(),
+            "pool_timeout": engine.pool.timeout(),
+            "pool_recycle": engine.pool.recycle,
+            "can_spawn_more": engine.pool.overflow() < engine.pool.max_overflow() if hasattr(engine.pool, 'max_overflow') else False
+        }
+    return {"pool_type": type(engine.pool).__name__, "message": "Metrics not supported for this pool type"}
+
+
 class AssessmentService:
     """Service for managing assessments (scores) using AsyncSession."""
     
@@ -112,11 +289,20 @@ class AssessmentService:
         if user_id is not None:
             stmt = stmt.filter(Score.user_id == user_id)
         elif username:
+        """
+        Get assessments with pagination and optional filters.
+        When user_id is provided, results are scoped to that user only.
+        """
+        stmt = select(Score)
+        
+        # Apply filters
+        if username:
             stmt = stmt.filter(Score.username == username)
         if age_group:
             stmt = stmt.filter(Score.detailed_age_group == age_group)
         
         # Get total count (using a separate statement for clarity and speed in async)
+        # Get total count
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total_result = await db.execute(count_stmt)
         total = total_result.scalar() or 0
@@ -136,6 +322,9 @@ class AssessmentService:
         stmt = select(Score).filter(Score.id == assessment_id)
         if user_id is not None:
             stmt = stmt.filter(Score.user_id == user_id)
+    async def get_assessment_by_id(db: AsyncSession, assessment_id: int) -> Optional[Score]:
+        """Get a single assessment by ID."""
+        stmt = select(Score).filter(Score.id == assessment_id)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
     
@@ -146,6 +335,10 @@ class AssessmentService:
         username: Optional[str] = None
     ) -> dict:
         """Get statistical summary of assessments (Async)."""
+    async def get_assessment_stats(db: AsyncSession, username: Optional[str] = None) -> dict:
+        """
+        Get statistical summary of assessments.
+        """
         stmt = select(
             func.count(Score.id).label('total'),
             func.avg(Score.total_score).label('avg_score'),
@@ -161,6 +354,11 @@ class AssessmentService:
         
         result = await db.execute(stmt)
         stats = result.mappings().first()
+        if username:
+            stmt = stmt.filter(Score.username == username)
+        
+        result = await db.execute(stmt)
+        stats = result.first()
         
         # Get age group distribution
         age_stmt = select(
@@ -173,6 +371,10 @@ class AssessmentService:
         elif username:
             age_stmt = age_stmt.filter(Score.username == username)
         
+        if username:
+            age_stmt = age_stmt.filter(Score.username == username)
+        
+        age_stmt = age_stmt.group_by(Score.detailed_age_group)
         age_result = await db.execute(age_stmt)
         age_distribution = age_result.all()
         
@@ -182,10 +384,33 @@ class AssessmentService:
             'highest_score': stats['max_score'] or 0,
             'lowest_score': stats['min_score'] or 0,
             'average_sentiment': round(float(stats['avg_sentiment'] or 0), 2),
+            'total_assessments': stats.total if stats else 0,
+            'average_score': round(stats.avg_score or 0, 2) if stats else 0,
+            'highest_score': stats.max_score if stats else 0,
+            'lowest_score': stats.min_score if stats else 0,
+            'average_sentiment': round(stats.avg_sentiment or 0, 2) if stats else 0,
             'age_group_distribution': {
                 age_group: count for age_group, count in age_distribution if age_group
             }
         }
+    
+    @staticmethod
+    async def get_assessment_responses(db: AsyncSession, assessment_id: int) -> List[Response]:
+        """Get all responses for a specific assessment."""
+        stmt = select(Score).filter(Score.id == assessment_id)
+        result = await db.execute(stmt)
+        assessment = result.scalar_one_or_none()
+        
+        if not assessment:
+            return []
+        
+        resp_stmt = select(Response).filter(
+            Response.username == assessment.username,
+            Response.timestamp == assessment.timestamp
+        )
+        resp_result = await db.execute(resp_stmt)
+        return list(resp_result.scalars().all())
+
 
 class QuestionService:
     """Service for managing questions (Async)."""
@@ -201,6 +426,9 @@ class QuestionService:
         active_only: bool = True
     ) -> Tuple[List[Question], int]:
         """Get questions with pagination and filters (Async)."""
+        """
+        Get questions with pagination and filters.
+        """
         stmt = select(Question)
         
         if active_only:
@@ -212,10 +440,22 @@ class QuestionService:
         if max_age is not None:
             stmt = stmt.filter(Question.max_age >= max_age)
         
+        
+        if category_id is not None:
+            stmt = stmt.filter(Question.category_id == category_id)
+        
+        if min_age is not None:
+            stmt = stmt.filter(Question.min_age <= min_age)
+        
+        if max_age is not None:
+            stmt = stmt.filter(Question.max_age >= max_age)
+        
+        # Get total count
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total_result = await db.execute(count_stmt)
         total = total_result.scalar() or 0
         
+        # Apply pagination
         stmt = stmt.order_by(Question.id).offset(skip).limit(limit)
         result = await db.execute(stmt)
         questions = result.scalars().all()
@@ -228,3 +468,159 @@ class QuestionService:
         stmt = select(Question).filter(Question.id == question_id)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_question_by_id(db: AsyncSession, question_id: int) -> Optional[Question]:
+        """Get a single question by ID."""
+        stmt = select(Question).filter(Question.id == question_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_questions_by_age(
+        db: AsyncSession,
+        age: int,
+        limit: Optional[int] = None
+    ) -> List[Question]:
+        """
+        Get questions appropriate for a specific age.
+        """
+        stmt = select(Question).filter(
+            Question.is_active == 1,
+            Question.min_age <= age,
+            Question.max_age >= age
+        )
+        
+        if limit:
+            stmt = stmt.limit(limit)
+        
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+    
+    @staticmethod
+    async def get_random_questions(
+        db: AsyncSession,
+        age: int,
+        count: int = 10
+    ) -> List[Question]:
+        """
+        Get random questions appropriate for age.
+        """
+        stmt = select(Question).filter(
+            Question.is_active == 1,
+            Question.min_age <= age,
+            Question.max_age >= age
+        ).order_by(func.random()).limit(count)
+        
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+
+class ResponseService:
+    """Service for managing responses."""
+    
+    @staticmethod
+    async def get_responses(
+        db: AsyncSession,
+        skip: int = 0,
+        limit: int = 100,
+        username: Optional[str] = None,
+        question_id: Optional[int] = None
+    ) -> Tuple[List[Response], int]:
+        """
+        Get responses with pagination and filters.
+        """
+        stmt = select(Response)
+        
+        if username:
+            stmt = stmt.filter(Response.username == username)
+        if question_id:
+            stmt = stmt.filter(Response.question_id == question_id)
+        
+        # Get total count
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar() or 0
+        
+        # Apply pagination
+        stmt = stmt.order_by(Response.timestamp.desc()).offset(skip).limit(limit)
+        result = await db.execute(stmt)
+        responses = result.scalars().all()
+        
+        return list(responses), total
+
+
+# Transaction management utilities for #1218: Unreleased Locks in Async Transaction Scope
+import functools
+from contextlib import asynccontextmanager
+from sqlalchemy.exc import OperationalError
+
+
+@asynccontextmanager
+async def transaction_scope(db: AsyncSession):
+    """
+    Async context manager for database transactions with guaranteed rollback.
+
+    Ensures:
+    - Automatic rollback on exceptions
+    - Lock release on any failure
+    - Support for nested savepoints
+    - Deterministic transaction boundaries
+    """
+    async with db.begin():
+        try:
+            yield
+        except Exception:
+            # Ensure rollback happens even if begin() context fails
+            if db.in_transaction():
+                await db.rollback()
+            raise
+
+
+def deadlock_retry(max_retries: int = 3, backoff_factor: float = 0.1):
+    """
+    Decorator to retry operations that fail due to database deadlocks.
+
+    Args:
+        max_retries: Maximum number of retry attempts
+        backoff_factor: Exponential backoff multiplier (seconds)
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except OperationalError as e:
+                    last_exception = e
+                    # Check if it's a deadlock error (MySQL/PostgreSQL specific)
+                    error_msg = str(e).lower()
+                    if "deadlock" in error_msg or "lock wait timeout" in error_msg:
+                        if attempt < max_retries:
+                            # Exponential backoff
+                            delay = backoff_factor * (2 ** attempt)
+                            logging.getLogger("api.services.db_service").warning(
+                                f"Deadlock detected, retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries + 1})"
+                            )
+                            await asyncio.sleep(delay)
+                            continue
+                    # Not a deadlock or max retries reached
+                    raise
+            # Should not reach here, but just in case
+            raise last_exception
+        return wrapper
+    return decorator
+
+
+# Export all services
+__all__ = [
+    'AssessmentService',
+    'QuestionService',
+    'ResponseService',
+    'get_db',
+    'engine',
+    'AsyncSessionLocal',
+    'transaction_scope',
+    'deadlock_retry'
+]
