@@ -42,13 +42,9 @@ from ..models import User
 router = APIRouter(tags=["Profiles"])
 
 
-def get_profile_service():
-    """Dependency to get ProfileService with database session."""
-    db = next(get_db())
-    try:
-        yield ProfileService(db)
-    finally:
-        db.close()
+async def get_profile_service(db: AsyncSession = Depends(get_db)):
+    """Dependency to get ProfileService (Async)."""
+    return ProfileService(db)
 
 
 # ============================================================================
@@ -65,7 +61,7 @@ async def get_settings(
     
     **Authentication Required**
     """
-    settings = profile_service.get_user_settings(current_user.id)
+    settings = await profile_service.get_user_settings(current_user.id)
     if not settings:
         from fastapi import HTTPException
         raise HTTPException(
@@ -93,7 +89,7 @@ async def create_settings(
     
     **Authentication Required**
     """
-    settings = profile_service.create_user_settings(
+    settings = await profile_service.create_user_settings(
         user_id=current_user.id,
         settings_data=settings_data.model_dump(exclude_unset=True)
     )
@@ -112,7 +108,7 @@ async def update_settings(
     
     **Authentication Required**
     """
-    settings = profile_service.update_user_settings(
+    settings = await profile_service.update_user_settings(
         user_id=current_user.id,
         settings_data=settings_data.model_dump(exclude_unset=True)
     )
@@ -129,7 +125,7 @@ async def delete_settings(
     
     **Authentication Required**
     """
-    profile_service.delete_user_settings(current_user.id)
+    await profile_service.delete_user_settings(current_user.id)
     return None
 
 
@@ -147,7 +143,7 @@ async def get_medical_profile(
     
     **Authentication Required**
     """
-    profile = profile_service.get_medical_profile(current_user.id)
+    profile = await profile_service.get_medical_profile(current_user.id)
     if not profile:
         from fastapi import HTTPException
         raise HTTPException(
@@ -179,7 +175,7 @@ async def create_medical_profile(
     
     **Authentication Required**
     """
-    profile = profile_service.create_medical_profile(
+    profile = await profile_service.create_medical_profile(
         user_id=current_user.id,
         profile_data=profile_data.model_dump(exclude_unset=True)
     )
@@ -198,7 +194,7 @@ async def update_medical_profile(
     
     **Authentication Required**
     """
-    profile = profile_service.update_medical_profile(
+    profile = await profile_service.update_medical_profile(
         user_id=current_user.id,
         profile_data=profile_data.model_dump(exclude_unset=True)
     )
@@ -215,7 +211,7 @@ async def delete_medical_profile(
     
     **Authentication Required**
     """
-    profile_service.delete_medical_profile(current_user.id)
+    await profile_service.delete_medical_profile(current_user.id)
     return None
 
 
@@ -233,7 +229,7 @@ async def get_personal_profile(
     
     **Authentication Required**
     """
-    profile = profile_service.get_personal_profile(current_user.id)
+    profile = await profile_service.get_personal_profile(current_user.id)
     if not profile:
         from fastapi import HTTPException
         raise HTTPException(
@@ -271,7 +267,7 @@ async def create_personal_profile(
     
     **Authentication Required**
     """
-    profile = profile_service.create_personal_profile(
+    profile = await profile_service.create_personal_profile(
         user_id=current_user.id,
         profile_data=profile_data.model_dump(exclude_unset=True)
     )
@@ -290,7 +286,7 @@ async def update_personal_profile(
     
     **Authentication Required**
     """
-    profile = profile_service.update_personal_profile(
+    profile = await profile_service.update_personal_profile(
         user_id=current_user.id,
         profile_data=profile_data.model_dump(exclude_unset=True)
     )
@@ -307,7 +303,7 @@ async def delete_personal_profile(
     
     **Authentication Required**
     """
-    profile_service.delete_personal_profile(current_user.id)
+    await profile_service.delete_personal_profile(current_user.id)
     return None
 
 
@@ -325,7 +321,7 @@ async def get_strengths(
     
     **Authentication Required**
     """
-    strengths = profile_service.get_user_strengths(current_user.id)
+    strengths = await profile_service.get_user_strengths(current_user.id)
     if not strengths:
         from fastapi import HTTPException
         raise HTTPException(
@@ -356,7 +352,7 @@ async def create_strengths(
     
     **Authentication Required**
     """
-    strengths = profile_service.create_user_strengths(
+    strengths = await profile_service.create_user_strengths(
         user_id=current_user.id,
         strengths_data=strengths_data.model_dump(exclude_unset=True)
     )
@@ -375,7 +371,7 @@ async def update_strengths(
     
     **Authentication Required**
     """
-    strengths = profile_service.update_user_strengths(
+    strengths = await profile_service.update_user_strengths(
         user_id=current_user.id,
         strengths_data=strengths_data.model_dump(exclude_unset=True)
     )
@@ -392,7 +388,7 @@ async def delete_strengths(
     
     **Authentication Required**
     """
-    profile_service.delete_user_strengths(current_user.id)
+    await profile_service.delete_user_strengths(current_user.id)
     return None
 
 
@@ -410,7 +406,7 @@ async def get_emotional_patterns(
     
     **Authentication Required**
     """
-    patterns = profile_service.get_emotional_patterns(current_user.id)
+    patterns = await profile_service.get_emotional_patterns(current_user.id)
     if not patterns:
         from fastapi import HTTPException
         raise HTTPException(
@@ -437,7 +433,7 @@ async def create_emotional_patterns(
     
     **Authentication Required**
     """
-    patterns = profile_service.create_emotional_patterns(
+    patterns = await profile_service.create_emotional_patterns(
         user_id=current_user.id,
         patterns_data=patterns_data.model_dump(exclude_unset=True)
     )
@@ -456,7 +452,7 @@ async def update_emotional_patterns(
     
     **Authentication Required**
     """
-    patterns = profile_service.update_emotional_patterns(
+    patterns = await profile_service.update_emotional_patterns(
         user_id=current_user.id,
         patterns_data=patterns_data.model_dump(exclude_unset=True)
     )
@@ -473,5 +469,5 @@ async def delete_emotional_patterns(
     
     **Authentication Required**
     """
-    profile_service.delete_emotional_patterns(current_user.id)
+    await profile_service.delete_emotional_patterns(current_user.id)
     return None

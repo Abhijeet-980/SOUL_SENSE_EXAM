@@ -8,6 +8,10 @@ from ..config import get_settings
 from ..schemas import UserCreate, Token, UserResponse, ErrorResponse, PasswordResetRequest, PasswordResetComplete, TwoFactorLoginRequest, TwoFactorAuthRequiredResponse, TwoFactorConfirmRequest, UsernameAvailabilityResponse, CaptchaResponse, LoginRequest
 from ..services.db_service import get_db
 from ..services.auth_service import AuthService
+
+async def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
+    return AuthService(db)
+
 from ..services.captcha_service import captcha_service
 from ..utils.network import get_real_ip
 from ..constants.errors import ErrorCode
@@ -17,7 +21,7 @@ from ..models import User
 from ..exceptions import AuthException, APIException, RateLimitException
 from ..utils.limiter import limiter
 # Rate limiters imported inline within routes to avoid potential circular/timing issues
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from cachetools import TTLCache
 import secrets
 
@@ -39,10 +43,9 @@ async def get_server_id(request: Request):
 # oauth2_scheme is still needed for other endpoints but login now uses custom JSON
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
-async def get_current_user(request: Request, token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
+async def get_current_user(request: Request, token: Annotated[str, Depends(oauth2_scheme)], db: AsyncSession = Depends(get_db)):
     """
-    Get current user from JWT token.
-    This remains in the router/dependency layer as it couples HTTP security with logic.
+    Get current user from JWT token (Async).
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -50,12 +53,14 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        # Pydantic schema validation for TokenData could be used here
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.jwt_algorithm])
         
         # Check if token is revoked
         from ..root_models import TokenRevocation
-        revoked = db.query(TokenRevocation).filter(TokenRevocation.token_str == token).first()
+        from sqlalchemy import select
+        stmt = select(TokenRevocation).filter(TokenRevocation.token_str == token)
+        result = await db.execute(stmt)
+        revoked = result.scalar_one_or_none()
         if revoked:
             raise credentials_exception
 
@@ -65,12 +70,16 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
     except JWTError:
         raise credentials_exception
 
-    user = db.query(User).filter(User.username == username).first()
+    stmt = select(User).filter(User.username == username)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+    
     if user is None:
         raise credentials_exception
     
     # Set user_id in request state for rate limiting and auditing
     request.state.user_id = user.id
+    
     # Check if user is active
     if not getattr(user, 'is_active', True):
         raise HTTPException(
@@ -95,7 +104,7 @@ availability_limiter_cache = TTLCache(maxsize=1000, ttl=60)
 async def check_username_availability(
     username: str,
     request: Request,
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     """
     Check if a username is available.
@@ -110,7 +119,7 @@ async def check_username_availability(
         )
     availability_limiter_cache[client_ip] = count + 1
     
-    available, message = auth_service.check_username_available(username)
+    available, message = await auth_service.check_username_available(username)
     return UsernameAvailabilityResponse(available=available, message=message)
 
 
@@ -118,7 +127,7 @@ async def check_username_availability(
 async def register(
     request: Request,
     user: UserCreate, 
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     from ..middleware.rate_limiter import registration_limiter
     # Rate limit by IP
@@ -130,7 +139,7 @@ async def register(
             wait_seconds=wait_time
         )
 
-    success, new_user, message = auth_service.register_user(user)
+    success, new_user, message = await auth_service.register_user(user)
     
     if not success:
          raise HTTPException(
@@ -147,13 +156,13 @@ async def login(
     response: Response,
     login_request: LoginRequest, 
     request: Request,
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     from ..middleware.rate_limiter import login_limiter
     ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "Unknown")
 
-    # 1. Start with CAPTCHA Validation (Before Rate Limiting to prevent spam cheapness)
+    # 1. Start with CAPTCHA Validation
     if not captcha_service.validate_captcha(login_request.session_id, login_request.captcha_input):
          raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -168,39 +177,37 @@ async def login(
             detail=f"Too many login attempts. Please try again in {wait_time}s."
         )
 
-    # 3. Rate Limit by Username (Identifier)
+    # 3. Rate Limit by Username
     is_limited, wait_time = login_limiter.is_rate_limited(f"login_{login_request.identifier}")
     if is_limited:
          raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Account temporarily restricted due to multiple login attempts. Please try again in {wait_time}s."
+            detail=f"Account temporarily restricted. Please try again in {wait_time}s."
         )
 
-    user = auth_service.authenticate_user(login_request.identifier, login_request.password, ip_address=ip, user_agent=user_agent)
+    user = await auth_service.authenticate_user(login_request.identifier, login_request.password, ip_address=ip, user_agent=user_agent)
     
-    # PR 4: 2FA Check
     if user.is_2fa_enabled:
-        pre_auth_token = auth_service.initiate_2fa_login(user)
+        pre_auth_token = await auth_service.initiate_2fa_login(user)
         response.status_code = status.HTTP_202_ACCEPTED
         return TwoFactorAuthRequiredResponse(
             pre_auth_token=pre_auth_token
         )
 
-    # PR 10: Session Fixation Protection - Revoke any existing session cookie
+    # Session Fixation Protection
     old_refresh_token = request.cookies.get("refresh_token")
     if old_refresh_token:
-        auth_service.revoke_refresh_token(old_refresh_token)
+        await auth_service.revoke_refresh_token(old_refresh_token)
 
-    # Standard Login
     access_token = auth_service.create_access_token(
         data={"sub": user.username}
     )
     
-    refresh_token = auth_service.create_refresh_token(user.id)
-    has_multiple_sessions = auth_service.has_multiple_active_sessions(user.id)
-
+    refresh_token = await auth_service.create_refresh_token(user.id)
     
-    # Set refresh token in HttpOnly cookie with security flags from settings
+    # Optional logic for multiple sessions (can be implemented in AuthService if needed)
+    # has_multiple_sessions = await auth_service.has_multiple_active_sessions(user.id)
+
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
@@ -210,21 +217,19 @@ async def login(
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
     
-    # return Token(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
+    from ..models import PersonalProfile
+    stmt = select(PersonalProfile).filter(PersonalProfile.user_id == user.id)
+    res_p = await auth_service.db.execute(stmt)
+    profile = res_p.scalar_one_or_none()
+
     return Token(
         access_token=access_token,
         token_type="bearer",
         refresh_token=refresh_token,
         username=user.username,
-        email=user.personal_profile.email if user.personal_profile else None,
+        email=profile.email if profile else None,
         id=user.id,
-        created_at=user.created_at,
-        warnings=(
-            [{
-                "code": "MULTIPLE_SESSIONS_ACTIVE",
-                "message": "Your account is active on another device or browser."
-            }] if has_multiple_sessions else []
-        )
+        created_at=user.created_at
     )
 
 
@@ -236,28 +241,26 @@ async def verify_2fa(
     login_request: TwoFactorLoginRequest,
     response: Response,
     request: Request,
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     """
     Verify 2FA code and issue tokens.
     """
     ip = get_real_ip(request)
-    # PR 10: Session Fixation Protection - Revoke any existing session cookie
+    # Session Fixation Protection
     old_refresh_token = request.cookies.get("refresh_token")
     if old_refresh_token:
-        auth_service.revoke_refresh_token(old_refresh_token)
+        await auth_service.revoke_refresh_token(old_refresh_token)
     
     # Verify 2FA and get user
-    user = auth_service.verify_2fa_login(login_request.pre_auth_token, login_request.code, ip_address=ip)
+    user = await auth_service.verify_2fa_login(login_request.pre_auth_token, login_request.code, ip_address=ip)
     
     # Issue Tokens
     access_token = auth_service.create_access_token(
         data={"sub": user.username}
     )
     
-    refresh_token = auth_service.create_refresh_token(user.id)
-    has_multiple_sessions = auth_service.has_multiple_active_sessions(user.id)
-
+    refresh_token = await auth_service.create_refresh_token(user.id)
     
     response.set_cookie(
         key="refresh_token",
@@ -268,21 +271,19 @@ async def verify_2fa(
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
     
-    # return Token(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
+    from ..models import PersonalProfile
+    stmt = select(PersonalProfile).filter(PersonalProfile.user_id == user.id)
+    res_p = await auth_service.db.execute(stmt)
+    profile = res_p.scalar_one_or_none()
+
     return Token(
         access_token=access_token,
         token_type="bearer",
         refresh_token=refresh_token,
         username=user.username,
-        email=user.personal_profile.email if user.personal_profile else None,
+        email=profile.email if profile else None,
         id=user.id,
-        created_at=user.created_at,
-        warnings=(
-            [{
-                "code": "MULTIPLE_SESSIONS_ACTIVE",
-                "message": "Your account is active on another device or browser."
-            }] if has_multiple_sessions else []
-        )
+        created_at=user.created_at
     )
 
 
@@ -291,7 +292,7 @@ async def verify_2fa(
 async def refresh(
     request: Request,
     response: Response,
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
@@ -300,7 +301,7 @@ async def refresh(
             message="Refresh token missing"
         )
         
-    access_token, new_refresh_token = auth_service.refresh_access_token(refresh_token)
+    access_token, new_refresh_token = await auth_service.refresh_access_token(refresh_token)
     
     response.set_cookie(
         key="refresh_token",
@@ -320,20 +321,20 @@ async def logout(
     response: Response,
     current_user: Annotated[User, Depends(get_current_user)],
     token: Annotated[str, Depends(oauth2_scheme)],
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     """ Logout the current user by revoking tokens and clearing cookies. """
     # 1. Revoke Refresh Token (from cookie)
     refresh_token = request.cookies.get("refresh_token")
     if refresh_token:
-        auth_service.revoke_refresh_token(refresh_token)
+        await auth_service.revoke_refresh_token(refresh_token)
     
     # 2. Revoke Access Token (from header)
-    auth_service.revoke_access_token(token)
+    await auth_service.revoke_access_token(token)
     
     # 3. Audit Logout
-    from app.services.audit_service import AuditService
-    AuditService.log_event(
+    from .audit_service import AuditService
+    await AuditService.log_event(
         current_user.id,
         "LOGOUT",
         ip_address=request.client.host,
@@ -353,9 +354,9 @@ async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]
 @router.post("/password-reset/initiate")
 async def initiate_password_reset(
     request: Request,
-    reset_data: PasswordResetRequest, # Renamed to avoid name conflict with Request
+    reset_data: PasswordResetRequest, 
     background_tasks: BackgroundTasks,
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     from ..middleware.rate_limiter import password_reset_limiter
     """
@@ -392,8 +393,8 @@ async def initiate_password_reset(
 @router.post("/password-reset/complete")
 async def complete_password_reset(
     request: PasswordResetComplete,
-    req_obj: Request, # Need Request object for IP
-    auth_service: AuthService = Depends()
+    req_obj: Request, 
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     from ..middleware.rate_limiter import password_reset_limiter
     """
@@ -408,7 +409,7 @@ async def complete_password_reset(
             wait_seconds=wait_time
         )
 
-    success, message = auth_service.complete_password_reset(
+    success, message = await auth_service.complete_password_reset(
         request.email, 
         request.otp_code, 
         request.new_password
@@ -426,10 +427,10 @@ async def complete_password_reset(
 async def initiate_2fa_setup(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     """Send OTP to verify email before enabling 2FA."""
-    if auth_service.send_2fa_setup_otp(current_user):
+    if await auth_service.send_2fa_setup_otp(current_user):
         return {"message": "OTP sent to your email"}
     raise HTTPException(status_code=400, detail="Could not send OTP. Check email configuration.")
 
@@ -440,10 +441,10 @@ async def enable_2fa(
     request: Request,
     confirm_request: TwoFactorConfirmRequest,
     current_user: Annotated[User, Depends(get_current_user)],
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     """Enable 2FA after verifying OTP."""
-    if auth_service.enable_2fa(current_user.id, confirm_request.code):
+    if await auth_service.enable_2fa(current_user.id, confirm_request.code):
         return {"message": "2FA enabled successfully"}
     raise HTTPException(status_code=400, detail="Invalid code")
 
@@ -453,9 +454,9 @@ async def enable_2fa(
 async def disable_2fa(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
-    auth_service: AuthService = Depends()
+    auth_service: AuthService = Depends(get_auth_service)
 ):
     """Disable 2FA."""
-    if auth_service.disable_2fa(current_user.id):
+    if await auth_service.disable_2fa(current_user.id):
         return {"message": "2FA disabled"}
     raise HTTPException(status_code=400, detail="Action failed")

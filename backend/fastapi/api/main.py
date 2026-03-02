@@ -43,25 +43,31 @@ async def lifespan(app: FastAPI):
     
     # Initialize database tables
     try:
-        from .services.db_service import Base, engine, SessionLocal
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables initialized/verified")
+        from .services.db_service import Base, engine, AsyncSessionLocal
+        # Note: metadata.create_all is typically sync, for async we use run_sync
+        async def init_models():
+            async with engine.begin() as conn:
+                # await conn.run_sync(Base.metadata.drop_all)
+                await conn.run_sync(Base.metadata.create_all)
         
-        # Verify database connectivity before starting background tasks
-        with SessionLocal() as db:
+        await init_models()
+        logger.info("Database tables initialized/verified (Async)")
+        
+        # Verify database connectivity
+        async with AsyncSessionLocal() as db:
             from sqlalchemy import text
-            db.execute(text("SELECT 1"))
-            logger.info("Database connectivity verified")
+            await db.execute(text("SELECT 1"))
+            logger.info("Database connectivity verified (Async)")
         
         # Start background task for soft-delete cleanup
         async def purge_task_loop():
             while True:
                 try:
                     logger.info("Starting scheduled purge of expired accounts...", extra={"task": "cleanup"})
-                    with SessionLocal() as db:
+                    async with AsyncSessionLocal() as db:
                         from .services.user_service import UserService
                         user_service = UserService(db)
-                        user_service.purge_deleted_users(settings.deletion_grace_period_days)
+                        await user_service.purge_deleted_users(settings.deletion_grace_period_days)
                     logger.info("Scheduled purge completed successfully", extra={"task": "cleanup"})
                 except Exception as e:
                     logger = logging.getLogger("api.purge_task")
