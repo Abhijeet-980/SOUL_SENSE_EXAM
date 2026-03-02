@@ -78,11 +78,10 @@ async def submit_exam(
         # Layer 2: Completeness validation — DB lookup to get expected count
         # ------------------------------------------------------------------
         if not payload.is_draft:
-            expected_count: int = (
-                db.query(Question)
-                .filter(Question.is_active == 1)
-                .count()
-            )
+            from sqlalchemy import select, func
+            stmt = select(func.count(Question.id)).filter(Question.is_active == 1)
+            result = await db.execute(stmt)
+            expected_count = result.scalar()
 
             submitted_count = len(payload.answers)
 
@@ -174,7 +173,7 @@ async def submit_exam(
     # Mark session as SUBMITTED if not a draft
     # ------------------------------------------------------------------
     if not payload.is_draft:
-        ExamService.mark_as_submitted(db, current_user.id, payload.session_id)
+        await ExamService.mark_as_submitted(db, current_user.id, payload.session_id)
 
     return {
         "status": "accepted",
