@@ -1,4 +1,9 @@
 """API router for assessment endpoints."""
+import sys
+import os
+# Add the backend/fastapi directory to Python path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
@@ -6,7 +11,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, Annotated
 from ..services.db_service import get_db, AssessmentService
-from app.core import NotFoundError, AuthorizationError
+from app.core.exceptions import NotFoundError, AuthorizationError
 from ..schemas import (
     AssessmentListResponse,
     AssessmentResponse,
@@ -25,7 +30,6 @@ async def get_assessments(
     age_group: Optional[str] = Query(None, description="Filter by age group"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(10, ge=1, le=100, description="Items per page"),
-    current_user: User = Depends(get_current_user),
     current_user: Annotated[User, Depends(get_current_user)] = None,
     db: AsyncSession = Depends(get_db)
 ):
@@ -60,7 +64,6 @@ async def get_assessments(
 
 @router.get("/stats", response_model=AssessmentStatsResponse)
 async def get_assessment_stats(
-    current_user: User = Depends(get_current_user),
     username: Optional[str] = Query(None, description="Filter stats by username (Admin only)"),
     current_user: Annotated[User, Depends(get_current_user)] = None,
     db: AsyncSession = Depends(get_db)
@@ -83,7 +86,6 @@ async def get_assessment_stats(
 @router.get("/{assessment_id}", response_model=AssessmentDetailResponse)
 async def get_assessment(
     assessment_id: int,
-    current_user: User = Depends(get_current_user),
     current_user: Annotated[User, Depends(get_current_user)] = None,
     db: AsyncSession = Depends(get_db)
 ):

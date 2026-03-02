@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from fastapi import status
 from ..schemas import ExamResponseCreate, ExamResultCreate
-from ..models import User, Score, Response, UserSession
+from ..models import User, Score, Response, UserSession, ExamSession
 from ..exceptions import APIException
 from ..constants.errors import ErrorCode
 from .gamification_service import GamificationService

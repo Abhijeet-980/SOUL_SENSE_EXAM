@@ -113,6 +113,33 @@ class TwoFactorConfirmRequest(BaseModel):
     code: str = Field(..., min_length=6, max_length=6)
 
 
+class StepUpAuthRequest(BaseModel):
+    """Schema for requesting step-up authentication for privileged actions."""
+    purpose: str = Field(..., description="Purpose of the privileged action (e.g., 'delete_account', 'admin_action')")
+    action_description: Optional[str] = Field(None, description="Human-readable description of the action")
+
+
+class StepUpAuthResponse(BaseModel):
+    """Response when step-up authentication is initiated."""
+    message: str = "Step-up Authentication Required"
+    step_up_token: str
+    expires_in_seconds: int
+    purpose: str
+
+
+class StepUpAuthVerifyRequest(BaseModel):
+    """Schema for verifying step-up authentication."""
+    step_up_token: str = Field(..., description="Step-up token from initiation")
+    code: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
+
+
+class StepUpAuthVerifyResponse(BaseModel):
+    """Response when step-up authentication is verified."""
+    message: str = "Step-up Authentication Successful"
+    verified: bool = True
+    expires_at: str
+
+
 class PasswordResetRequest(BaseModel):
     """Schema for requesting a password reset."""
     email: EmailStr = Field(..., description="User's registered email")

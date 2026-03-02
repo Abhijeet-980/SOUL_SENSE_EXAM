@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from ..config import get_settings_instance, get_settings
-from ..schemas import UserCreate, Token, UserResponse, ErrorResponse, PasswordResetRequest, PasswordResetComplete, TwoFactorLoginRequest, TwoFactorAuthRequiredResponse, TwoFactorConfirmRequest, UsernameAvailabilityResponse, CaptchaResponse, LoginRequest, OAuthAuthorizeRequest, OAuthTokenRequest, OAuthTokenResponse, OAuthUserInfo
+from ..schemas import UserCreate, Token, UserResponse, ErrorResponse, PasswordResetRequest, PasswordResetComplete, TwoFactorLoginRequest, TwoFactorAuthRequiredResponse, TwoFactorConfirmRequest, UsernameAvailabilityResponse, CaptchaResponse, LoginRequest, OAuthAuthorizeRequest, OAuthTokenRequest, OAuthTokenResponse, OAuthUserInfo, StepUpAuthRequest, StepUpAuthResponse, StepUpAuthVerifyRequest, StepUpAuthVerifyResponse
 from ..services.db_router import get_db
 from ..services.auth_service import AuthService
 
@@ -97,13 +97,7 @@ async def get_current_user(request: Request, token: Annotated[str, Depends(oauth
     user = result.scalar_one_or_none()
     
     if user is None:
-        raise credentials_exception
         raise InvalidCredentialsError()
-    except Exception as e:
-        import traceback
-        logger.error(f"JWT decode or TokenRevocation check failed: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Auth internal error: {str(e)}")
 
     from ..services.cache_service import cache_service
     cache_key = f"user_rbac:{username}"
@@ -215,25 +209,10 @@ async def check_username_availability(
 @limiter.limit("5/minute")
 async def register(
     request: Request,
-    user: UserCreate, 
-    auth_service: AuthService = Depends(get_auth_service)
-):
-    from ..middleware.rate_limiter import registration_limiter
-    # Rate limit by IP
-    real_ip = get_real_ip(request)
-    is_limited, wait_time = registration_limiter.is_rate_limited(real_ip)
-    if is_limited:
-        raise RateLimitException(
-            message=f"Too many registration attempts. Please try again in {wait_time}s.",
-            wait_seconds=wait_time
-        )
-
-    success, new_user, message = await auth_service.register_user(user)
-    
     user: UserCreate,
     db: AsyncSession = Depends(get_db),
     auth_service: AuthService = Depends(get_auth_service)
-) -> dict:
+):
     """Register a new user. Rate limited to 5 requests per minute per IP/user."""
     success, new_user, message = await auth_service.register_user(user)
 
@@ -273,9 +252,10 @@ async def login(
     # 3. Rate Limit by Username
     is_limited, wait_time = login_limiter.is_rate_limited(f"login_{login_request.identifier}")
     if is_limited:
-         raise HTTPException(
+        raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Account temporarily restricted. Please try again in {wait_time}s."
+        )
     if not captcha_service.validate_captcha(login_request.session_id, login_request.captcha_input):
         raise ValidationError(
             message="The CAPTCHA validation failed. Please refresh the CAPTCHA and try again.",
@@ -344,7 +324,6 @@ async def login(
         username=user.username,
         email=profile.email if profile else None,
         id=user.id,
-        created_at=user.created_at
         created_at=normalize_utc_iso(user.created_at, fallback_now=True),
         warnings=(
             [{
@@ -423,7 +402,6 @@ async def verify_2fa(
         username=user.username,
         email=profile.email if profile else None,
         id=user.id,
-        created_at=user.created_at
         created_at=normalize_utc_iso(user.created_at, fallback_now=True),
         warnings=(
             [{
@@ -464,19 +442,6 @@ async def refresh(
             max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
         )
         
-    access_token, new_refresh_token = await auth_service.refresh_access_token(refresh_token)
-    
-    response.set_cookie(
-        key="refresh_token",
-        value=new_refresh_token,
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite=settings.cookie_samesite,
-        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
-    )
-    
-    return Token(access_token=access_token, token_type="bearer", refresh_token=new_refresh_token)
-
         token_response = Token(access_token=access_token, token_type="bearer", refresh_token=new_refresh_token)
 
         # Cache the successful response for idempotency
@@ -745,3 +710,108 @@ async def oauth_login(
             raise e
         logger.error(f"OAuth login failed: {str(e)}")
         raise BusinessLogicError(message=f"Social login failed: {str(e)}", code="OAUTH_ERROR")
+
+
+# ============================================================================
+# Step-Up Authentication Endpoints (#1245)
+# ============================================================================
+
+@router.post("/step-up/initiate", response_model=StepUpAuthResponse, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
+async def initiate_step_up_auth(
+    request: StepUpAuthRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    req: Request,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)]
+):
+    """
+    Initiate step-up authentication for privileged actions.
+    
+    Requires the user to have 2FA enabled. Returns a time-bound token
+    that must be verified with an OTP code before performing sensitive operations.
+    """
+    try:
+        # Extract session ID from JWT token
+        auth_header = req.headers.get("authorization", "")
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Invalid authorization header")
+            
+        token = auth_header[7:]  # Remove "Bearer " prefix
+        session_id = None
+        
+        try:
+            payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+            session_id = payload.get("session_id")
+        except JWTError:
+            # Fallback: try to get from current session
+            session_id = getattr(req.state, "session_id", None)
+            
+        if not session_id:
+            raise HTTPException(status_code=401, detail="Session ID required for step-up auth")
+            
+        ip = get_real_ip(req)
+        user_agent = req.headers.get("user-agent", "Unknown")
+        
+        step_up_token = await auth_service.initiate_step_up_auth(
+            user=current_user,
+            session_id=session_id,
+            purpose=request.purpose,
+            ip_address=ip,
+            user_agent=user_agent
+        )
+        
+        return StepUpAuthResponse(
+            step_up_token=step_up_token,
+            expires_in_seconds=600,  # 10 minutes
+            purpose=request.purpose
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Step-up auth initiation failed: {e}")
+        raise HTTPException(status_code=500, detail="Step-up authentication initiation failed")
+
+
+@router.post("/step-up/verify", response_model=StepUpAuthVerifyResponse, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
+async def verify_step_up_auth(
+    request: StepUpAuthVerifyRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    req: Request,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)]
+):
+    """
+    Verify step-up authentication with OTP code.
+    
+    Validates the step-up token and OTP code. On success, marks the token as used
+    and allows privileged operations for a limited time window.
+    """
+    try:
+        ip = get_real_ip(req)
+        
+        success = await auth_service.verify_step_up_auth(
+            step_up_token=request.step_up_token,
+            otp_code=request.code,
+            ip_address=ip
+        )
+        
+        if success:
+            # Get token details for response
+            from ..models import StepUpToken
+            from sqlalchemy import select
+            
+            stmt = select(StepUpToken).filter(StepUpToken.token == request.step_up_token)
+            result = await auth_service.db.execute(stmt)
+            token_record = result.scalar_one_or_none()
+            
+            return StepUpAuthVerifyResponse(
+                verified=True,
+                expires_at=token_record.expires_at.isoformat() if token_record else None
+            )
+        else:
+            raise HTTPException(status_code=401, detail="Step-up authentication failed")
+            
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Step-up auth verification failed: {e}")
+        raise HTTPException(status_code=500, detail="Step-up authentication verification failed")

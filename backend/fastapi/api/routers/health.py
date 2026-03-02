@@ -13,6 +13,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import sys
+import os
+# Add the project root to Python path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../..')))
+
 from ..schemas import HealthResponse, ServiceStatus
 from ..services.db_service import get_db
 from ..config import get_settings

@@ -64,6 +64,7 @@ class User(Base):
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
     audit_snapshots = relationship("AuditSnapshot", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+    step_up_tokens = relationship("StepUpToken", back_populates="user", cascade="all, delete-orphan")
     
     # Gamification Relationships
     achievements = relationship("UserAchievement", back_populates="user", cascade="all, delete-orphan")
@@ -490,6 +491,29 @@ class UserSession(Base):
         Index('idx_session_username_active', 'username', 'is_active'),
         Index('idx_session_created', 'created_at'),
         Index('ix_user_sessions_device_fingerprint_hash', 'device_fingerprint_hash'),
+    )
+
+class StepUpToken(Base):
+    """Time-bound tokens for privileged action authentication (#1245)"""
+    __tablename__ = 'step_up_tokens'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token = Column(String, unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    session_id = Column(String, nullable=False, index=True)  # Link to active session
+    purpose = Column(String, nullable=False)  # e.g., "delete_account", "admin_action", "change_password"
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=utc_now)
+    used_at = Column(DateTime, nullable=True)
+    is_used = Column(Boolean, default=False)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+
+    user = relationship("User", back_populates="step_up_tokens")
+
+    __table_args__ = (
+        Index('idx_stepup_user_session', 'user_id', 'session_id'),
+        Index('idx_stepup_expires', 'expires_at'),
+        Index('idx_stepup_token_used', 'token', 'is_used'),
     )
 
 class UserSyncSetting(Base):

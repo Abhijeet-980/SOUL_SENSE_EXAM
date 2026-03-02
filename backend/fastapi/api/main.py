@@ -476,6 +476,11 @@ def create_app() -> FastAPI:
     from .middleware.device_fingerprint_middleware import DeviceFingerprintValidationMiddleware
     app.add_middleware(DeviceFingerprintValidationMiddleware)
 
+    # Step-Up Authentication Middleware (#1245)
+    # Enforces 2FA re-verification for privileged operations
+    from .middleware.step_up_auth_middleware import StepUpAuthMiddleware
+    app.add_middleware(StepUpAuthMiddleware)
+
     # Consent Validation Middleware for privacy compliance
     # Blocks analytics data collection without user consent
     from .middleware.consent_middleware import ConsentValidationMiddleware

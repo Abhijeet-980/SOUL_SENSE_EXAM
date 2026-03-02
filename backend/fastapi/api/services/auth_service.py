@@ -1,5 +1,5 @@
 from ..config import get_settings_instance
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, UTC
 import asyncio
 import time
 import logging
@@ -30,7 +30,7 @@ from ..utils.db_transaction import transactional, async_transactional, retry_on_
 from ..utils.security import get_password_hash, verify_password, is_hashed, check_password_history
 from ..utils.race_condition_protection import with_row_lock
 from ..utils.timestamps import utc_now_iso
-from ..models import User, LoginAttempt, PersonalProfile, RefreshToken, PasswordHistory, UserSession
+from ..models import User, LoginAttempt, PersonalProfile, RefreshToken, PasswordHistory, UserSession, StepUpToken
 from ..constants.security_constants import PASSWORD_HISTORY_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS
 from .db_router import mark_write
 
@@ -1093,6 +1093,155 @@ class AuthService:
         logger.info(f"Created session {session_id} for user {username} with device fingerprint")
         
         return session_id
+        
+    async def initiate_step_up_auth(
+        self, 
+        user: User, 
+        session_id: str, 
+        purpose: str,
+        ip_address: str = "0.0.0.0",
+        user_agent: str = "Unknown"
+    ) -> str:
+        """
+        Initiate step-up authentication for privileged actions (#1245).
+        
+        Creates a time-bound token that requires 2FA verification for sensitive operations.
+        
+        Args:
+            user: The authenticated user requesting step-up auth
+            session_id: Current active session ID
+            purpose: Description of the privileged action (e.g., "delete_account")
+            ip_address: Client IP address
+            user_agent: Client user agent
+            
+        Returns:
+            Step-up token for verification
+            
+        Raises:
+            ValueError: If user doesn't have 2FA enabled
+        """
+        if not user.is_2fa_enabled:
+            raise ValueError("Step-up authentication requires 2FA to be enabled")
+            
+        # Generate secure token
+        step_up_token = secrets.token_urlsafe(32)
+        
+        # Create step-up token record (expires in 10 minutes)
+        expires_at = datetime.now(UTC) + timedelta(minutes=10)
+        
+        step_up_record = StepUpToken(
+            token=step_up_token,
+            user_id=user.id,
+            session_id=session_id,
+            purpose=purpose,
+            expires_at=expires_at,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+        
+        self.db.add(step_up_record)
+        await self.db.commit()
+        
+        logger.info(f"Step-up auth initiated for user {user.username}, purpose: {purpose}")
+        
+        return step_up_token
+    
+    async def verify_step_up_auth(
+        self, 
+        step_up_token: str, 
+        otp_code: str,
+        ip_address: str = "0.0.0.0"
+    ) -> bool:
+        """
+        Verify step-up authentication token with OTP code (#1245).
+        
+        Args:
+            step_up_token: The step-up token from initiation
+            otp_code: 6-digit OTP code from user's authenticator
+            ip_address: Client IP address for audit logging
+            
+        Returns:
+            True if verification successful
+            
+        Raises:
+            ValueError: If token is invalid, expired, or already used
+        """
+        # Find the step-up token
+        stmt = select(StepUpToken).filter(
+            StepUpToken.token == step_up_token,
+            StepUpToken.is_used == False
+        )
+        result = await self.db.execute(stmt)
+        token_record = result.scalar_one_or_none()
+        
+        if not token_record:
+            logger.warning(f"Invalid or used step-up token attempted: {step_up_token[:8]}...")
+            raise ValueError("Invalid step-up token")
+            
+        # Check expiration
+        if datetime.now(UTC) > token_record.expires_at:
+            logger.warning(f"Expired step-up token attempted for user {token_record.user_id}")
+            raise ValueError("Step-up token has expired")
+            
+        # Get user for 2FA verification
+        stmt = select(User).filter(User.id == token_record.user_id)
+        result = await self.db.execute(stmt)
+        user = result.scalar_one_or_none()
+        
+        if not user or not user.is_2fa_enabled or not user.otp_secret:
+            raise ValueError("User 2FA configuration invalid")
+            
+        # Verify OTP code
+        import pyotp
+        totp = pyotp.TOTP(user.otp_secret)
+        
+        if not totp.verify(otp_code, valid_window=1):  # Allow 30-second window
+            logger.warning(f"Invalid OTP code for step-up auth, user {user.username}")
+            raise ValueError("Invalid OTP code")
+            
+        # Mark token as used
+        token_record.is_used = True
+        token_record.used_at = datetime.now(UTC)
+        
+        await self.db.commit()
+        
+        logger.info(f"Step-up auth verified for user {user.username}, purpose: {token_record.purpose}")
+        
+        return True
+    
+    async def check_step_up_auth_valid(
+        self, 
+        user_id: int, 
+        session_id: str, 
+        purpose: str,
+        max_age_minutes: int = 30
+    ) -> bool:
+        """
+        Check if user has valid step-up authentication for a specific purpose.
+        
+        Args:
+            user_id: User ID
+            session_id: Current session ID
+            purpose: The privileged action purpose
+            max_age_minutes: Maximum age of valid step-up auth (default 30 minutes)
+            
+        Returns:
+            True if user has valid step-up auth for this purpose/session
+        """
+        cutoff_time = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
+        
+        stmt = select(StepUpToken).filter(
+            StepUpToken.user_id == user_id,
+            StepUpToken.session_id == session_id,
+            StepUpToken.purpose == purpose,
+            StepUpToken.is_used == True,
+            StepUpToken.used_at >= cutoff_time
+        ).order_by(StepUpToken.used_at.desc()).limit(1)
+        
+        result = await self.db.execute(stmt)
+        recent_token = result.scalar_one_or_none()
+        
+        return recent_token is not None
         
     def parse_name(self, name: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
         """Parse full name into first and last."""
