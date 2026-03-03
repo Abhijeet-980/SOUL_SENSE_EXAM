@@ -89,6 +89,27 @@ EXPERIMENTAL_FLAGS: Dict[str, FeatureFlag] = {
         experimental=True,
         category="infra"
     ),
+    "test_environment_fidelity_monitoring": FeatureFlag(
+        name="test_environment_fidelity_monitoring",
+        default=True,
+        description="Enable test environment fidelity monitoring and metrics collection (Issue #1315)",
+        experimental=False,
+        category="testing"
+    ),
+    "collect_test_metrics": FeatureFlag(
+        name="collect_test_metrics",
+        default=True,
+        description="Enable collection of test execution metrics for fidelity scorecard",
+        experimental=False,
+        category="testing"
+    ),
+    "validate_edge_cases": FeatureFlag(
+        name="validate_edge_cases",
+        default=True,
+        description="Enable testing of edge cases (invalid inputs, timeouts, race conditions)",
+        experimental=False,
+        category="testing"
+    ),
 }
 
 
