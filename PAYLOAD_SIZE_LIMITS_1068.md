@@ -4,6 +4,19 @@
 
 This implementation adds comprehensive payload size limits and DoS (Denial of Service) protection to the SoulSense API. It prevents backend crashes due to oversized or malformed payloads by enforcing configurable limits on request body size, JSON nesting depth, array/object sizes, and detecting compression bombs.
 
+## Table of Contents
+
+- [Features](#features)
+- [Configuration](#configuration)
+- [Error Codes](#error-codes)
+- [Implementation Details](#implementation-details)
+- [Usage Examples](#usage-examples)
+- [Testing](#testing)
+- [Security Considerations](#security-considerations)
+- [Monitoring and Logging](#monitoring-and-logging)
+- [Troubleshooting](#troubleshooting)
+- [Future Enhancements](#future-enhancements)
+
 ## Features
 
 ### 1. Request Body Size Limits
@@ -55,6 +68,17 @@ print(f"Max request size: {settings.max_request_size_bytes} bytes")
 print(f"Max JSON depth: {settings.max_json_depth}")
 ```
 
+### Customizing Limits
+
+To customize limits for your deployment, set environment variables:
+
+```bash
+# .env file
+MAX_REQUEST_SIZE_BYTES=20971520      # 20MB
+MAX_JSON_DEPTH=25                     # 25 levels
+MAX_ARRAY_SIZE=50000                  # 50k elements
+```
+
 ## Error Codes
 
 | Code | Description | HTTP Status |
@@ -82,24 +106,41 @@ print(f"Max JSON depth: {settings.max_json_depth}")
 
 ## Implementation Details
 
-### Middleware Architecture
+### Architecture
 
-The `PayloadLimitMiddleware` is added as the outermost middleware in the FastAPI application stack to block oversized requests as early as possible:
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    PayloadLimitMiddleware                    │
+├─────────────────────────────────────────────────────────────┤
+│  1. Path Exclusion Check                                      │
+│     └─ Skip health checks, docs, static files               │
+│                                                               │
+│  2. Content-Length Check                                      │
+│     └─ Validate header before reading body                  │
+│                                                               │
+│  3. Body Read with Limit                                      │
+│     └─ Stream body with real-time size checking             │
+│                                                               │
+│  4. Content-Type Validation                                   │
+│     └─ Apply specific validation based on content type      │
+│                                                               │
+│  5. Structure Validation                                      │
+│     └─ Validate JSON/array/object structure                 │
+│                                                               │
+│  6. Bomb Detection                                            │
+│     └─ Check for compression bombs                          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Middleware Integration
+
+The `PayloadLimitMiddleware` is added as the outermost middleware in the FastAPI application stack:
 
 ```python
 # In backend/fastapi/api/main.py
 from .middleware.payload_limit_middleware import PayloadLimitMiddleware
 app.add_middleware(PayloadLimitMiddleware)
 ```
-
-### Validation Flow
-
-1. **Path Exclusion Check**: Skip validation for health checks and static files
-2. **Content-Length Check**: Validate header before reading body
-3. **Body Read with Limit**: Stream body with real-time size checking
-4. **Content-Type Validation**: Apply specific validation based on content type
-5. **Structure Validation**: Validate JSON/array/object structure
-6. **Bomb Detection**: Check for compression bombs
 
 ### Excluded Paths
 
@@ -124,9 +165,12 @@ Response: `200 OK`
 ### Oversized Payload
 
 ```bash
+# Create large payload
+python3 -c "print('{\"data\": \"' + 'x'*20000000 + '\"}')" > /tmp/large.json
+
 curl -X POST "http://localhost:8000/api/v1/users" \
   -H "Content-Type: application/json" \
-  -d "$(python3 -c 'print({\"data\": \"x\"*20000000})')"
+  -d @/tmp/large.json
 ```
 
 Response: `413 Payload Too Large`
@@ -136,7 +180,9 @@ Response: `413 Payload Too Large`
   "message": "Request body too large: 20000015 bytes (max: 10485760 bytes)",
   "details": {
     "size_bytes": 20000015,
-    "max_size_bytes": 10485760
+    "max_size_bytes": 10485760,
+    "size_mb": 19.07,
+    "max_size_mb": 10.0
   }
 }
 ```
@@ -161,50 +207,150 @@ Response: `413 Payload Too Large`
 }
 ```
 
-## Testing
-
-### Unit Tests
+### Large Array
 
 ```bash
-cd backend/fastapi
-pytest tests/unit/test_payload_limits_1068.py -v
+curl -X POST "http://localhost:8000/api/v1/users" \
+  -H "Content-Type: application/json" \
+  -d '{"items": ['$(python3 -c "print(','.join([str(i) for i in range(15000)]))")']}'
 ```
 
-### Integration Tests
+Response: `400 Bad Request`
+```json
+{
+  "code": "DOS003",
+  "message": "Payload structure violation: Array has too many elements: 15000 (max: 10000)",
+  "details": {
+    "elements": 15000,
+    "max_elements": 10000
+  }
+}
+```
+
+## Testing
+
+### Automated Tests
 
 ```bash
 cd backend/fastapi
-pytest tests/unit/test_payload_limit_middleware_1068.py -v
+
+# Run all payload limit tests
+pytest tests/unit/test_payload_limits_1068.py tests/unit/test_payload_limit_middleware_1068.py -v
+
+# Run with coverage
+pytest tests/unit/test_payload_limits_1068.py tests/unit/test_payload_limit_middleware_1068.py \
+  --cov=api.utils.payload_validator --cov=api.middleware.payload_limit_middleware -v
+
+# Expected: 70/70 tests passing
+```
+
+### Manual Testing Script
+
+```python
+#!/usr/bin/env python3
+"""Quick test script for payload limits."""
+
+import requests
+import json
+
+BASE_URL = "http://localhost:8000"
+
+def test_small_payload():
+    """Test 1: Small payload should pass."""
+    print("Test 1: Small payload...")
+    resp = requests.post(f"{BASE_URL}/api/v1/auth/register", json={
+        "username": "testuser",
+        "email": "test@example.com",
+        "password": "SecurePass123!"
+    })
+    print(f"  Status: {resp.status_code}")
+    assert resp.status_code in [200, 201, 422, 409]
+    print("  ✓ PASSED")
+
+def test_oversized_payload():
+    """Test 2: Oversized payload should fail."""
+    print("Test 2: Oversized payload (20MB)...")
+    resp = requests.post(f"{BASE_URL}/api/v1/auth/register", 
+        json={"data": "x" * 20000000})
+    print(f"  Status: {resp.status_code}")
+    assert resp.status_code == 413
+    data = resp.json()
+    assert data["code"] == "DOS001"
+    print("  ✓ PASSED - Correctly rejected")
+
+def test_deep_nesting():
+    """Test 3: Deep nesting should fail."""
+    print("Test 3: Deep nesting (50 levels)...")
+    data = {}
+    current = data
+    for _ in range(50):
+        current["nested"] = {}
+        current = current["nested"]
+    
+    resp = requests.post(f"{BASE_URL}/api/v1/auth/register", json=data)
+    print(f"  Status: {resp.status_code}")
+    assert resp.status_code in [400, 413]
+    print("  ✓ PASSED - Correctly rejected")
+
+def test_health_excluded():
+    """Test 4: Health check should pass."""
+    print("Test 4: Health check (excluded path)...")
+    resp = requests.get(f"{BASE_URL}/health")
+    print(f"  Status: {resp.status_code}")
+    assert resp.status_code == 200
+    print("  ✓ PASSED")
+
+if __name__ == "__main__":
+    test_small_payload()
+    test_oversized_payload()
+    test_deep_nesting()
+    test_health_excluded()
+    print("\nAll tests passed! ✓")
 ```
 
 ### Test Coverage
 
-- ✅ Payload size validation
-- ✅ JSON depth validation
-- ✅ Array/object size validation
-- ✅ Compression bomb detection (gzip)
-- ✅ Compression bomb detection (zip)
-- ✅ Multipart part limits
-- ✅ Error response format
-- ✅ Excluded paths
+- ✅ Payload size validation (Content-Length and body)
+- ✅ JSON depth calculation and validation
+- ✅ Array size validation
+- ✅ Object key count validation
+- ✅ Gzip compression bomb detection
+- ✅ Zip archive bomb detection
+- ✅ Multipart form validation
+- ✅ Error response structure
+- ✅ Excluded paths (health, docs, static)
 - ✅ Configuration loading
+- ✅ Exception handling
 
 ## Security Considerations
 
 ### Edge Cases Handled
 
-1. **50MB JSON Body**: Rejected by size limit before parsing
-2. **Deep Nested Arrays**: Rejected by depth validation
-3. **Compression Bombs**: Detected via ratio analysis
-4. **Multipart Abuse**: Limited by part count
-5. **Malformed Payloads**: Caught by validation error handlers
+| Edge Case | Handling |
+|-----------|----------|
+| 50MB JSON Body | Rejected by size limit before parsing |
+| Deep Nested Arrays | Rejected by depth validation |
+| Compression Bombs | Detected via ratio analysis |
+| Multipart Abuse | Limited by part count |
+| Malformed Payloads | Caught by validation error handlers |
+| Circular References | Cannot exist in JSON (would fail parsing) |
+| Unicode in JSON | Handled correctly |
+| Binary Data in JSON | Base64 encoded validation |
 
 ### Performance Impact
 
-- Minimal overhead for valid requests
-- Early rejection prevents resource exhaustion
-- Streaming validation avoids memory spikes
-- Excluded paths have zero overhead
+- **Minimal overhead** for valid requests
+- **Early rejection** prevents resource exhaustion
+- **Streaming validation** avoids memory spikes
+- **Excluded paths** have zero overhead
+- **Non-blocking** for legitimate traffic
+
+### Best Practices
+
+1. **Monitor Logs**: Watch for repeated violations from same IPs
+2. **Adjust Limits**: Tune based on legitimate use cases
+3. **Rate Limiting**: Combine with rate limiting for comprehensive protection
+4. **Testing**: Regularly test with fuzzing tools
 
 ## Monitoring and Logging
 
@@ -214,9 +360,58 @@ All payload violations are logged with:
 - Client IP (if available)
 - Request path
 
-Example log entry:
+### Log Format
+
 ```
-WARNING:api.payload_limit:Request body exceeded size limit: 15728640 bytes (max: 10485760 bytes) [request_id=abc-123 path=/api/v1/upload]
+WARNING:api.payload_limit:{message} [request_id={id} path={path} ...]
+```
+
+### Example Log Entries
+
+```
+WARNING:api.payload_limit:Request body exceeded size limit: 15728640 bytes (max: 10485760 bytes) [request_id=abc-123 path=/api/v1/upload size_bytes=15728640 max_size_bytes=10485760]
+
+WARNING:api.payload_limit:JSON nesting depth exceeded: 21 (max: 20) [request_id=def-456 path=/api/v1/data depth=21 max_depth=20]
+
+WARNING:api.payload_limit:Compression bomb detected: ratio 50.0:1 (threshold: 10:1) [request_id=ghi-789 path=/api/v1/import compression_ratio=50.0 threshold=10.0]
+
+WARNING:api.payload_limit:Payload validation error: Array has too many elements [request_id=jkl-012 path=/api/v1/bulk elements=15000 max_elements=10000]
+```
+
+## Troubleshooting
+
+### Issue: Legitimate requests being rejected
+
+**Solution**: Adjust limits in configuration:
+
+```bash
+# Increase limits for specific use cases
+MAX_REQUEST_SIZE_BYTES=20971520  # 20MB
+MAX_ARRAY_SIZE=50000             # 50k elements
+```
+
+### Issue: File uploads failing
+
+**Solution**: Check multipart file size limit:
+
+```bash
+MAX_MULTIPART_FILE_SIZE_BYTES=104857600  # 100MB
+```
+
+### Issue: Complex nested data rejected
+
+**Solution**: Increase JSON depth limit:
+
+```bash
+MAX_JSON_DEPTH=30  # 30 levels
+```
+
+### Issue: False positives on compression
+
+**Solution**: Adjust compression ratio:
+
+```bash
+COMPRESSION_BOMB_RATIO=20.0  # More lenient
 ```
 
 ## Future Enhancements
@@ -228,13 +423,15 @@ Potential improvements for future iterations:
 3. **Graduated Responses**: Warnings before hard rejections
 4. **Metrics**: Prometheus metrics for payload violations
 5. **Machine Learning**: ML-based anomaly detection for unusual payload patterns
+6. **Admin Dashboard**: Visual monitoring of violations and trends
+7. **Custom Endpoint Limits**: Per-endpoint size limits via decorators
 
 ## References
 
 - Issue: #1068
-- OWASP DoS Protection: https://owasp.org/www-community/attacks/Denial_of_Service
-- FastAPI Middleware: https://fastapi.tiangolo.com/tutorial/middleware/
-- RFC 7231 (HTTP/1.1): https://tools.ietf.org/html/rfc7231
+- [OWASP DoS Protection](https://owasp.org/www-community/attacks/Denial_of_Service)
+- [FastAPI Middleware](https://fastapi.tiangolo.com/tutorial/middleware/)
+- [RFC 7231 (HTTP/1.1)](https://tools.ietf.org/html/rfc7231)
 
 ## Changelog
 
@@ -244,4 +441,8 @@ Potential improvements for future iterations:
 - JSON depth validation
 - Compression bomb detection
 - Multipart validation
-- Comprehensive test coverage
+- Comprehensive test coverage (70 tests)
+
+---
+
+**Maintainers**: Please update this document when modifying payload limits or adding new protections.
