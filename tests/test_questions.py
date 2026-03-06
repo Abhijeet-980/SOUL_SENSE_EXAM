@@ -1,6 +1,6 @@
 from app.questions import load_questions
 from app.db import get_session
-from app.models import Question
+from backend.fastapi.api.root_models import Question
 
 def test_load_questions_from_db(temp_db):
     session = get_session()

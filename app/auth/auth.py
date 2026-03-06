@@ -3,10 +3,14 @@ import secrets
 import time
 from datetime import datetime, timedelta, UTC, timezone
 from app.db import get_session
+from app.models import User
+from app.security_config import PASSWORD_HASH_ROUNDS, LOCKOUT_DURATION_MINUTES, PASSWORD_HISTORY_LIMIT
+from app.utils.clock_aware_time import ClockAwareTime, is_expired as check_expiry
 from app.models import User, UserSession
 from app.security_config import PASSWORD_HASH_ROUNDS, LOCKOUT_DURATION_MINUTES
 from app.services.audit_service import AuditService
 from app.validation import validate_username, validate_email_strict, validate_password_security
+from app.utils.db_transaction import transactional, retry_on_transient
 import logging
 
 class AuthManager:
@@ -65,47 +69,56 @@ class AuthManager:
             username_lower = username.strip().lower()
             email_lower = email.strip().lower()
 
-            # 2. Check if username already exists
+            # 2. Check if username already exists (read-only, outside transaction)
             if session.query(User).filter(User.username == username_lower).first():
                 return False, "Username already taken", "REG001"
 
-            # 3. Check if email already exists
+            # 3. Check if email already exists (read-only, outside transaction)
             from app.models import PersonalProfile
             if session.query(PersonalProfile).filter(PersonalProfile.email == email_lower).first():
                 return False, "Email already registered", "REG002"
 
             password_hash = self.hash_password(password)
-            
-            # 4. Create User
-            new_user = User(
-                username=username_lower,
-                password_hash=password_hash,
-                created_at=datetime.now(UTC).isoformat()
-            )
-            session.add(new_user)
-            session.flush()  # Get the user id
-            
-            # 5. Create personal profile
-            profile = PersonalProfile(
-                user_id=new_user.id,
-                email=email_lower,
-                first_name=first_name,
-                last_name=last_name,
-                age=age,
-                gender=gender,
-                last_updated=datetime.now(UTC).isoformat()
-            )
-            session.add(profile)
-            
-            session.commit()
-            
-            # Audit Log
-            AuditService.log_event(new_user.id, "REGISTER", details={"status": "success", "username": username_lower}, db_session=session)
-            
+
+            # ── ATOMIC WRITE ─────────────────────────────────────────────────
+            # User + PersonalProfile + PasswordHistory must all succeed or
+            # none of them persist, preventing orphan records.
+            with transactional(session):
+                # 4. Create User
+                new_user = User(
+                    username=username_lower,
+                    password_hash=password_hash,
+                    created_at=datetime.now(UTC).isoformat()
+                )
+                session.add(new_user)
+                session.flush()  # Get the auto-generated user id
+
+                # 5. Create personal profile
+                profile = PersonalProfile(
+                    user_id=new_user.id,
+                    email=email_lower,
+                    first_name=first_name,
+                    last_name=last_name,
+                    age=age,
+                    gender=gender,
+                    last_updated=datetime.now(UTC).isoformat()
+                )
+                session.add(profile)
+
+                # 6. Save initial password to history
+                self._save_password_to_history(new_user.id, password_hash, session)
+
+                # 7. Audit log (within same transaction so it's consistent)
+                AuditService.log_event(
+                    new_user.id, "REGISTER",
+                    details={"status": "success", "username": username_lower},
+                    db_session=session
+                )
+            # ─────────────────────────────────────────────────────────────────
+
             return True, "Registration successful", None
 
         except Exception as e:
-            session.rollback()
             logging.error(f"Registration failed: {e}")
             return False, "Registration failed", "REG009"
         finally:
@@ -166,33 +179,37 @@ class AuthManager:
                         session.rollback()
                         return False, "Failed to generate 2FA code. Please wait.", "AUTH005"
 
-                # Update last login
+                # ── ATOMIC LOGIN WRITE ────────────────────────────────────
+                # last_login + last_activity + UserSession + LoginAttempt +
+                # AuditLog must all commit together or all roll back to
+                # prevent inconsistent session state.
                 try:
-                    now_iso = datetime.now(UTC).isoformat()
                     now = datetime.now(timezone.utc)
                     now_iso = now.isoformat()
-                    user.last_login = now_iso
-                    # PR 2: Update last_ activity on login (Issue fix)
-                    user.last_activity = now_iso
-                    
-                    # Generate unique session ID and create session record
+
                     session_id = self._generate_session_id()
-                    new_session = UserSession(
-                        session_id=session_id,
-                        user_id=user.id,
-                        username=user.username,
-                        created_at=now_iso,
-                        last_accessed=now_iso,
-                        is_active=True
-                    )
-                    session.add(new_session)
-                    
-                    # Audit success (Legacy LoginAttempt + New AuditLog)
-                    self._record_login_attempt(session, id_lower, True)
-                    AuditService.log_event(user.id, "LOGIN", details={"method": "password"}, db_session=session)
-                    session.commit()
-                    
-                    # Store session ID for this auth instance
+
+                    with transactional(session):
+                        user.last_login = now_iso
+                        user.last_activity = now_iso
+
+                        new_session = UserSession(
+                            session_id=session_id,
+                            user_id=user.id,
+                            username=user.username,
+                            created_at=now,
+                            last_activity=now,
+                            is_active=True
+                        )
+                        session.add(new_session)
+                        self._record_login_attempt(session, id_lower, True)
+                        AuditService.log_event(
+                            user.id, "LOGIN",
+                            details={"method": "password"},
+                            db_session=session
+                        )
+
+                    # Store session ID only after the atomic write succeeded
                     self.current_session_id = session_id
                 except Exception as e:
                     logging.error(f"Failed to update login metadata: {e}")
@@ -248,7 +265,7 @@ class AuthManager:
     def is_logged_in(self):
         if self.current_user is None:
             return False
-        if self.session_expiry and datetime.now(UTC) > self.session_expiry:
+        if self.session_expiry and check_expiry(self.session_expiry):
             self.logout_user()
             return False
         return True
@@ -269,28 +286,47 @@ class AuthManager:
         return True
 
     def _generate_session_token(self):
-        """Generate secure session token"""
+        """Generate secure session token with clock-aware expiry"""
         self.session_token = secrets.token_urlsafe(32)
-        self.session_expiry = datetime.now(UTC) + timedelta(hours=24)
+        # Use drift-tolerant expiry time to handle NTP synchronization issues
+        self.session_expiry = ClockAwareTime.get_expiry_with_drift_tolerance(24 * 60 * 60)
 
     def _is_locked_out(self, username):
-        """Check if user is locked out based on recent failed attempts in DB."""
+        """Check if user is locked out based on recent failed attempts in DB with progressive lockout."""
         session = get_session()
         try:
             from app.models import LoginAttempt
-            
-            # Count recent failed attempts
-            since_time = datetime.now(UTC) - timedelta(seconds=self.lockout_duration)
-            # USE TIMEZONE-AWARE DATETIME TO PREVENT CRASH
-            since_time = datetime.now(timezone.utc) - timedelta(seconds=self.lockout_duration)
-            
+
+            # Check failed attempts within the last 30 minutes
+            thirty_mins_ago = datetime.now(timezone.utc) - timedelta(minutes=30)
+
             recent_failures = session.query(LoginAttempt).filter(
                 LoginAttempt.username == username,
                 LoginAttempt.is_successful == False,
-                LoginAttempt.timestamp >= since_time
-            ).count()
-            
-            return recent_failures >= 5
+                LoginAttempt.timestamp >= thirty_mins_ago
+            ).order_by(LoginAttempt.timestamp.desc()).all()
+
+            count = len(recent_failures)
+
+            # Determine if locked out based on attempt count
+            if count >= 3:
+                # Find when the last attempt happened
+                last_attempt = recent_failures[0].timestamp
+                if last_attempt.tzinfo is None:
+                    last_attempt = last_attempt.replace(tzinfo=timezone.utc)
+
+                # Determine lockout duration based on count
+                if count >= 7:
+                    lockout_duration = 300
+                elif count >= 5:
+                    lockout_duration = 120
+                else:  # count >= 3
+                    lockout_duration = 30
+
+                elapsed = datetime.now(timezone.utc) - last_attempt
+                return elapsed.total_seconds() < lockout_duration
+
+            return False
         except Exception as e:
             logging.error(f"Lockout check failed: {e}")
             return False
@@ -305,30 +341,36 @@ class AuthManager:
         session = get_session()
         try:
             from app.models import LoginAttempt
-            
-            since_time = datetime.now(UTC) - timedelta(seconds=self.lockout_duration)
-            
-            # Get the most recent failed attempt
+
+            # Check failed attempts within the last 30 minutes
+            thirty_mins_ago = datetime.now(timezone.utc) - timedelta(minutes=30)
+
             recent_failures = session.query(LoginAttempt).filter(
                 LoginAttempt.username == username,
                 LoginAttempt.is_successful == False,
-                LoginAttempt.timestamp >= since_time
+                LoginAttempt.timestamp >= thirty_mins_ago
             ).order_by(LoginAttempt.timestamp.desc()).all()
-            
-            if len(recent_failures) >= 5:
-                # Find the 5th most recent failed attempt (the one that triggered lockout)
-                fifth_failure = recent_failures[4]
-                lockout_end = fifth_failure.timestamp + timedelta(seconds=self.lockout_duration)
-                remaining = (lockout_end - datetime.now(UTC)).total_seconds()
-                
-                # Ensure comparison is done with aware datetimes
-                failure_time = fifth_failure.timestamp
-                if failure_time.tzinfo is None:
-                    failure_time = failure_time.replace(tzinfo=timezone.utc)
-                
-                lockout_end = failure_time + timedelta(seconds=self.lockout_duration)
-                remaining = (lockout_end - datetime.now(timezone.utc)).total_seconds()
+
+            count = len(recent_failures)
+
+            if count >= 3:
+                # Get the most recent failed attempt
+                last_attempt = recent_failures[0].timestamp
+                if last_attempt.tzinfo is None:
+                    last_attempt = last_attempt.replace(tzinfo=timezone.utc)
+
+                # Determine lockout duration based on count
+                if count >= 7:
+                    lockout_duration = 300
+                elif count >= 5:
+                    lockout_duration = 120
+                else:  # count >= 3
+                    lockout_duration = 30
+
+                elapsed = datetime.now(timezone.utc) - last_attempt
+                remaining = lockout_duration - elapsed.total_seconds()
                 return max(0, int(remaining))
+
             return 0
         except Exception as e:
             logging.error(f"Lockout remaining check failed: {e}")
@@ -428,7 +470,8 @@ class AuthManager:
                 return False, "User not found", None
                 
             # Verify Code
-            if OTPManager.verify_otp(user.id, code, "LOGIN_CHALLENGE", db_session=session):
+            success, verify_msg = OTPManager.verify_otp(user.id, code, "LOGIN_CHALLENGE", db_session=session)
+            if success:
                 # Success!
                 user.last_login = datetime.now(UTC).isoformat()
                 self._record_login_attempt(session, username_lower, True, reason="2fa_success")
@@ -442,12 +485,47 @@ class AuthManager:
                 # Failed
                 self._record_login_attempt(session, username_lower, False, reason="2fa_failed")
                 session.commit()
-                return False, "Invalid code", None
+                return False, verify_msg, None
                 
         except Exception as e:
             session.rollback()
             logging.error(f"2FA Verify Error: {e}")
             return False, "Verification failed", None
+        finally:
+            session.close()
+
+    def resend_2fa_login_otp(self, username):
+        """
+        Resend the 2FA login OTP for a user.
+        Returns: (success, message)
+        """
+        from app.auth.otp_manager import OTPManager
+        from app.services.email_service import EmailService
+        from app.models import PersonalProfile
+
+        session = get_session()
+        try:
+            username_lower = username.lower().strip()
+            user = session.query(User).filter(User.username == username_lower).first()
+            if not user:
+                return False, "User not found."
+
+            profile = session.query(PersonalProfile).filter(PersonalProfile.user_id == user.id).first()
+            email_to_send = profile.email if profile else None
+            if not email_to_send:
+                return False, "No email configured for this account."
+
+            code, error = OTPManager.generate_otp(user.id, "LOGIN_CHALLENGE", db_session=session)
+            if not code:
+                return False, error or "Please wait before requesting a new code."
+
+            if EmailService.send_otp(email_to_send, code, "Login Verification"):
+                return True, "A new verification code has been sent."
+            else:
+                return False, "Failed to send email. Please try again."
+        except Exception as e:
+            logging.error(f"Resend 2FA OTP Error: {e}")
+            return False, "An error occurred. Please try again."
         finally:
             session.close()
 
@@ -457,6 +535,11 @@ class AuthManager:
         """
         from app.auth.otp_manager import OTPManager
         from app.models import PersonalProfile, User
+        from app.validation import is_weak_password
+        
+        # Block weak/common passwords
+        if is_weak_password(new_password):
+            return False, "This password is too common. Please choose a stronger password."
         
         # Validation
         if not self._validate_password_strength(new_password):
@@ -477,9 +560,21 @@ class AuthManager:
                 
             # Verify OTP
             # PASS THE SESSION so OTPManager doesn't close it!
-            if not OTPManager.verify_otp(user.id, otp_code, "RESET_PASSWORD", db_session=session):
-                return False, "Invalid or expired code."
+            success, verify_msg = OTPManager.verify_otp(user.id, otp_code, "RESET_PASSWORD", db_session=session)
+            if not success:
+                return False, verify_msg
             
+            # Check if new password matches current password
+            if self.verify_password(new_password, user.password_hash):
+                return False, "New password cannot be the same as your current password."
+
+            # Check password history
+            if self._is_password_in_history(user.id, new_password, session):
+                return False, f"This password was used recently. Please choose a password you haven't used in the last {PASSWORD_HISTORY_LIMIT} changes."
+
+            # Save current password to history before changing
+            self._save_password_to_history(user.id, user.password_hash, session)
+
             # Update Password
             # Now 'user' is still attached because verify_otp didn't close the session
             print(f"DEBUG: Updating password for user {user.username}")
@@ -559,7 +654,8 @@ class AuthManager:
                 return False, "User not found"
 
             # Verify Code
-            if OTPManager.verify_otp(user.id, code, "2FA_SETUP", db_session=session):
+            success, verify_msg = OTPManager.verify_otp(user.id, code, "2FA_SETUP", db_session=session)
+            if success:
                 user.is_2fa_enabled = True
                 
                 AuditService.log_event(user.id, "2FA_ENABLE", details={"method": "OTP"}, db_session=session)
@@ -567,7 +663,7 @@ class AuthManager:
                 session.commit()
                 return True, "Two-Factor Authentication Enabled!"
             else:
-                return False, "Invalid validation code"
+                return False, verify_msg
         except Exception as e:
             session.rollback()
             logging.error(f"Enable 2FA Error: {e}")
@@ -596,6 +692,110 @@ class AuthManager:
             return False, f"Error: {str(e)}"
         finally:
             session.close()
+
+    # ==================== PASSWORD HISTORY ====================
+
+    def _save_password_to_history(self, user_id, password_hash, db_session):
+        """Store a password hash in the user's password history."""
+        from app.models import PasswordHistory
+        try:
+            entry = PasswordHistory(
+                user_id=user_id,
+                password_hash=password_hash,
+                created_at=datetime.now(timezone.utc)
+            )
+            db_session.add(entry)
+
+            # Prune old entries beyond the configured limit
+            history = db_session.query(PasswordHistory).filter(
+                PasswordHistory.user_id == user_id
+            ).order_by(PasswordHistory.created_at.desc()).all()
+
+            if len(history) > PASSWORD_HISTORY_LIMIT:
+                for old_entry in history[PASSWORD_HISTORY_LIMIT:]:
+                    db_session.delete(old_entry)
+        except Exception as e:
+            logging.error(f"Failed to save password history: {e}")
+
+    def _is_password_in_history(self, user_id, new_password, db_session):
+        """Check if a plaintext password matches any of the user's recent password hashes."""
+        from app.models import PasswordHistory
+        try:
+            history = db_session.query(PasswordHistory).filter(
+                PasswordHistory.user_id == user_id
+            ).order_by(PasswordHistory.created_at.desc()).limit(PASSWORD_HISTORY_LIMIT).all()
+
+            for entry in history:
+                if self.verify_password(new_password, entry.password_hash):
+                    return True
+            return False
+        except Exception as e:
+            logging.error(f"Password history check failed: {e}")
+            return False
+
+    # ==================== CHANGE PASSWORD ====================
+
+    def change_password(self, username, current_password, new_password):
+        """
+        Change password for a logged-in user.
+        Validates current password, checks history, and updates.
+        Returns: (success: bool, message: str)
+        """
+        from app.models import User
+
+        # Validate new password strength
+        is_valid, error = validate_password_security(new_password)
+        if not is_valid:
+            return False, error
+
+        session = get_session()
+        try:
+            id_lower = username.strip().lower()
+            user = session.query(User).filter(User.username == id_lower).first()
+
+            # If not found by username, try by email (user may have logged in with email)
+            if not user:
+                from app.models import PersonalProfile
+                profile = session.query(PersonalProfile).filter(PersonalProfile.email == id_lower).first()
+                if profile:
+                    user = session.query(User).filter(User.id == profile.user_id).first()
+
+            if not user:
+                return False, "User not found."
+
+            # Verify current password
+            if not self.verify_password(current_password, user.password_hash):
+                return False, "Current password is incorrect."
+
+            # Check if new password matches current password
+            if self.verify_password(new_password, user.password_hash):
+                return False, "New password cannot be the same as your current password."
+
+            # Check password history (read-only, outside transaction)
+            if self._is_password_in_history(user.id, new_password, session):
+                return False, f"This password was used recently. Please choose a password you haven't used in the last {PASSWORD_HISTORY_LIMIT} changes."
+
+            new_hash = self.hash_password(new_password)
+
+            # ── ATOMIC WRITE ─────────────────────────────────────────────────
+            # Old password saved to history + new password set + audit log
+            # must all succeed atomically.
+            with transactional(session):
+                self._save_password_to_history(user.id, user.password_hash, session)
+                user.password_hash = new_hash
+                AuditService.log_event(
+                    user.id, "PASSWORD_CHANGE",
+                    details={"status": "success"},
+                    db_session=session
+                )
+            # ─────────────────────────────────────────────────────────────────
+
+            logging.info(f"Password changed successfully for user {username}")
+            return True, "Password changed successfully."
+
+        except Exception as e:
+            logging.error(f"Change password failed: {e}")
+            return False, "An error occurred while changing your password."
     
     def validate_session(self, session_id):
         """

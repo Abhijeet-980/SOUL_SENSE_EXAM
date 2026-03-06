@@ -122,12 +122,16 @@ User Input → GUI Events → Business Logic → Data Validation → Database �
 - 🔄 **Database Migrations**: Alembic-powered schema evolution
 - 🐳 **Container Ready**: Docker support for consistent environments
 - 📖 **API Documentation**: OpenAPI/Swagger documentation
+- 🎭 **Mock Authentication**: Simplified auth for testing and development ([Quick Start](docs/MOCK_AUTH_QUICKSTART.md))
 
 ---
 
 ## 🚀 Getting Started
 
 ### 1. Setup Environment
+
+> [!TIP]
+> **Windows Users**: For a detailed step-by-step guide, please see [WINDOWS_SETUP.md](WINDOWS_SETUP.md).
 
 ```bash
 # Create virtual environment
@@ -439,6 +443,9 @@ Advanced way (Manual Uvicorn):
 ---
 
 ## Troubleshooting
+
+> [!TIP]
+> For a comprehensive Windows-specific troubleshooting guide, see [WINDOWS_SETUP.md](WINDOWS_SETUP.md).
 
 ### Common Installation Issues
 

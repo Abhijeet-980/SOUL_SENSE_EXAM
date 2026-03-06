@@ -106,3 +106,9 @@ def seed_data(db_session):
     db_session.add(s1)
     
     db_session.commit()
+import sys
+import os
+# Add the directory that contains the `api` package to PYTHONPATH
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)

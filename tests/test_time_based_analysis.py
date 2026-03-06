@@ -9,7 +9,7 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, MagicMock
 from app.analysis.time_based_analysis import TimeBasedAnalyzer
-from app.models import User, Score, Response, JournalEntry
+from backend.fastapi.api.root_models import User, Score, Response, JournalEntry
 
 
 class TestTimeBasedAnalyzer:

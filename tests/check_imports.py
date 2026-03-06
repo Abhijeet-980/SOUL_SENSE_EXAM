@@ -25,11 +25,11 @@ except Exception as e:
     traceback.print_exc()
 
 try:
-    print("Attempting to import app.models...")
-    from app.models import User, Score, Response
-    print("app.models imported")
+    print("Attempting to import backend.fastapi.api.root_models...")
+    from backend.fastapi.api.root_models import User, Score, Response
+    print("root_models imported")
 except Exception as e:
-    print(f"Error importing app.models: {e}")
+    print(f"Error importing root_models: {e}")
     import traceback
     traceback.print_exc()
 

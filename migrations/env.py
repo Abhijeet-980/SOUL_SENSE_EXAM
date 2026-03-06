@@ -1,7 +1,6 @@
 # migrations/env.py
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool, event, text
 from alembic import context
 import os
 import sys
@@ -11,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import your models
 try:
-    from app.models import Base
+    from backend.fastapi.api.models import Base
     target_metadata = Base.metadata
 except ImportError:
     # Create an empty metadata if models can't be imported
@@ -26,7 +25,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import app config for DB URL
-from app.config import DATABASE_URL
+from backend.fastapi.api.config import get_settings_instance
+settings = get_settings_instance()
+DATABASE_URL = settings.database_url
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
@@ -67,7 +68,19 @@ def run_migrations_online() -> None:
         target_url = DATABASE_URL
         
     from sqlalchemy import create_engine
-    connectable = create_engine(target_url)
+    connect_args = {}
+    if 'sqlite' in target_url:
+        connect_args = {'timeout': 60}
+        
+    connectable = create_engine(target_url, connect_args=connect_args)
+
+    @event.listens_for(connectable, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        # Using DELETE mode instead of WAL for better compatibility with virtual/network drives
+        cursor.execute("PRAGMA journal_mode=DELETE")
+        cursor.execute("PRAGMA synchronous=OFF")
+        cursor.close()
 
     with connectable.connect() as connection:
         # PR 1 Fix: Disable foreign keys for SQLite batch migrations

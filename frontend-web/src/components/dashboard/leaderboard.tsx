@@ -150,7 +150,7 @@ export function Leaderboard({ contributors }: { contributors: any[] }) {
               msOverflowStyle: 'none',
             }}
             transition={{
-              layout: { duration: 0.5, type: 'spring', stiffness: 200, damping: 25 },
+              layout: { duration: 0.5, type: 'tween', ease: 'easeOut' },
             }}
           >
             <LayoutGroup>
@@ -162,7 +162,7 @@ export function Leaderboard({ contributors }: { contributors: any[] }) {
                   viewport={{ once: true }}
                   transition={{
                     delay: isExpanded ? 0 : (index % 5) * 0.05,
-                    layout: { duration: 0.4, type: 'spring', stiffness: 200, damping: 25 },
+                    layout: { duration: 0.4, type: 'tween', ease: 'easeOut' },
                   }}
                   key={contributor.login}
                   onClick={() => setSelectedContributor(contributor)}

@@ -1,11 +1,12 @@
 name: Auto-assign reviewer on PR open
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened]
 
 permissions:
   pull-requests: write
+  issues: write
 
 jobs:
   assign-reviewer:

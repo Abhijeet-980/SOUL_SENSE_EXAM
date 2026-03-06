@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isWeakPassword } from './weak-passwords';
 
 // Base schemas
 // Enhanced email validation with stricter pattern requiring valid domain and TLD
@@ -18,7 +19,10 @@ export const passwordSchema = z
   .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
   .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
   .regex(/[0-9]/, 'Password must contain at least one number')
-  .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character');
+  .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character')
+  .refine((val) => !isWeakPassword(val), {
+    message: 'This password is too common. Please choose a stronger password.',
+  });
 
 const reservedUsernames = ['admin', 'root', 'support', 'soulsense', 'system', 'official'];
 
@@ -46,6 +50,7 @@ export const nameSchema = z
 export const loginSchema = z.object({
   identifier: z.string().trim().toLowerCase().min(1, 'Email or Username is required'),
   password: z.string().min(1, 'Password is required'),
+  captcha_input: z.string().min(1, 'CAPTCHA is required'),
   rememberMe: z.boolean().optional(),
 });
 
@@ -146,6 +151,39 @@ export const asyncUsernameUnique = async (username: string): Promise<boolean> =>
   });
 };
 
+// AI Boundaries schema
+export const aiBoundariesSchema = z.object({
+  off_limit_topics: z
+    .array(z.string()
+      .min(1)
+      .regex(/^[^<>/]*$/, 'Topic cannot contain systemic symbols (<, >, /)'))
+    .max(20, 'Maximum of 20 off-limit topics allowed'),
+  ai_tone_preference: z.enum(['Clinical', 'Warm', 'Direct', 'Philosophical']),
+  storage_retention_days: z.number().min(1).max(3650),
+});
+
+export const userSettingsSchema = z.object({
+  theme: z.enum(['light', 'dark', 'system']),
+  notifications: z.object({
+    email: z.boolean(),
+    push: z.boolean(),
+    frequency: z.enum(['immediate', 'daily', 'weekly']),
+    types: z.object({
+      exam_reminders: z.boolean(),
+      journal_prompts: z.boolean(),
+      progress_updates: z.boolean(),
+      system_updates: z.boolean(),
+    }),
+  }),
+  privacy: z.object({
+    data_collection: z.boolean(),
+    analytics: z.boolean(),
+    data_retention_days: z.number(),
+    profile_visibility: z.enum(['public', 'private', 'friends']),
+  }),
+  ai_boundaries: aiBoundariesSchema,
+});
+
 // Enhanced schemas with async validation
 export const registrationSchemaWithAsync = registrationSchema
   .refine(async (data) => await asyncEmailUnique(data.email), {
@@ -156,3 +194,5 @@ export const registrationSchemaWithAsync = registrationSchema
     message: 'Username is already taken',
     path: ['username'],
   });
+
+

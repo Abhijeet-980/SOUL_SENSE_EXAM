@@ -8,7 +8,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.ui.journal import JournalFeature
-from app.models import JournalEntry
+from backend.fastapi.api.root_models import JournalEntry
 
 class TestSmartInsights(unittest.TestCase):
     def setUp(self):

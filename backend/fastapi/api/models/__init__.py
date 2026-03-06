@@ -1,0 +1,1820 @@
+# app/models.py
+"""
+Compatibility layer for tests and legacy imports.
+Core models have been refactored elsewhere.
+"""
+
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Text, create_engine, event, Index, text, DateTime, CheckConstraint, Enum as SQLEnum, JSON
+from sqlalchemy.orm import relationship, declarative_base, Session
+from sqlalchemy.engine import Engine, Connection
+from typing import List, Optional, Any, Dict, Tuple, Union
+from datetime import datetime, timedelta, UTC
+import logging
+from ..utils.timestamps import normalize_utc_iso, utc_now, utc_now_iso
+
+try:
+    from ..utils.encrypted_type import EncryptedString
+except (ImportError, ValueError):
+    EncryptedString = Text
+
+# Define Base
+Base = declarative_base()
+
+class UserProfile:
+    def __init__(self) -> None:
+        self.occupation = ""
+        self.workload = 0 # 1-10
+        self.stressors = [] # ["exams", "deadlines"]
+        self.health_concerns = []
+        self.preferred_tone = "empathetic" # or "direct"
+        self.language = "English"
+        
+class User(Base):
+    __tablename__ = 'users'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, unique=True, nullable=False)
+    email = Column(String, unique=True, nullable=True)  # User email for notifications
+    password_hash = Column(String, nullable=False)
+    oauth_sub = Column(String, nullable=True, unique=True)  # OAuth subject identifier
+    created_at = Column(String, default=utc_now_iso)
+    last_login = Column(String, nullable=True)
+    
+    # PR 1: Security & Lifecycle Fields
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True) # Timestamp of soft delete
+    otp_secret = Column(String, nullable=True) # TOTP Secret
+    is_2fa_enabled = Column(Boolean, default=False, nullable=False)
+    last_activity = Column(String, nullable=True) # Track idle time
+    version = Column(Integer, default=1, nullable=False) # Generation-based caching (#1143)
+
+    # RBAC Roles
+    is_admin = Column(Boolean, default=False, nullable=False)
+    
+    settings = relationship("UserSettings", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    medical_profile = relationship("MedicalProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    personal_profile = relationship("PersonalProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    strengths = relationship("UserStrengths", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    emotional_patterns = relationship("UserEmotionalPatterns", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    sync_settings = relationship("UserSyncSetting", back_populates="user", cascade="all, delete-orphan")
+    password_history = relationship("PasswordHistory", back_populates="user", cascade="all, delete-orphan")
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
+    audit_snapshots = relationship("AuditSnapshot", back_populates="user", cascade="all, delete-orphan")
+    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+    step_up_tokens = relationship("StepUpToken", back_populates="user", cascade="all, delete-orphan")
+    anomaly_events = relationship("AuthAnomalyEvent", back_populates="user", cascade="all, delete-orphan")
+    
+    # Gamification Relationships
+    achievements = relationship("UserAchievement", back_populates="user", cascade="all, delete-orphan")
+    streaks = relationship("UserStreak", back_populates="user", cascade="all, delete-orphan")
+    xp_stats = relationship("UserXP", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    goals = relationship("Goal", back_populates="user", cascade="all, delete-orphan")
+    
+    # Background Tasks
+    background_jobs = relationship("BackgroundJob", back_populates="user", cascade="all, delete-orphan")
+    survey_submissions = relationship("SurveySubmission", back_populates="user", cascade="all, delete-orphan")
+    
+    # Notifications
+    notification_preferences = relationship("NotificationPreference", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    notification_logs = relationship("NotificationLog", back_populates="user", cascade="all, delete-orphan")
+
+    # PR 1134: GDPR Purge Cascades
+    journal_entries = relationship("JournalEntry", back_populates="user", cascade="all, delete-orphan")
+    export_records = relationship("ExportRecord", back_populates="user", cascade="all, delete-orphan")
+    encryption_key = relationship("UserEncryptionKey", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    assessment_results = relationship("AssessmentResult", back_populates="user", cascade="all, delete-orphan")
+    satisfaction_records = relationship("SatisfactionRecord", back_populates="user", cascade="all, delete-orphan")
+    analytics_events = relationship("AnalyticsEvent", back_populates="user", cascade="all, delete-orphan")
+    otps = relationship("OTP", back_populates="user", cascade="all, delete-orphan")
+    scores = relationship("Score", back_populates="user", cascade="all, delete-orphan")
+    responses = relationship("Response", back_populates="user", cascade="all, delete-orphan")
+    user_challenges = relationship("UserChallenge", back_populates="user", cascade="all, delete-orphan")
+
+class UserEncryptionKey(Base):
+    """Stores the Master-Key-wrapped Data Encryption Key for Envelope AEAD (#1105)."""
+    __tablename__ = 'user_encryption_keys'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
+    wrapped_dek = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    user = relationship("User", back_populates="encryption_key")
+
+class TenantQuota(Base):
+    """
+    Manages resource quotas and rate limits for individual tenants (#1135).
+    Supports different tiers (Free, Professional, Enterprise).
+    """
+    __tablename__ = 'tenant_quotas'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(UUID(as_uuid=True), unique=True, index=True, nullable=False)
+    tier = Column(String, default="free") 
+    
+    # Rate Limiting (Token Bucket parameters)
+    max_tokens = Column(Integer, default=100)
+    refill_rate = Column(Float, default=1.0) # tokens per second
+    
+    # Daily Quotas
+    daily_request_limit = Column(Integer, default=1000)
+    daily_request_count = Column(Integer, default=0)
+    last_reset_date = Column(DateTime, default=lambda: datetime.now(UTC))
+    
+    # Heavy Compute (ML/NLP) Quotas
+    ml_units_daily_limit = Column(Integer, default=50)
+    ml_units_daily_count = Column(Integer, default=0)
+    
+    is_active = Column(Boolean, default=True)
+    custom_settings = Column(JSON, nullable=True) 
+    
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+class NotificationPreference(Base):
+    """User preferences for notification channels."""
+    __tablename__ = 'notification_preferences'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
+    email_enabled = Column(Boolean, default=True)
+    push_enabled = Column(Boolean, default=False)
+    in_app_enabled = Column(Boolean, default=True)
+    
+    # Specific alert types
+    marketing_alerts = Column(Boolean, default=False)
+    security_alerts = Column(Boolean, default=True)
+    insight_alerts = Column(Boolean, default=True) # E.g. behavioral insights, weekly recaps
+    reminder_alerts = Column(Boolean, default=True) # E.g. journal reminders
+    
+    # Daily notification reminder settings (Issue #1328: Push Notification Reminder System)
+    daily_reminder_enabled = Column(Boolean, default=False, nullable=False)
+    reminder_time = Column(String, default="09:00", nullable=False)  # HH:MM format in user's timezone
+    reminder_frequency = Column(String, default="daily", nullable=False, index=True)  # daily, weekly, custom
+    reminder_days = Column(JSON, nullable=True)  # Days of week ["mon", "tue", ...]
+    reminder_message = Column(String, nullable=True)  # Custom reminder message
+    
+    user = relationship("User", back_populates="notification_preferences")
+    reminders = relationship("NotificationReminder", back_populates="preference", cascade="all, delete-orphan")
+
+class NotificationTemplate(Base):
+    """Jinja2 Templates stored in DB for dynamic text/HTML rendering."""
+    __tablename__ = 'notification_templates'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, unique=True, index=True, nullable=False) # e.g., 'weekly_insight', 'security_login'
+    subject_template = Column(String, nullable=False)
+    body_html_template = Column(Text, nullable=True) # Jinja2 HTML string
+    body_text_template = Column(Text, nullable=True) # Jinja2 Text string
+    language = Column(String, default="en")
+    is_active = Column(Boolean, default=True)
+
+class NotificationLog(Base):
+    """Audit log and delivery tracking for notifications."""
+    __tablename__ = 'notification_logs'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=True) # Optional in case of broadcast
+    template_name = Column(String, nullable=False)
+    channel = Column(String, nullable=False) # 'email', 'push', 'in_app'
+    status = Column(String, nullable=False, default="pending") # 'pending', 'sent', 'failed'
+    error_message = Column(Text, nullable=True)
+    sent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    
+    user = relationship("User", back_populates="notification_logs")
+
+
+class NotificationReminder(Base):
+    """Scheduled reminders for emotion logging (Issue #1328: Push Notification Reminder System)."""
+    __tablename__ = 'notification_reminders'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=False)
+    preference_id = Column(Integer, ForeignKey('notification_preferences.id'), index=True, nullable=False)
+    
+    # Reminder Schedule
+    scheduled_time = Column(DateTime, nullable=False, index=True)  # Next reminder time (UTC)
+    last_sent_at = Column(DateTime, nullable=True)  # Last time this reminder was sent
+    status = Column(String, default="active", nullable=False, index=True)  # active, paused, disabled
+    
+    # Reminder type and content
+    reminder_type = Column(String, default="emotion_logging", nullable=False)  # emotion_logging, check_in, journal
+    reminder_title = Column(String, default="Time to log your emotions", nullable=False)
+    reminder_body = Column(Text, nullable=True)  # Custom body text
+    
+    # Execution tracking
+    is_sent = Column(Boolean, default=False, nullable=False)
+    delivery_channel = Column(String, default="push", nullable=False)  # push, email, in_app
+    delivery_attempts = Column(Integer, default=0, nullable=False)
+    last_error = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    
+    user = relationship("User", foreign_keys=[user_id])
+    preference = relationship("NotificationPreference", back_populates="reminders")
+    
+    __table_args__ = (
+        Index('idx_reminder_user_scheduled', 'user_id', 'scheduled_time'),
+        Index('idx_reminder_status_scheduled', 'status', 'scheduled_time'),
+    )
+
+
+import enum
+
+class SurveyStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+class QuestionType(str, enum.Enum):
+    MULTIPLE_CHOICE = "multiple_choice"
+    LIKERT = "likert"
+    TEXT = "text"
+    RANGE = "range"
+
+class SurveyTemplate(Base):
+    __tablename__ = 'survey_templates'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String, index=True, nullable=False) # Stable across versions
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    version = Column(Integer, default=1, nullable=False)
+    status = Column(SQLEnum(SurveyStatus, name="survey_status_enum"), default=SurveyStatus.DRAFT, nullable=False)
+    is_active = Column(Boolean, default=False)
+    
+    # Custom scoring DSL
+    # Example: [{"if": {"qid": 1, "val": "A"}, "then": {"anxiety": 5}}]
+    scoring_logic = Column(JSON, nullable=True) 
+    
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    created_by_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+
+    sections = relationship("SurveySection", back_populates="survey", cascade="all, delete-orphan")
+    submissions = relationship("SurveySubmission", back_populates="survey")
+
+class SurveySection(Base):
+    __tablename__ = 'survey_sections'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    survey_id = Column(Integer, ForeignKey('survey_templates.id'), nullable=False)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    order = Column(Integer, default=0)
+    
+    survey = relationship("SurveyTemplate", back_populates="sections")
+    questions = relationship("SurveyQuestion", back_populates="section", cascade="all, delete-orphan")
+
+class SurveyQuestion(Base):
+    __tablename__ = 'survey_questions'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    section_id = Column(Integer, ForeignKey('survey_sections.id'), nullable=False)
+    question_text = Column(Text, nullable=False)
+    question_type = Column(SQLEnum(QuestionType, name="question_type_enum"), nullable=False)
+    options = Column(JSON, nullable=True) # Options list with values/scores
+    is_required = Column(Boolean, default=True)
+    order = Column(Integer, default=0)
+    
+    # Selection logic / branching
+    # Example: {"jump_to": "section_2", "if": "val > 5"}
+    logic_config = Column(JSON, nullable=True) 
+    
+    section = relationship("SurveySection", back_populates="questions")
+    responses = relationship("SurveyResponse", back_populates="question")
+
+class SurveySubmission(Base):
+    __tablename__ = 'survey_submissions'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    survey_id = Column(Integer, ForeignKey('survey_templates.id'), nullable=False)
+    
+    # Metadata & Computed Results
+    total_scores = Column(JSON, nullable=True) # {"anxiety": 12, "resilience": 8}
+    metadata_json = Column(JSON, nullable=True) # e.g. "device", "duration_seconds"
+    
+    started_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    completed_at = Column(DateTime, nullable=True)
+    
+    user = relationship("User", back_populates="survey_submissions")
+    survey = relationship("SurveyTemplate", back_populates="submissions")
+    responses = relationship("SurveyResponse", back_populates="submission", cascade="all, delete-orphan")
+
+class SurveyResponse(Base):
+    __tablename__ = 'survey_responses'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    submission_id = Column(Integer, ForeignKey('survey_submissions.id'), nullable=False)
+    question_id = Column(Integer, ForeignKey('survey_questions.id'), nullable=False)
+    
+    answer_value = Column(Text, nullable=False)
+    
+    submission = relationship("SurveySubmission", back_populates="responses")
+    question = relationship("SurveyQuestion", back_populates="responses")
+
+class LoginAttempt(Base):
+    """Track login attempts for security auditing and persistent locking.
+    Replaces in-memory 'failed_attempts' dictionary.
+    """
+    __tablename__ = 'login_attempts'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    username = Column(String, index=True)
+    ip_address = Column(String)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    is_successful = Column(Boolean)
+    user_agent = Column(String, nullable=True)
+    failure_reason = Column(String, nullable=True)
+
+class AuthAnomalyEvent(Base):
+    """Track authentication anomaly events for security monitoring (#1263)."""
+    __tablename__ = 'auth_anomaly_events'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    anomaly_type = Column(String, nullable=False, index=True)  # AnomalyType enum value
+    risk_level = Column(String, nullable=False)  # RiskLevel enum value
+    risk_score = Column(Float, nullable=False)
+    ip_address = Column(String, nullable=False)
+    user_agent = Column(String, nullable=True)
+    triggered_rules = Column(Text, nullable=True)  # JSON array of triggered rule names
+    details = Column(Text, nullable=True)  # JSON object with anomaly details
+    created_at = Column(DateTime, default=utc_now, index=True)
+
+    user = relationship("User", back_populates="anomaly_events")
+
+class AuditLog(Base):
+    """Audit Log for tracking security-critical user actions with tamper-evident hash chaining (#1265)."""
+    __tablename__ = 'audit_logs'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    action = Column(String, nullable=False)
+    details = Column(Text, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+
+    # Tamper-evident hash chaining fields (#1265)
+    previous_hash = Column(String(64), nullable=False, index=True)  # SHA-256 hash of previous entry
+    current_hash = Column(String(64), nullable=False, unique=True, index=True)  # SHA-256 hash of this entry
+    chain_hash = Column(String(64), nullable=False, index=True)  # Running chain hash for quick validation
+
+    user = relationship("User", back_populates="audit_logs")
+
+class AuditSnapshot(Base):
+    """Event-sourced compacted version of audit events for fast querying (#1085)."""
+    __tablename__ = 'audit_snapshots'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_type = Column(String, index=True) # CREATED, UPDATED, DELETED
+    entity = Column(String, index=True) # e.g., 'User', 'Score'
+    entity_id = Column(String, index=True)
+    payload = Column(JSON) # Snapshot of fields
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    user = relationship("User", back_populates="audit_snapshots")
+
+class OutboxEvent(Base):
+    """Transactional Outbox Pattern for guaranteed delivery (#1122)."""
+    __tablename__ = 'outbox_events'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    topic = Column(String, default="audit_trail", nullable=False)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=utc_now, index=True)
+    status = Column(String, default='pending', index=True) # pending, processed, failed, dead_letter
+    processed_at = Column(DateTime, nullable=True)
+    retry_count = Column(Integer, default=0)
+    next_retry_at = Column(DateTime, nullable=True, index=True)
+    error_message = Column(Text, nullable=True) # Legacy field
+    last_error = Column(Text, nullable=True)
+
+class GDPRScrubLog(Base):
+    """
+    Saga Pattern for GDPR Scrubbing (Right to be Forgotten #1144).
+    Tracks the state of a multi-system "Hard Purge" (SQL, S3, Vector).
+    """
+    __tablename__ = 'gdpr_scrub_logs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    username = Column(String, nullable=False)
+    scrub_id = Column(String, unique=True, index=True, nullable=False)
+    
+    # State Machine: PENDING, ASSETS_DELETED, SQL_PURGED, FAILED
+    status = Column(String, default='PENDING', index=True)
+    
+    # Checkpoints for idempotency
+    storage_deleted = Column(Boolean, default=False)
+    vector_deleted = Column(Boolean, default=False)
+    sql_deleted = Column(Boolean, default=False)
+    
+    # Store references to external files (S3 paths, local paths)
+    assets_to_delete = Column(JSON, nullable=True)
+    
+    # Failure tracking
+    retry_count = Column(Integer, default=0)
+    last_error = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+class AnalyticsEvent(Base):
+    """Track user behavior events (e.g., signup drop-off).
+    Uses anonymous_id for pre-signup tracking.
+    Environment column ensures strict separation between staging and production data.
+    """
+    __tablename__ = 'analytics_events'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    anonymous_id = Column(String, nullable=True, index=True)
+    event_type = Column(String, index=True) # E.g. signup, churn, feature_usage
+    event_name = Column(String, nullable=False, index=True)
+    event_data = Column(Text, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    ip_address = Column(String, nullable=True)
+    user = relationship("User", back_populates="analytics_events")
+
+# ==========================================
+# CQRS READ MODELS (ISSUE-1124)
+# Pre-computed materializations for fast /analytics/* queries
+# ==========================================
+
+class CQRSGlobalStats(Base):
+    """Pre-computed global dashboard aggregates."""
+    __tablename__ = 'cqrs_global_stats'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    total_assessments = Column(Integer, default=0)
+    unique_users = Column(Integer, default=0)
+    global_average_score = Column(Float, default=0.0)
+    global_average_sentiment = Column(Float, default=0.0)
+    rushed_assessments = Column(Integer, default=0)
+    inconsistent_assessments = Column(Integer, default=0)
+    p25_score = Column(Float, default=0.0)
+    p50_score = Column(Float, default=0.0)  # Median
+    p75_score = Column(Float, default=0.0)
+    p90_score = Column(Float, default=0.0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+class CQRSAgeGroupStats(Base):
+    """Pre-computed age group statistics."""
+    __tablename__ = 'cqrs_age_group_stats'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    age_group = Column(String, index=True, unique=True)
+    total_assessments = Column(Integer, default=0)
+    average_score = Column(Float, default=0.0)
+    min_score = Column(Float, default=0.0)
+    max_score = Column(Float, default=0.0)
+    average_sentiment = Column(Float, default=0.0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+class CQRSDistributionStats(Base):
+    """Pre-computed score distribution percentages."""
+    __tablename__ = 'cqrs_distribution_stats'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    score_range = Column(String, index=True, unique=True)
+    count = Column(Integer, default=0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+class CQRSTrendAnalytics(Base):
+    """Pre-computed daily trend metrics."""
+    __tablename__ = 'cqrs_trend_analytics'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    period = Column(String, index=True, unique=True)  # YYYY-MM
+    average_score = Column(Float, default=0.0)
+    assessment_count = Column(Integer, default=0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+class OTP(Base):
+    """One-Time Passwords for Password Reset and 2FA challenges."""
+    __tablename__ = 'otp_codes'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    code_hash = Column(String, nullable=False)
+    purpose = Column(String, nullable=False, index=True) # e.g. 'PASSWORD_RESET', '2FA'
+    expires_at = Column(DateTime, nullable=False, index=True)
+    is_used = Column(Boolean, default=False, index=True)
+    attempts = Column(Integer, default=0)
+    is_locked = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=utc_now, index=True)
+    user = relationship("User", back_populates="otps")
+
+class PasswordHistory(Base):
+    """Stores hashed previous passwords to prevent reuse.
+    Configurable via PASSWORD_HISTORY_LIMIT in security_config.
+    """
+    __tablename__ = 'password_history'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=utc_now, index=True)
+    user = relationship("User", back_populates="password_history")
+
+class RefreshToken(Base):
+    """Persistent storage for JWT refresh tokens.
+    Enables long-lived sessions with high security via:
+    - Token Rotation: New refresh token issued on every use.
+    - Revocation: Ability to kill sessions remotely.
+    """
+    __tablename__ = 'refresh_tokens'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    token_hash = Column(String, unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=utc_now, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    is_revoked = Column(Boolean, default=False, index=True)
+    user = relationship("User", back_populates="refresh_tokens")
+
+class TokenRevocation(Base):
+    """Store revoked access tokens to prevent reuse until they expire."""
+    __tablename__ = 'token_revocations'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token_str = Column(String, index=True, nullable=False)
+    revoked_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
+class UserSession(Base):
+    """Track user login sessions with unique session IDs and device fingerprinting"""
+    __tablename__ = 'user_sessions'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String, unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    username = Column(String, nullable=True)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    last_activity = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+
+    # Device fingerprinting fields (#1230)
+    device_fingerprint_hash = Column(String(64), nullable=True, index=True)
+    device_user_agent = Column(Text, nullable=True)
+    device_accept_language = Column(String, nullable=True)
+    device_accept_encoding = Column(String, nullable=True)
+    device_screen_resolution = Column(String, nullable=True)
+    device_timezone_offset = Column(Integer, nullable=True)
+    device_platform = Column(String, nullable=True)
+    device_plugins_hash = Column(String, nullable=True)
+    device_canvas_fingerprint = Column(String, nullable=True)
+    device_webgl_fingerprint = Column(String, nullable=True)
+    device_fingerprint_created_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="sessions")
+
+    __table_args__ = (
+        Index('idx_session_user_active', 'user_id', 'is_active'),
+        Index('idx_session_username_active', 'username', 'is_active'),
+        Index('idx_session_created', 'created_at'),
+        Index('ix_user_sessions_device_fingerprint_hash', 'device_fingerprint_hash'),
+    )
+
+class StepUpToken(Base):
+    """Time-bound tokens for privileged action authentication (#1245)"""
+    __tablename__ = 'step_up_tokens'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token = Column(String, unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    session_id = Column(String, nullable=False, index=True)  # Link to active session
+    purpose = Column(String, nullable=False)  # e.g., "delete_account", "admin_action", "change_password"
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=utc_now)
+    used_at = Column(DateTime, nullable=True)
+    is_used = Column(Boolean, default=False)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+
+    user = relationship("User", back_populates="step_up_tokens")
+
+    __table_args__ = (
+        Index('idx_stepup_user_session', 'user_id', 'session_id'),
+        Index('idx_stepup_expires', 'expires_at'),
+        Index('idx_stepup_token_used', 'token', 'is_used'),
+    )
+
+class UserSyncSetting(Base):
+    """Store user-specific sync settings as key-value pairs with version control for conflict detection."""
+    __tablename__ = 'user_sync_settings'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=False)
+    key = Column(String, nullable=False)
+    value = Column(Text, nullable=True)
+    version = Column(Integer, default=1)
+    updated_at = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    user = relationship("User", back_populates="sync_settings")
+    __table_args__ = (
+        Index('idx_sync_user_key', 'user_id', 'key', unique=True),
+    )
+
+class UserSettings(Base):
+    __tablename__ = 'user_settings'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
+    theme = Column(String, default="light")
+    question_count = Column(Integer, default=10)
+    sound_enabled = Column(Boolean, default=True)
+    notifications_enabled = Column(Boolean, default=True)
+    language = Column(String, default="en")
+    timezone = Column(String, default="UTC", nullable=False) # Supporting Issue #1177: Time-zone-aware pre-warming
+    
+    # Crisis support settings (Integration with emotional support features)
+    crisis_support_preference = Column(Boolean, default=True)
+    onboarding_completed = Column(Boolean, default=False)
+    updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    updated_at = Column(String, default=utc_now_iso)
+    user = relationship("User", back_populates="settings")
+
+class MedicalProfile(Base):
+    __tablename__ = 'medical_profiles'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
+    blood_type = Column(String, nullable=True)
+    allergies = Column(Text, nullable=True) # JSON string
+    medications = Column(Text, nullable=True) # JSON string
+    medical_conditions = Column(Text, nullable=True) # JSON string
+    emergency_contact_name = Column(String, nullable=True)
+    emergency_contact_phone = Column(String, nullable=True)
+    last_updated = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    user = relationship("User", back_populates="medical_profile")
+
+class PersonalProfile(Base):
+    __tablename__ = 'personal_profiles'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
+    occupation = Column(String, nullable=True)
+    education = Column(String, nullable=True)
+    marital_status = Column(String, nullable=True)
+    hobbies = Column(Text, nullable=True) # JSON string
+    bio = Column(Text, nullable=True)
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    gender = Column(String, nullable=True)
+    avatar_path = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    age = Column(Integer, nullable=True)
+    street_address = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    zip_code = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+    sleep_hours = Column(Float, nullable=True)
+    exercise_freq = Column(String, nullable=True)
+    dietary_patterns = Column(String, nullable=True)
+    last_updated = Column(String, default=utc_now_iso)
+    user = relationship("User", back_populates="personal_profile")
+
+class UserStrengths(Base):
+    __tablename__ = 'user_strengths'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
+    top_strengths = Column(Text, nullable=True) # JSON string
+    areas_for_improvement = Column(Text, nullable=True) # JSON string
+    current_challenges = Column(Text, nullable=True) # JSON string
+    learning_style = Column(String, nullable=True)
+    communication_preference = Column(String, nullable=True)
+    primary_help_area = Column(String, nullable=True)
+    relationship_stress = Column(Integer, nullable=True)
+    last_updated = Column(String, default=utc_now_iso)
+    user = relationship("User", back_populates="strengths")
+
+class UserEmotionalPatterns(Base):
+    """Store user-defined emotional patterns for empathetic AI responses (Issue #269)."""
+    __tablename__ = 'user_emotional_patterns'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
+    common_emotions = Column(Text, nullable=True) # JSON list
+    emotional_triggers = Column(Text, nullable=True)
+    coping_strategies = Column(Text, nullable=True)
+    preferred_support = Column(String, nullable=True)
+    last_updated = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    user = relationship("User", back_populates="emotional_patterns")
+
+class Score(Base):
+    __tablename__ = 'scores'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, index=True)
+    total_score = Column(Integer, index=True)
+    sentiment_score = Column(Float, default=0.0)
+    age = Column(Integer, nullable=True)
+    detailed_age_group = Column(String, nullable=True)
+    is_rushed = Column(Boolean, default=False)
+    is_inconsistent = Column(Boolean, default=False)
+    reflection_text = Column(Text, nullable=True)
+    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat(), index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    session_id = Column(String, nullable=True, index=True)
+    environment = Column(String, nullable=True, index=True)  # Environment column ensures strict separation between staging and production data
+    user = relationship("User", back_populates="scores")
+    
+    __table_args__ = (
+        Index('idx_score_age_score', 'age', 'total_score'),
+        Index('idx_score_agegroup_score', 'detailed_age_group', 'total_score'),
+    )
+
+class Response(Base):
+    __tablename__ = 'responses'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, index=True)
+    question_id = Column(Integer, index=True)
+    response_value = Column(Integer, index=True)
+    timestamp = Column(String, default=lambda: datetime.utcnow().isoformat(), index=True)
+    age = Column(Integer, nullable=True)
+    detailed_age_group = Column(String, nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    session_id = Column(String, nullable=True, index=True)
+    user = relationship("User", back_populates="responses")
+    
+    __table_args__ = (
+        CheckConstraint('response_value >= 1 AND response_value <= 5', name='ck_response_value_range'),
+        Index('idx_response_question_timestamp', 'question_id', 'timestamp'),
+        Index('idx_response_agegroup_timestamp', 'detailed_age_group', 'timestamp'),
+    )
+
+class ExamSession(Base):
+    """Tracks the state of an exam workflow to prevent business logic abuse."""
+    __tablename__ = 'exam_sessions'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String, unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    status = Column(String, default='STARTED') # STARTED, IN_PROGRESS, SUBMITTED, COMPLETED, ABANDONED
+    started_at = Column(DateTime, default=datetime.utcnow)
+    submitted_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    
+    user = relationship("User")
+
+    __table_args__ = (
+        Index('idx_exam_session_user_status', 'user_id', 'status'),
+    )
+
+class Question(Base):
+    __tablename__ = 'question_bank'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    question_text = Column(String)
+    category_id = Column(Integer)
+    difficulty = Column(Integer)
+    is_active = Column(Integer, default=1)
+    min_age = Column(Integer, default=0)
+    max_age = Column(Integer, default=120)
+    weight = Column(Float, default=1.0)
+    tooltip = Column(Text, nullable=True)
+    created_at = Column(String, default=lambda: datetime.now(UTC).isoformat())
+
+class QuestionCategory(Base):
+    __tablename__ = 'question_category'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String)
+
+class JournalEntry(Base):
+    __tablename__ = 'journal_entries'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    title = Column(String, nullable=True)
+    content = Column(EncryptedString, nullable=True) # Allow null after archival
+    sentiment_score = Column(Float, default=0.0)
+    emotional_patterns = Column(Text, nullable=True) # JSON list
+    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)
+    entry_date = Column(String, nullable=True, index=True) # For legacy/charting
+    category = Column(String, nullable=True, index=True)
+    mood_score = Column(Integer, nullable=True) # 1-10
+    sleep_hours = Column(Float, nullable=True)
+    sleep_quality = Column(Integer, nullable=True)
+    energy_level = Column(Integer, nullable=True)
+    work_hours = Column(Float, nullable=True)
+    stress_level = Column(Integer, nullable=True)
+    stress_triggers = Column(Text, nullable=True)
+    screen_time_mins = Column(Integer, nullable=True)
+    daily_schedule = Column(Text, nullable=True)
+    tags = Column(Text, nullable=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    privacy_level = Column(String, default="private", index=True)
+    word_count = Column(Integer, default=0)
+    
+    __table_args__ = (
+        Index('idx_journal_user_timestamp', 'user_id', 'timestamp'),
+        Index('idx_journal_is_deleted', 'is_deleted'),
+    )
+    user = relationship("User", back_populates="journal_entries")
+
+class WeeklySummary(Base):
+    """Stores weekly emotional summaries generated from journal entries (Issue #1326)."""
+    __tablename__ = 'weekly_summaries'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    week_start_date = Column(String, nullable=False, index=True)  # YYYY-MM-DD format
+    week_end_date = Column(String, nullable=False)  # YYYY-MM-DD format
+    dominant_emotion = Column(String, nullable=False)  # e.g., 'positivity', 'sadness', 'anxiety'
+    average_sentiment = Column(Float, nullable=False)  # 0-100, 50 = neutral
+    entry_count = Column(Integer, nullable=False, default=0)  # Number of entries this week
+    summary_text = Column(Text, nullable=False)  # Generated insights about weekly patterns
+    emotional_patterns = Column(Text, nullable=True)  # JSON list of detected patterns
+    created_at = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    updated_at = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    
+    __table_args__ = (
+        Index('idx_weekly_summary_user_week', 'user_id', 'week_start_date'),
+    )
+    
+    user = relationship("User")
+
+class SatisfactionRecord(Base):
+    __tablename__ = 'satisfaction_records'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=True)
+    username = Column(String, index=True)
+    satisfaction_category = Column(String, nullable=False) # e.g. 'work', 'social', 'health'
+    satisfaction_score = Column(Integer, nullable=False) # 1-5
+    context = Column(Text, nullable=True)
+    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    user = relationship("User", back_populates="satisfaction_records")
+    
+    __table_args__ = (
+        Index('idx_satisfaction_user_time', 'user_id', 'timestamp'),
+        Index('idx_satisfaction_category_score', 'satisfaction_category', 'satisfaction_score'),
+        Index('idx_satisfaction_context', 'context', 'satisfaction_score'),
+    )
+
+class SatisfactionHistory(Base):
+    """Track satisfaction trends over time"""
+    __tablename__ = 'satisfaction_history'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), index=True, nullable=False)
+    month_year = Column(String, index=True)
+    avg_satisfaction = Column(Float)
+    trend = Column(String)
+    insights = Column(Text, nullable=True)
+    __table_args__ = (
+        Index('idx_satisfaction_history_user_month', 'user_id', 'month_year'),
+    )
+
+class AssessmentResult(Base):
+    """Stores results for periodic/specialized assessments (PR #7).
+    Supported types: 'career_clarity', 'work_satisfaction', 'strengths'.
+    """
+    __tablename__ = 'assessment_results'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    assessment_type = Column(String, nullable=False, index=True)
+    timestamp = Column(String, default=lambda: datetime.now(UTC).isoformat(), index=True)
+    overall_score = Column(Float, nullable=True)
+    details = Column(Text, nullable=False)
+    journal_entry_id = Column(Integer, ForeignKey('journal_entries.id'), nullable=True)
+    user = relationship("User")
+class Goal(Base):
+    """
+    Structured Emotional Growth Goal tracking (Issue #671).
+    Enables users to set specific emotional metrics and monitor progress.
+    """
+    __tablename__ = 'goals'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    category = Column(String(50), nullable=True) # e.g., 'Resilience', 'Empathy', 'Self-Awareness'
+    
+    # Progress Metrics
+    target_value = Column(Float, nullable=False, default=100.0)
+    current_value = Column(Float, nullable=False, default=0.0)
+    unit = Column(String(20), default='percentage') # percentage, count, days
+    
+    # Timeline
+    start_date = Column(DateTime, default=datetime.utcnow)
+    deadline = Column(DateTime, nullable=True)
+    
+    # Status Lifecycle
+    status = Column(String(20), default='active') # active, completed, abandoned, paused
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    user = relationship("User", back_populates="goals")
+
+    journal_entry_id = Column(Integer, ForeignKey('journal_entries.id'), nullable=True, index=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    
+    __table_args__ = (
+        Index('idx_goals_user_status', 'user_id', 'status'),
+        Index('idx_goals_category', 'category'),
+    )
+
+
+class TeamVisionDocument(Base):
+    """
+    Shared document for 'Team Emotional Intelligence' feature (#1178).
+    Supports distributed locking and fencing tokens to prevent lost updates.
+    """
+    __tablename__ = 'team_vision_documents'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    team_id = Column(String(100), index=True, nullable=False) # Simplified team grouping
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)
+    
+    # Fencing Token (monotonically increasing version)
+    version = Column(Integer, default=1, nullable=False)
+    
+    # Audit tracking
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    last_modified_by_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    
+    last_modified_by = relationship("User")
+
+    __table_args__ = (
+        Index('idx_team_vision_lookup', 'team_id', 'id'),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "team_id": self.team_id,
+            "title": self.title,
+            "content": self.content,
+            "version": self.version,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "last_modified_by_id": self.last_modified_by_id
+        }
+
+
+# ==================== DATABASE PERFORMANCE OPTIMIZATIONS ====================
+
+logger = logging.getLogger(__name__)
+
+@event.listens_for(Base.metadata, 'before_create')
+def receive_before_create(target: Any, connection: Connection, **kw: Any) -> None:
+    """Optimize database settings before tables are created"""
+    logger.info("Optimizing database settings...")
+    
+    # SQLite specific optimizations
+    if connection.engine.name == 'sqlite':
+        connection.execute(text('PRAGMA journal_mode = WAL'))  # Write-Ahead Logging for better concurrency
+        connection.execute(text('PRAGMA synchronous = NORMAL'))  # Good balance of safety and performance
+        connection.execute(text('PRAGMA cache_size = -2000'))  # 2MB cache
+        connection.execute(text('PRAGMA temp_store = MEMORY'))  # Store temp tables in memory
+        connection.execute(text('PRAGMA mmap_size = 268435456'))  # 256MB memory map
+        connection.execute(text('PRAGMA foreign_keys = ON'))  # Enable foreign key constraints
+
+@event.listens_for(Base.metadata, 'after_create')
+def receive_after_create(target: Any, connection: Connection, **kw: Any) -> None:
+    """Setup Row-Level Security policies in PostgreSQL"""
+    logger.info("Setting up Multi-Tenant isolation policies...")
+    if 'postgresql' in connection.engine.name:
+        core_tables = [
+            'users', 'journal_entries', 'scores', 'achievements', 
+            'audit_logs', 'audit_snapshots', 'analytics_events',
+            'assessment_results', 'survey_submissions', 'notification_logs',
+            'satisfaction_records', 'user_xp', 'user_streaks', 'user_achievements'
+        ]
+        for table in core_tables:
+            try:
+                connection.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;"))
+                connection.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table};"))
+                connection.execute(text(
+                    f"CREATE POLICY tenant_isolation_policy ON {table} "
+                    f"USING (tenant_id = current_setting('app.tenant_id', true)::uuid);"
+                ))
+            except Exception as e:
+                logger.warning(f"Failed to create RLS policy on {table}: {e}")
+
+@event.listens_for(Session, 'after_flush')
+def capture_audit_events(session, flush_context):
+    """Capture model changes and put them in a buffer to be picked up by Kafka."""
+    if not hasattr(session, '_audit_buffer'):
+        session._audit_buffer = []
+
+    for obj in session.new:
+        if isinstance(obj, Base) and obj.__class__.__name__ not in ('OutboxEvent', 'AuditLog', 'AuditSnapshot'):
+            # PR 1134: Avoid recursive infrastructure auditing.
+            payload = {}
+            for c in obj.__table__.columns:
+                if not c.primary_key and c.name in obj.__dict__:
+                    val = obj.__dict__.get(c.name)
+                    if isinstance(val, (datetime, timedelta)):
+                        val = str(val)
+                    payload[c.name] = val
+                    
+            session._audit_buffer.append({
+                'type': 'CREATED',
+                'entity': obj.__class__.__name__,
+                'payload': payload,
+                'timestamp': datetime.now(UTC).isoformat()
+            })
+    
+    for obj in session.dirty:
+        if isinstance(obj, Base) and obj.__class__.__name__ not in ('OutboxEvent', 'AuditLog', 'AuditSnapshot'):
+            payload = {}
+            for c in obj.__table__.columns:
+                if not c.primary_key and c.name in obj.__dict__:
+                    val = obj.__dict__.get(c.name)
+                    if isinstance(val, (datetime, timedelta)):
+                        val = str(val)
+                    payload[c.name] = val
+
+            session._audit_buffer.append({
+                'type': 'UPDATED',
+                'entity': obj.__class__.__name__,
+                'payload': payload,
+                'timestamp': datetime.now(UTC).isoformat()
+            })
+
+    for obj in session.deleted:
+        if isinstance(obj, Base) and obj.__class__.__name__ not in ('OutboxEvent', 'AuditLog', 'AuditSnapshot'):
+             session._audit_buffer.append({
+                'type': 'DELETED',
+                'entity': obj.__class__.__name__,
+                'entity_id': obj.__dict__.get('id'), # Safe access
+                'timestamp': datetime.now(UTC).isoformat()
+             })
+
+@event.listens_for(Session, 'before_commit')
+def flush_audit_to_outbox(session):
+    """Transactional Outbox: Write collected audit events to the outbox table inside the same transaction."""
+    if hasattr(session, '_audit_buffer') and session._audit_buffer:
+        try:
+            # Fix #1134: Use session.add to avoid sync execute in async session
+            events = [
+                OutboxEvent(
+                    topic="audit_trail",
+                    payload=event_data,
+                    status="pending",
+                    created_at=datetime.now(UTC)
+                )
+                for event_data in session._audit_buffer
+            ]
+            session.add_all(events)
+            # No need to manual execute; SQLAlchemy will flush these as part of the commit
+        except Exception as e:
+            logger.error(f"Failed to queue audit outbox events: {e}")
+
+@event.listens_for(Session, 'after_commit')
+def cleanup_audit_buffer(session):
+    """Clear the buffer after a successful commit."""
+    if hasattr(session, '_audit_buffer'):
+        session._audit_buffer = []
+
+@event.listens_for(Session, 'after_rollback')
+def rollback_audit_buffer(session):
+    """Clear the buffer after a rollback to prevent leakage."""
+    if hasattr(session, '_audit_buffer'):
+        session._audit_buffer = []
+
+
+@event.listens_for(Question.__table__, 'after_create')
+def receive_after_create_question(target: Any, connection: Connection, **kw: Any) -> None:
+    """Create additional indexes and optimizations after question table creation"""
+    logger.info("Creating question search optimization indexes...")
+    
+    try:
+        # Check if FTS5 extension is available
+        connection.execute(text("SELECT fts5(?)"), ('test',))
+        
+        # Create virtual table for full-text search
+        connection.execute(text("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS question_search 
+            USING fts5(id, question_text, content='question_bank', content_rowid='id')
+        """))
+        
+        # Create triggers to keep the search index updated
+        connection.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS question_ai AFTER INSERT ON question_bank BEGIN
+                INSERT INTO question_search(rowid, question_text) VALUES (new.id, new.question_text);
+            END;
+        """))
+        
+        connection.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS question_ad AFTER DELETE ON question_bank BEGIN
+                INSERT INTO question_search(question_search, rowid, question_text) VALUES('delete', old.id, old.question_text);
+            END;
+        """))
+        
+        connection.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS question_au AFTER UPDATE ON question_bank BEGIN
+                INSERT INTO question_search(question_search, rowid, question_text) VALUES('delete', old.id, old.question_text);
+                INSERT INTO question_search(rowid, question_text) VALUES (new.id, new.question_text);
+            END;
+        """))
+        
+        logger.info("Full-text search indexes created for questions")
+    except:
+        logger.warning("FTS5 not available, skipping full-text search optimization")
+
+# ==================== CACHE AND PERFORMANCE TABLES ====================
+
+class QuestionCache(Base):
+    """Cache table for frequently accessed questions"""
+    __tablename__ = 'question_cache'
+    
+    id = Column(Integer, primary_key=True)
+    question_id = Column(Integer, ForeignKey('question_bank.id'), unique=True, index=True)
+    question_text = Column(Text, nullable=False)
+    category_id = Column(Integer, index=True)
+    difficulty = Column(Integer, index=True)
+    is_active = Column(Integer, default=1, index=True)
+    min_age = Column(Integer, default=0)
+    max_age = Column(Integer, default=120)
+    tooltip = Column(Text, nullable=True)
+    cached_at = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    access_count = Column(Integer, default=0, index=True)
+    
+    __table_args__ = (
+        Index('idx_cache_active_difficulty', 'is_active', 'difficulty'),
+        Index('idx_cache_category_active', 'category_id', 'is_active'),
+        Index('idx_cache_access_time', 'access_count', 'cached_at'),
+    )
+
+class StatisticsCache(Base):
+    """Cache for frequently calculated statistics"""
+    __tablename__ = 'statistics_cache'
+    
+    id = Column(Integer, primary_key=True)
+    stat_name = Column(String, unique=True, index=True)  # e.g., 'avg_score_global', 'question_count'
+    stat_value = Column(Float)
+    stat_json = Column(Text)  # For complex statistics
+    calculated_at = Column(String, default=lambda: datetime.now(UTC).isoformat())
+    valid_until = Column(String, index=True)
+    
+    __table_args__ = (
+        Index('idx_stats_name_valid', 'stat_name', 'valid_until'),
+    )
+
+# ==================== PERFORMANCE HELPER FUNCTIONS ====================
+
+def create_performance_indexes(engine: Engine) -> None:
+    """Create additional performance indexes that might be needed"""
+    with engine.connect() as conn:
+        conn.commit() 
+        # Create indexes that might not be in the model definitions
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_responses_composite 
+            ON responses(username, question_id, response_value, timestamp)
+        """))
+        
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_scores_composite 
+            ON scores(username, total_score, age, timestamp)
+        """))
+        
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_questions_quick_load 
+            ON question_bank(is_active, id, question_text)
+        """))
+        
+        # Optimize the database
+        conn.execute(text('PRAGMA optimize'))
+        
+        logger.info("Performance indexes created and database optimized")
+
+def preload_frequent_data(session: Session) -> None:
+    """Preload frequently accessed data into cache (Optimized Bulk)."""
+    try:
+        # 1. OPTIMIZATION: Preserve access counts to restore them
+        access_counts = {}
+        try:
+             # Fetch just ID/AccessCount to map
+             cached_counts = session.query(QuestionCache.question_id, QuestionCache.access_count).all()
+             access_counts = {qid: count for qid, count in cached_counts}
+        except Exception:
+             pass
+        
+        # 2. OPTIMIZATION: Clear Cache Table (Faster than N+1 merge checks)
+        session.query(QuestionCache).delete()
+        
+        # 3. Cache active questions
+        active_questions = session.query(Question).filter(
+            Question.is_active == 1
+        ).order_by(Question.id).all()
+        
+        new_entries = []
+        for question in active_questions:
+            new_entries.append(QuestionCache(
+                question_id=question.id,
+                question_text=question.question_text,
+                category_id=question.category_id,
+                difficulty=question.difficulty,
+                is_active=question.is_active,
+                access_count=access_counts.get(question.id, 0) # Restore count or 0
+            ))
+        
+        # Bulk Insert
+        if new_entries:
+            session.add_all(new_entries)
+        
+        # Cache global statistics (Few items, merge is fine here)
+        from sqlalchemy import func
+        avg_score = session.query(func.avg(Score.total_score)).scalar() or 0
+        question_count = session.query(func.count(Question.id)).filter(
+            Question.is_active == 1
+        ).scalar() or 0
+        
+        stats = [
+            ('avg_score_global', avg_score, datetime.now(UTC).isoformat()),
+            ('question_count', question_count, datetime.now(UTC).isoformat()),
+            ('active_users', session.query(func.count(User.id)).scalar() or 0, 
+             datetime.now(UTC).isoformat())
+        ]
+        
+        for stat_name, stat_value, calculated_at in stats:
+            cache_entry = StatisticsCache(
+                stat_name=stat_name,
+                stat_value=stat_value,
+                calculated_at=calculated_at,
+                valid_until=(datetime.now(UTC) + timedelta(hours=24)).isoformat()
+            )
+            session.merge(cache_entry)
+        
+        session.commit()
+        logger.info("Frequent data preloaded into cache (Bulk Optimized)")
+        
+    except Exception as e:
+        logger.error(f"Failed to preload data: {e}")
+        session.rollback()
+
+# ==================== QUERY OPTIMIZATION FUNCTIONS ====================
+
+def get_active_questions_optimized(session: Session, limit: Optional[int] = None, offset: int = 0) -> List[Any]:
+    """Optimized query for loading active questions"""
+    # Try cache first
+    cached = session.query(QuestionCache).filter(
+        QuestionCache.is_active == 1
+    ).order_by(QuestionCache.question_id)
+    
+    if limit:
+        cached = cached.limit(limit)
+    if offset:
+        cached = cached.offset(offset)
+    
+    cached_results = cached.all()
+    
+    if cached_results:
+        # Update access count
+        for cache_entry in cached_results:
+            cache_entry.access_count += 1
+        session.commit()
+        
+        return [(c.question_id, c.question_text) for c in cached_results]
+    
+    # Fallback to direct query if cache misses
+    query = session.query(Question.id, Question.question_text).filter(
+        Question.is_active == 1
+    ).order_by(Question.id)
+    
+    if limit:
+        query = query.limit(limit)
+    if offset:
+        query = query.offset(offset)
+    
+    return query.all()
+
+def get_user_scores_optimized(session: Session, username: str, limit: int = 50) -> List["Score"]:
+    """Optimized query for user scores with pagination"""
+    return session.query(Score).filter(
+        Score.username == username
+    ).order_by(
+        Score.timestamp.desc()
+    ).limit(limit).all()
+
+class ExportRecord(Base):
+    """Track user data exports for audit and GDPR compliance."""
+    __tablename__ = 'export_records'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    export_id = Column(String, unique=True, nullable=False, index=True)
+    format = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    date_range_start = Column(DateTime, nullable=True)
+    date_range_end = Column(DateTime, nullable=True)
+    data_types = Column(Text, nullable=True)
+    is_encrypted = Column(Boolean, default=False, nullable=False)
+    status = Column(String, default='completed', nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=True)
+    user = relationship("User", back_populates="export_records")
+
+    user = relationship("User")
+
+# ==================== GAMIFICATION MODELS ====================
+
+class Achievement(Base):
+    __tablename__ = 'achievements'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    achievement_id = Column(String(100), unique=True, index=True)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=False)
+    icon = Column(String(500), nullable=True) # URL or emoji
+    category = Column(String(50), nullable=False) # consistency, awareness, intelligence
+    rarity = Column(String(20), default='common') # common, rare, epic, legendary
+    requirements = Column(Text, nullable=True) # JSON string of requirements
+    points_reward = Column(Integer, default=150)
+
+class UserAchievement(Base):
+    __tablename__ = 'user_achievements'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    achievement_id = Column(String(100), ForeignKey('achievements.achievement_id'), nullable=False)
+    progress = Column(Integer, default=0) # 0-100
+    unlocked = Column(Boolean, default=False)
+    unlocked_at = Column(DateTime, nullable=True)
+    
+    user = relationship("User", back_populates="achievements")
+    achievement = relationship("Achievement")
+
+class UserStreak(Base):
+    __tablename__ = 'user_streaks'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    activity_type = Column(String(50), default='combined')  # journal, assessment, combined
+    current_streak = Column(Integer, default=0)
+    longest_streak = Column(Integer, default=0)
+    last_activity_date = Column(DateTime, nullable=True)
+    streak_freeze_count = Column(Integer, default=0)
+    
+    user = relationship("User", back_populates="streaks")
+
+class UserXP(Base):
+    __tablename__ = 'user_xp'
+    tenant_id = Column(UUID(as_uuid=True), index=True, nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True, nullable=False)
+    total_xp = Column(Integer, default=0)
+    current_level = Column(Integer, default=1)
+    xp_to_next_level = Column(Integer, default=500)
+    last_xp_awarded_at = Column(DateTime, default=datetime.utcnow)
+    
+    user = relationship("User", back_populates="xp_stats")
+
+class Challenge(Base):
+    """Weekly or Monthly Challenges for users to participate in."""
+    __tablename__ = 'challenges'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=False)
+    challenge_type = Column(String(50), index=True) # weekly, monthly, special
+    start_date = Column(DateTime, nullable=False, index=True)
+    end_date = Column(DateTime, nullable=False, index=True)
+    requirements = Column(Text) # JSON string
+    reward_xp = Column(Integer, default=200)
+    is_active = Column(Boolean, default=True, index=True)
+
+class UserChallenge(Base):
+    """Tracks user participation in challenges."""
+    __tablename__ = 'user_challenges'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    challenge_id = Column(Integer, ForeignKey('challenges.id'), nullable=False)
+    status = Column(String(20), default='joined') # joined, completed, failed
+    progress = Column(Text) # JSON string
+    completed_at = Column(DateTime, nullable=True)
+    
+    user = relationship("User", back_populates="user_challenges")
+    challenge = relationship("Challenge")
+
+
+# ==================== BACKGROUND TASK MODELS ====================
+
+class BackgroundJob(Base):
+    """
+    Track background job execution status for async task processing.
+    
+    This model enables:
+    - Decoupling heavy operations from HTTP request/response cycles
+    - Status polling for long-running tasks
+    - Task failure tracking and debugging
+    - User-specific job history
+    """
+    __tablename__ = 'background_jobs'
+    __table_args__ = (
+        Index('idx_background_jobs_user_status', 'user_id', 'status'),
+        Index('idx_background_jobs_created', 'created_at'),
+    )
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(String(36), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    task_type = Column(String(50), nullable=False)  # export_pdf, send_email, etc.
+    status = Column(String(20), default='pending', nullable=False, index=True)
+    progress = Column(Integer, default=0)  # 0-100 percentage
+    params = Column(Text, nullable=True)  # JSON string of task parameters
+    result = Column(Text, nullable=True)  # JSON string of task result
+    error_message = Column(Text, nullable=True)  # Error details if failed
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    started_at = Column(DateTime, nullable=True)  # When task started processing
+    completed_at = Column(DateTime, nullable=True)  # When task finished
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    user = relationship("User", back_populates="background_jobs")
+
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        import json
+        return {
+            "job_id": self.job_id,
+            "task_type": self.task_type,
+            "status": self.status,
+            "progress": self.progress,
+            "result": json.loads(self.result) if self.result else None,
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
+# ============================================================================
+# Dead-Letter Queue Models (Issue #1355)
+# ============================================================================
+
+class DeadLetterQueue(Base):
+    """
+    Store failed async tasks for monitoring, replay, and manual recovery.
+    
+    When a Celery task exceeds max_retries, it's moved to DLQ for:
+    - Visibility: Track permanent failures
+    - Manual replay: Requeue transient failures
+    - Discard: Remove business logic errors
+    - Alerting: Monitor DLQ growth as system health indicator
+    """
+    __tablename__ = 'dead_letter_queue'
+    __table_args__ = (
+        Index('idx_dlq_task_name', 'task_name'),
+        Index('idx_dlq_user_id', 'user_id'),
+        Index('idx_dlq_status', 'status'),
+        Index('idx_dlq_created_at', 'created_at'),
+        Index('idx_dlq_queued_at', 'queued_at'),
+    )
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(String(36), unique=True, nullable=False, index=True)  # Original Celery task ID
+    task_name = Column(String(255), nullable=False)  # e.g., "api.celery_tasks.generate_journal_embedding_task"
+    task_type = Column(String(50), nullable=False)  # e.g., "export_pdf", "send_email"
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)  # NULL for system tasks
+    
+    # Task execution details
+    params = Column(Text, nullable=True)  # JSON string of original task parameters
+    result = Column(Text, nullable=True)  # JSON string of last execution result
+    error_message = Column(Text, nullable=True)  # Full error traceback
+    error_count = Column(Integer, default=1, nullable=False)  # How many times this task failed
+    
+    # Timing information
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False, index=True)  # When task first failed
+    queued_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)  # When moved to DLQ
+    last_retry_at = Column(DateTime, nullable=True)  # When last attempted to replay
+    
+    # DLQ state management
+    status = Column(String(20), default='pending_replay', nullable=False)  # pending_replay, archived, discarded
+    replay_count = Column(Integer, default=0, nullable=False)  # How many manual replays attempted
+    
+    user = relationship("User", foreign_keys=[user_id])
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API responses."""
+        import json
+        return {
+            "id": self.id,
+            "task_id": self.task_id,
+            "task_name": self.task_name,
+            "task_type": self.task_type,
+            "user_id": self.user_id,
+            "params": json.loads(self.params) if self.params else None,
+            "result": json.loads(self.result) if self.result else None,
+            "error_message": self.error_message,
+            "error_count": self.error_count,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "queued_at": self.queued_at.isoformat() if self.queued_at else None,
+            "last_retry_at": self.last_retry_at.isoformat() if self.last_retry_at else None,
+            "status": self.status,
+            "replay_count": self.replay_count,
+        }
+
+
+# ============================================================================
+# Privacy & Consent Models (Issue #982)
+# ============================================================================
+
+class ConsentEvent(Base):
+    """
+    Track user consent events for privacy compliance.
+    
+    Records consent_given and consent_revoked events to ensure
+    analytics and data collection only occur with proper consent.
+    """
+    __tablename__ = 'consent_events'
+    __table_args__ = (
+        Index('idx_consent_user_timestamp', 'anonymous_id', 'timestamp'),
+        Index('idx_consent_type_timestamp', 'consent_type', 'timestamp'),
+    )
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    anonymous_id = Column(String(255), nullable=False, index=True)  # Client-generated anonymous ID
+    event_type = Column(String(50), nullable=False, index=True)  # consent_given, consent_revoked
+    consent_type = Column(String(50), nullable=False, index=True)  # analytics, marketing, research
+    consent_version = Column(String(20), nullable=False)  # Version of consent terms
+    event_data = Column(Text, nullable=True)  # JSON string of additional metadata
+    ip_address = Column(String(45), nullable=True)  # IPv4/IPv6 address
+    user_agent = Column(Text, nullable=True)  # Browser/client user agent
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        import json
+        return {
+            "id": self.id,
+            "anonymous_id": self.anonymous_id,
+            "event_type": self.event_type,
+            "consent_type": self.consent_type,
+            "consent_version": self.consent_version,
+            "event_data": json.loads(self.event_data) if self.event_data else None,
+            "ip_address": self.ip_address,
+            "user_agent": self.user_agent,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+        }
+
+
+class UserConsent(Base):
+    """
+    Store current consent status for users.
+    
+    Tracks the current state of user consents to enable
+    consent validation before analytics collection.
+    """
+    __tablename__ = 'user_consents'
+    __table_args__ = (
+        Index('idx_user_consent_type', 'anonymous_id', 'consent_type', unique=True),
+    )
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    anonymous_id = Column(String(255), nullable=False, index=True)
+    consent_type = Column(String(50), nullable=False, index=True)  # analytics, marketing, research
+    consent_granted = Column(Boolean, nullable=False, default=False)
+    consent_version = Column(String(20), nullable=False)
+    granted_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "anonymous_id": self.anonymous_id,
+            "consent_type": self.consent_type,
+            "consent_granted": self.consent_granted,
+            "consent_version": self.consent_version,
+            "granted_at": self.granted_at.isoformat() if self.granted_at else None,
+            "revoked_at": self.revoked_at.isoformat() if self.revoked_at else None,
+            "ip_address": self.ip_address,
+            "user_agent": self.user_agent,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# Initialize logger
+logging.basicConfig(level=logging.INFO)
+# End of models
+
+# ==================== CACHE INVALIDATION EVENTS ====================
+
+from sqlalchemy import event
+
+
+@event.listens_for(User, 'before_insert')
+@event.listens_for(User, 'before_update')
+def normalize_user_created_at(mapper, connection, target):
+    target.created_at = normalize_utc_iso(getattr(target, 'created_at', None), fallback_now=True)
+
+@event.listens_for(User, 'after_update')
+def receive_after_update_user(mapper, connection, target):
+    from api.services.cache_service import cache_service
+    username = target.__dict__.get('username')
+    user_id = target.__dict__.get('id')
+    if username:
+        cache_service.sync_invalidate(f"user_rbac:{username}")
+    if user_id:
+        cache_service.sync_invalidate(f"user_rbac_id:{user_id}")
+
+@event.listens_for(User, 'after_delete')
+def receive_after_delete_user(mapper, connection, target):
+    from api.services.cache_service import cache_service
+    username = target.__dict__.get('username')
+    user_id = target.__dict__.get('id')
+    if username:
+        cache_service.sync_invalidate(f"user_rbac:{username}")
+    if user_id:
+        cache_service.sync_invalidate(f"user_rbac_id:{user_id}")
+
+@event.listens_for(UserSettings, 'after_update')
+def receive_after_update_user_settings(mapper, connection, target):
+    from api.services.cache_service import cache_service
+    user_id = target.__dict__.get('user_id')
+    if user_id:
+        cache_service.sync_invalidate(f"user_settings:{user_id}")
+
+@event.listens_for(NotificationPreference, 'after_update')
+def receive_after_update_notif_pref(mapper, connection, target):
+    from api.services.cache_service import cache_service
+    user_id = target.__dict__.get('user_id')
+    if user_id:
+        cache_service.sync_invalidate(f"notif_pref:{user_id}")
+
+
+# ==================== API KEY SCOPES MODELS (#1264) ====================
+
+class ApiKeyScope(SQLEnum):
+    """Enumeration of available API key scopes for fine-grained access control."""
+    READ = "read"
+    WRITE = "write"
+    ADMIN = "admin"
+    USERS_READ = "users:read"
+    USERS_WRITE = "users:write"
+    PAYMENTS_READ = "payments:read"
+    PAYMENTS_WRITE = "payments:write"
+    ANALYTICS_READ = "analytics:read"
+    ANALYTICS_WRITE = "analytics:write"
+    EXAMS_READ = "exams:read"
+    EXAMS_WRITE = "exams:write"
+    JOURNAL_READ = "journal:read"
+    JOURNAL_WRITE = "journal:write"
+    SURVEYS_READ = "surveys:read"
+    SURVEYS_WRITE = "surveys:write"
+    NOTIFICATIONS_READ = "notifications:read"
+    NOTIFICATIONS_WRITE = "notifications:write"
+    SETTINGS_READ = "settings:read"
+    SETTINGS_WRITE = "settings:write"
+
+
+class ApiKey(Base):
+    """
+    API Key model for fine-grained access control (#1264).
+
+    Supports scope-based authorization with the principle of least privilege.
+    API keys can have multiple scopes and are associated with users.
+    """
+    __tablename__ = 'api_keys'
+    __table_args__ = (
+        Index('idx_api_key_user', 'user_id'),
+        Index('idx_api_key_key', 'key_hash'),
+        Index('idx_api_key_active', 'is_active'),
+        Index('idx_api_key_created', 'created_at'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    name = Column(String(100), nullable=False)  # Human-readable name for the key
+    key_hash = Column(String(128), unique=True, nullable=False, index=True)  # Hashed API key
+    scopes = Column(JSON, nullable=False)  # List of ApiKeyScope values as strings
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=True)  # Optional expiration date
+    last_used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False, index=True)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    # Relationships
+    user = relationship("User")
+
+    def has_scope(self, required_scope: str) -> bool:
+        """Check if this API key has the required scope."""
+        return required_scope in self.scopes
+
+    def has_any_scope(self, required_scopes: list[str]) -> bool:
+        """Check if this API key has any of the required scopes."""
+        return any(scope in self.scopes for scope in required_scopes)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API responses (without sensitive data)."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "name": self.name,
+            "scopes": self.scopes,
+            "is_active": self.is_active,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "last_used_at": self.last_used_at.isoformat() if self.last_used_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# Vulnerability Exception Models for SBOM and Security Gate #1266
+class VulnerabilityException(Base):
+    """Model for managing temporary vulnerability exceptions."""
+    __tablename__ = 'vulnerability_exceptions'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    package_name = Column(String(255), nullable=False, index=True)
+    package_version = Column(String(100), nullable=False)
+    vulnerability_id = Column(String(100), nullable=False, index=True)  # CVE ID or similar
+    severity = Column(String(50), nullable=False)  # critical, high, medium, low
+    tool_name = Column(String(100), nullable=False)  # safety, bandit, etc.
+
+    # Exception details
+    justification = Column(Text, nullable=False)
+    approved_by = Column(String(255), nullable=False)  # User who approved
+    approved_at = Column(DateTime, default=utc_now, nullable=False)
+    expires_at = Column(DateTime, nullable=False)  # When exception expires
+
+    # Audit fields
+    created_by = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    # Status
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+
+    # Additional metadata
+    vuln_metadata = Column(JSON, nullable=True)  # Additional vulnerability details
+
+    __table_args__ = (
+        Index('idx_vuln_exception_active', 'is_active', 'expires_at'),
+        Index('idx_vuln_exception_package', 'package_name', 'package_version'),
+    )
+
+    def is_expired(self) -> bool:
+        """Check if the exception has expired."""
+        return utc_now() > self.expires_at
+
+    def is_valid(self) -> bool:
+        """Check if the exception is still valid."""
+        return self.is_active and not self.is_expired()
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "package_name": self.package_name,
+            "package_version": self.package_version,
+            "vulnerability_id": self.vulnerability_id,
+            "severity": self.severity,
+            "tool_name": self.tool_name,
+            "justification": self.justification,
+            "approved_by": self.approved_by,
+            "approved_at": self.approved_at.isoformat() if self.approved_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "is_active": self.is_active,
+            "is_expired": self.is_expired(),
+            "is_valid": self.is_valid(),
+            "metadata": self.vuln_metadata
+        }
+
+
+class SBOMArtifact(Base):
+    """Model for storing SBOM artifacts and metadata."""
+    __tablename__ = 'sbom_artifacts'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    build_id = Column(String(255), nullable=False, index=True)  # CI build identifier
+    commit_sha = Column(String(40), nullable=False, index=True)
+    branch = Column(String(255), nullable=False)
+
+    # SBOM details
+    format = Column(String(50), nullable=False)  # json, xml, etc.
+    spec_version = Column(String(20), nullable=False)  # CycloneDX version
+    component_count = Column(Integer, nullable=False)
+
+    # File storage
+    sbom_path = Column(String(500), nullable=False)  # Path to stored SBOM file
+    checksum = Column(String(128), nullable=False)  # SHA-256 of SBOM file
+
+    # Metadata
+    generated_at = Column(DateTime, default=utc_now, nullable=False)
+    generated_by = Column(String(255), nullable=False)  # CI system or user
+    sbom_metadata = Column(JSON, nullable=True)  # Additional SBOM metadata
+
+    __table_args__ = (
+        Index('idx_sbom_build', 'build_id', 'commit_sha'),
+        Index('idx_sbom_generated', 'generated_at'),
+    )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "build_id": self.build_id,
+            "commit_sha": self.commit_sha,
+            "branch": self.branch,
+            "format": self.format,
+            "spec_version": self.spec_version,
+            "component_count": self.component_count,
+            "sbom_path": self.sbom_path,
+            "checksum": self.checksum,
+            "generated_at": self.generated_at.isoformat() if self.generated_at else None,
+            "generated_by": self.generated_by,
+            "metadata": self.sbom_metadata
+        }
+

@@ -2,7 +2,7 @@ import os
 import pytest
 import tempfile
 from app.db import get_session, delete_user_data
-from app.models import User, Score, JournalEntry, MedicalProfile, PersonalProfile, UserSettings, UserStrengths
+from backend.fastapi.api.root_models import User, Score, JournalEntry, MedicalProfile, PersonalProfile, UserSettings, UserStrengths
 from sqlalchemy import text
 
 def test_db_session(temp_db):
@@ -16,7 +16,7 @@ def test_delete_user_data(temp_db, monkeypatch):
     """Test complete user data deletion including database records and local files."""
     import shutil
     from app.config import BASE_DIR
-    from app.models import Base
+    from backend.fastapi.api.root_models import Base
 
     # Ensure tables are created
     Base.metadata.create_all(bind=temp_db.bind)

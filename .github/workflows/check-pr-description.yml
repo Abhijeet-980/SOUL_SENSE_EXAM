@@ -1,7 +1,7 @@
 name: Check PR Description Quality
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, edited]
     branches:
       - main
@@ -10,6 +10,7 @@ on:
 
 permissions:
   pull-requests: write
+  issues: write
   contents: read
 
 jobs:

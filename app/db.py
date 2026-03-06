@@ -10,24 +10,43 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import StaticPool
 
-from app.config import DATABASE_URL, DB_PATH, BASE_DIR
+from app.config import (
+    DATABASE_URL, DB_PATH, BASE_DIR, 
+    DB_POOL_SIZE, DB_MAX_OVERFLOW, DB_POOL_TIMEOUT, 
+    DB_POOL_RECYCLE, DB_POOL_PRE_PING, DB_STATEMENT_TIMEOUT
+)
 from app.exceptions import DatabaseError
 
 # Configure logger
 logger = logging.getLogger(__name__)
 
 # Secure database connection with connection pooling
-engine = create_engine(
-    DATABASE_URL, 
-    echo=False,
-    poolclass=StaticPool,
-    connect_args={
-        "check_same_thread": False,
-        "timeout": 20,
-        "isolation_level": None
-    },
-    pool_pre_ping=True
-)
+connect_args = {}
+if DATABASE_URL.startswith("sqlite"):
+    connect_args["check_same_thread"] = False
+    connect_args["timeout"] = DB_POOL_TIMEOUT
+elif "postgresql" in DATABASE_URL:
+    connect_args["options"] = f"-c statement_timeout={DB_STATEMENT_TIMEOUT}"
+
+engine_args = {
+    "connect_args": connect_args,
+    "pool_pre_ping": DB_POOL_PRE_PING,
+    "echo": False
+}
+
+if DATABASE_URL.startswith("sqlite"):
+    # For SQLite, use StaticPool for consistency and thread-safety
+    engine_args["poolclass"] = StaticPool
+else:
+    # Production pooling for other DB types
+    engine_args.update({
+        "pool_size": DB_POOL_SIZE,
+        "max_overflow": DB_MAX_OVERFLOW,
+        "pool_timeout": DB_POOL_TIMEOUT,
+        "pool_recycle": DB_POOL_RECYCLE,
+    })
+
+engine = create_engine(DATABASE_URL, **engine_args)
 SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
 
 def get_engine() -> Engine:
@@ -56,18 +75,16 @@ def safe_db_context() -> Generator[Session, None, None]:
         session.close()
 
 def check_db_state() -> bool:
-    """Check and create database tables if needed"""
-    logger.info("Checking database state...")
+    """Check database connectivity and verify schema via inspector"""
+    logger.info("Checking unified database connectivity...")
     
     try:
-        # Import models after everything is set up
-        from app.models import Base
+        # Check connectivity
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("Database connection established.")
         
-        # Create all tables
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables created/verified successfully.")
-        
-        # Check for existing data
+        # Check for existing table (e.g., scores) as a health check
         inspector = inspect(engine)
         tables = inspector.get_table_names()
         
@@ -75,14 +92,12 @@ def check_db_state() -> bool:
             with engine.connect() as conn:
                 result = conn.execute(text("SELECT COUNT(*) FROM scores"))
                 count = result.scalar()
-                logger.info(f"Found {count} scores in database")
+                logger.debug(f"Connectivity check passed: Found {count} scores")
+        else:
+            logger.warning("Database connected but expected tables (like 'scores') not found. Migration may be required.")
         
         return True
         
-    except ImportError as e:
-        logger.error(f"Failed to import models: {e}")
-        # Critical error: Cannot proceed without models
-        return False
     except Exception as e:
         logger.error(f"Error checking database state: {e}")
         return False
@@ -92,10 +107,18 @@ def check_db_state() -> bool:
 # Initialize database
 # check_db_state()  # DISABLED to prevent side-effects on import
 
-# Backward compatibility
+# Backward compatibility - Only works if using SQLite
 def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
+    if not DATABASE_URL.startswith("sqlite"):
+        logger.error(f"Raw sqlite3 connection requested but unified DATABASE_URL is {DATABASE_URL}")
+        raise DatabaseError("Raw sqlite3 connection not supported for current non-SQLite database type.")
     try:
-        return sqlite3.connect(db_path or DB_PATH)
+        # Extract path from DATABASE_URL if db_path not provided
+        target_path = db_path
+        if not target_path and DATABASE_URL.startswith("sqlite:///"):
+            target_path = DATABASE_URL.replace("sqlite:///", "")
+            
+        return sqlite3.connect(target_path or DB_PATH)
     except sqlite3.Error as e:
         logger.error(f"Failed to connect to raw database: {e}", exc_info=True)
         raise DatabaseError("Failed to connect to raw database.", original_exception=e)

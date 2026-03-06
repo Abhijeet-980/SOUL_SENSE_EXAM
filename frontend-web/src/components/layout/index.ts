@@ -4,3 +4,5 @@ export * from './section';
 export * from './theme-provider';
 export * from './floating-navbar';
 export * from './navbar-controller';
+export * from './bottom-navigation';
+export * from './mobile-responsive-layout';

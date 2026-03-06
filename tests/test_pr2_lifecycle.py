@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch, call
 from datetime import datetime, timedelta, UTC
 from app.auth.idle_watcher import IdleWatcher
 from app.services.lifecycle import deactivate_dormant_accounts
-from app.models import User
+from backend.fastapi.api.root_models import User
 from app.auth.auth import AuthManager
 
 # --- IDLE WATCHER TESTS ---

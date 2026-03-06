@@ -58,7 +58,7 @@ export function ForceDirectedGraph({ data }: { data: GraphData }) {
   const isDark = theme === 'dark';
 
   return (
-    <Card className="col-span-full lg:col-span-4 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border-slate-200 dark:border-white/5 shadow-xl rounded-3xl overflow-hidden group relative transition-all duration-300">
+    <Card className="col-span-full lg:col-span-4 bg-background/60 backdrop-blur-2xl border border-border/40 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.1)] rounded-3xl overflow-hidden group relative transition-all duration-300">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <div className="space-y-1">
           <CardTitle className="text-xl font-black tracking-tighter flex items-center gap-2 text-slate-900 dark:text-white">
@@ -97,14 +97,15 @@ export function ForceDirectedGraph({ data }: { data: GraphData }) {
             height={dimensions.height}
             graphData={graphData}
             nodeLabel="id"
-            nodeColor={(node: any) =>
-              node.group === 'user'
-                ? isDark
-                  ? '#3B82F6'
-                  : '#2563EB'
-                : isDark
-                  ? '#8B5CF6'
-                  : '#7C3AED'
+            nodeColor={
+              (node: any) =>
+                node.group === 'user'
+                  ? isDark
+                    ? '#818cf8' // indigo-400
+                    : '#4f46e5' // indigo-600
+                  : isDark
+                    ? '#34d399' // emerald-400
+                    : '#059669' // emerald-600
             }
             nodeRelSize={6}
             nodeVal={(node: any) => node.val}
@@ -126,11 +127,11 @@ export function ForceDirectedGraph({ data }: { data: GraphData }) {
               ctx.fillStyle =
                 node.group === 'user'
                   ? isDark
-                    ? '#3B82F6'
-                    : '#2563EB'
+                    ? '#818cf8'
+                    : '#4f46e5'
                   : isDark
-                    ? '#8B5CF6'
-                    : '#7C3AED';
+                    ? '#34d399'
+                    : '#059669';
               ctx.fill();
 
               // Subtle shadow for depth
@@ -139,7 +140,7 @@ export function ForceDirectedGraph({ data }: { data: GraphData }) {
 
               // Label (Theme Aware)
               if (globalScale > 1.5) {
-                ctx.fillStyle = isDark ? '#F8FAFC' : '#1E293B'; // White or Slate-900
+                ctx.fillStyle = isDark ? '#F8FAFC' : '#1E293B'; // Adjust to foreground later if needed
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 const yOffset = node.val / 2 + 5;
@@ -156,13 +157,13 @@ export function ForceDirectedGraph({ data }: { data: GraphData }) {
         {/* Legend */}
         <div className="absolute bottom-4 left-6 flex items-center gap-6 pointer-events-none">
           <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-blue-600 dark:bg-blue-500 shadow-sm" />
+            <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-sm" />
             <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest leading-none">
               Contributor
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-purple-600 dark:bg-purple-500 shadow-sm" />
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm" />
             <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest leading-none">
               Code Module
             </span>

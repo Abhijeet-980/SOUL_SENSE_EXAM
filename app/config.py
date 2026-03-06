@@ -84,6 +84,22 @@ DEFAULT_CONFIG: Dict[str, Dict[str, Any]] = {
     "features": {
         "enable_journal": True,
         "enable_analytics": True
+    },
+    "capacity_monitoring": {
+        "enabled": False,
+        "collection_interval_seconds": 300,
+        "retention_days": 30,
+        "forecast_window_hours": 24,
+        "min_historical_points": 10,
+        "critical_threshold_pct": 90.0,
+        "warning_threshold_pct": 75.0,
+        "safety_margin_pct": 20.0
+    },
+    "ntp_monitoring": {
+        "enabled": True,
+        "drift_tolerance_seconds": 5.0,
+        "ntp_check_interval_seconds": 300,
+        "max_drift_rate": 0.0001
     }
 }
 
@@ -98,7 +114,7 @@ def load_config() -> Dict[str, Any]:
             config = json.load(f)
             # Use deepcopy to avoid mutating the global DEFAULT_CONFIG
             merged = copy.deepcopy(DEFAULT_CONFIG)
-            for section in ["database", "ui", "features"]:
+            for section in ["database", "ui", "features", "capacity_monitoring", "ntp_monitoring"]:
                 if section in config:
                     merged[section].update(config[section])
             return merged
@@ -160,24 +176,70 @@ else:
     DB_PATH = os.path.join(BASE_DIR, DB_DIR_NAME, DB_FILENAME)
 
 # Database Configuration
-DATABASE_TYPE: str = get_env_var("DATABASE_TYPE", "sqlite")
+# FORCE UNIFICATION: Prioritize DATABASE_URL from environment (shared with backend)
+DATABASE_URL: str = os.getenv("DATABASE_URL") or get_env_var("DATABASE_URL")
 
-DATABASE_URL: str
-if DATABASE_TYPE == "postgresql":
-    DB_HOST: str = get_env_var("DB_HOST", "localhost")
-    DB_PORT: int = get_env_var("DB_PORT", 5432, int)
-    DB_NAME: str = get_env_var("DB_NAME", "soulsense")
-    DB_USER: str = get_env_var("DB_USER", "postgres")
-    DB_PASSWORD: str = get_env_var("DB_PASSWORD", "password")
-    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-else:
-    DATABASE_URL = f"sqlite:///{DB_PATH}"
-    # Ensure DB Directory Exists for SQLite
-    if not os.path.exists(os.path.dirname(DB_PATH)):
+if not DATABASE_URL:
+    # Try to import from backend config if available
+    try:
+        import sys
+        # Ensure project root is in path for imports
+        if BASE_DIR not in sys.path:
+            sys.path.insert(0, BASE_DIR)
+        
+        # Check if backend directory exists before trying to import
+        if os.path.exists(os.path.join(BASE_DIR, "backend")):
+            from backend.fastapi.api.config import get_settings_instance
+            settings = get_settings_instance()
+            DATABASE_URL = settings.database_url
+            DB_POOL_SIZE = settings.database_pool_size
+            DB_MAX_OVERFLOW = settings.database_max_overflow
+            DB_POOL_TIMEOUT = settings.database_pool_timeout
+            DB_POOL_RECYCLE = settings.database_pool_recycle
+            DB_POOL_PRE_PING = settings.database_pool_pre_ping
+            DB_STATEMENT_TIMEOUT = settings.database_statement_timeout
+            logging.info(f"Using database settings from backend config (URL: {DATABASE_URL})")
+    except (ImportError, Exception) as e:
+        logging.debug(f"Could not import backend config: {e}")
+
+# Default values if not set by backend
+if 'DB_POOL_SIZE' not in locals():
+    DB_POOL_SIZE = get_env_var("DB_POOL_SIZE", 20, int)
+    DB_MAX_OVERFLOW = get_env_var("DB_MAX_OVERFLOW", 10, int)
+    DB_POOL_TIMEOUT = get_env_var("DB_POOL_TIMEOUT", 30, int)
+    DB_POOL_RECYCLE = get_env_var("DB_POOL_RECYCLE", 1800, int)
+    DB_POOL_PRE_PING = get_env_var("DB_POOL_PRE_PING", True, bool)
+    DB_STATEMENT_TIMEOUT = get_env_var("DB_STATEMENT_TIMEOUT", 30000, int)
+
+if not DATABASE_URL:
+    # Fallback to legacy local configuration if shared sources unavailable
+    DATABASE_TYPE: str = get_env_var("DATABASE_TYPE", "sqlite")
+    if DATABASE_TYPE == "postgresql":
+        DB_HOST: str = get_env_var("DB_HOST", "localhost")
+        DB_PORT: int = get_env_var("DB_PORT", 5432, int)
+        DB_NAME: str = get_env_var("DB_NAME", "soulsense")
+        DB_USER: str = get_env_var("DB_USER", "postgres")
+        DB_PASSWORD: str = get_env_var("DB_PASSWORD", "password")
+        DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    else:
+        DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+# Ensure we handle SQLite directory creation if applicable
+if DATABASE_URL.startswith("sqlite:///"):
+    # Extract path, handling relative paths (sqlite:///./data/...)
+    sqlite_path = DATABASE_URL.replace("sqlite:///", "")
+    # Remove leading dots/slashes for path normalization if needed
+    if sqlite_path.startswith("./"):
+        sqlite_path = os.path.join(BASE_DIR, sqlite_path[2:])
+    elif not os.path.isabs(sqlite_path):
+        sqlite_path = os.path.join(BASE_DIR, sqlite_path)
+    
+    db_dir = os.path.dirname(sqlite_path)
+    if db_dir and not os.path.exists(db_dir):
         try:
-            os.makedirs(os.path.dirname(DB_PATH))
+            os.makedirs(db_dir)
         except OSError:
-            pass # Handle race condition or permission error
+            pass
 
 # UI Settings
 THEME: str = _config["ui"]["theme"]
@@ -198,3 +260,15 @@ try:
 except ImportError:
     FEATURE_FLAGS = None  # type: ignore
 
+
+# Capacity Monitoring Configuration
+_capacity_config = _config.get("capacity_monitoring", {})
+
+CAPACITY_MONITORING_ENABLED: bool = get_env_var("CAPACITY_MONITORING_ENABLED", _capacity_config.get("enabled", False), bool)
+CAPACITY_COLLECTION_INTERVAL_SECONDS: int = get_env_var("CAPACITY_COLLECTION_INTERVAL_SECONDS", _capacity_config.get("collection_interval_seconds", 300), int)
+CAPACITY_RETENTION_DAYS: int = get_env_var("CAPACITY_RETENTION_DAYS", _capacity_config.get("retention_days", 30), int)
+CAPACITY_FORECAST_WINDOW_HOURS: int = get_env_var("CAPACITY_FORECAST_WINDOW_HOURS", _capacity_config.get("forecast_window_hours", 24), int)
+CAPACITY_MIN_HISTORICAL_POINTS: int = get_env_var("CAPACITY_MIN_HISTORICAL_POINTS", _capacity_config.get("min_historical_points", 10), int)
+CAPACITY_CRITICAL_THRESHOLD: float = get_env_var("CAPACITY_CRITICAL_THRESHOLD", _capacity_config.get("critical_threshold_pct", 90.0), float)
+CAPACITY_WARNING_THRESHOLD: float = get_env_var("CAPACITY_WARNING_THRESHOLD", _capacity_config.get("warning_threshold_pct", 75.0), float)
+CAPACITY_SAFETY_MARGIN: float = get_env_var("CAPACITY_SAFETY_MARGIN", _capacity_config.get("safety_margin_pct", 20.0), float)

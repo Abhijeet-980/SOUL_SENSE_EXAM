@@ -37,7 +37,7 @@ export function ActivityAreaChart({ data }: { data: any[] }) {
   }
 
   return (
-    <Card className="h-full backdrop-blur-xl bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-white/5 shadow-sm hover:shadow-md transition-all rounded-2xl overflow-hidden group">
+    <Card className="h-full backdrop-blur-md lg:backdrop-blur-2xl bg-background/60 border border-border/40 shadow-sm hover:shadow-md transition-all rounded-3xl overflow-hidden group">
       <CardHeader>
         <CardTitle className="text-lg font-bold text-slate-900 dark:text-white leading-none">
           Engineering Velocity
@@ -52,8 +52,8 @@ export function ActivityAreaChart({ data }: { data: any[] }) {
             <AreaChart data={focusedData}>
               <defs>
                 <linearGradient id="colorCommits" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.05} vertical={false} />
@@ -83,7 +83,7 @@ export function ActivityAreaChart({ data }: { data: any[] }) {
                   boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2)',
                   backdropFilter: 'blur(8px)',
                 }}
-                itemStyle={{ color: '#3B82F6', fontSize: '12px', fontWeight: 'bold' }}
+                itemStyle={{ color: 'hsl(var(--primary))', fontSize: '12px', fontWeight: 'bold' }}
                 labelStyle={{
                   color: '#94a3b8',
                   fontSize: '10px',
@@ -95,7 +95,7 @@ export function ActivityAreaChart({ data }: { data: any[] }) {
               <Area
                 type="monotone"
                 dataKey="commits"
-                stroke="#3B82F6"
+                stroke="hsl(var(--primary))"
                 strokeWidth={3}
                 fillOpacity={1}
                 fill="url(#colorCommits)"

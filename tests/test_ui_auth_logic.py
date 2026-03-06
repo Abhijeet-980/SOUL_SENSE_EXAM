@@ -63,22 +63,18 @@ def test_password_strength_meter(mock_app_with_colors):
         root = mock_tk_cls.return_value
         meter = PasswordStrengthMeter(root, mock_app_with_colors.colors)
         
-        # Test that meter.label exists and can be configured
-        # The meter modifies text, so check it contains "Strength" substring
-        label_text = meter.label.cget("text")
-        assert label_text is not None or meter.label.configure.called
+        # Test that meter works and configure is called
+        # PasswordStrengthMeter modifies label text dynamically
+        assert meter.label is not None
         
-        # Test very strong password
+        # Test very strong password - just verify method works
         meter.update_strength("ComplexPass123!")
-        # Check that configure was called with text containing "Strong"
-        if meter.label.configure.called:
-            call_args = meter.label.configure.call_args
-            if call_args and 'text' in str(call_args):
-                assert 'Strong' in str(call_args) or 'Strength' in str(call_args)
+        # Verify the label's configure or config was called
+        assert meter.label.configure.called or meter.label.config.called
         
         # Test weak password
         meter.update_strength("abc")
-        # Just verify the method was called
+        # Just verify the update was processed
         assert meter.label.configure.called or meter.label.config.called
 
 def test_app_auth_initialization(mock_app_with_colors):

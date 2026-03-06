@@ -174,7 +174,7 @@ def demonstrate_data_export():
                     'total_score': 'Raw emotion score',
                     'normalized_score': 'Normalized EQ score (0-80)',
                     'question_id': 'Question identifier',
-                    'response_value': 'User response (1-4)',
+                    'response_value': 'User response (1-5)',
                     'timestamp': 'Response timestamp',
                     'export_timestamp': 'Data export timestamp'
                 }

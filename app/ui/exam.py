@@ -24,7 +24,20 @@ class ExamManager:
 
     def start_test(self):
         """Initialize test state and start the exam"""
-        from app.services.exam_service import ExamSession
+        from app.services.exam_service import ExamSession, ExamService
+        from tkinter import messagebox
+        
+        # Check retake restriction (Issue #993)
+        user_id = getattr(self.app, 'current_user_id', None)
+        is_allowed, message = ExamSession.check_retake_eligibility(user_id)
+        
+        if not is_allowed:
+            messagebox.showwarning(
+                "Retake Not Allowed",
+                f"{message}\n\nYou have already completed an assessment. "
+                "Multiple attempts are not permitted."
+            )
+            return
         
         # Init or Reset ExamSession
         # 1. Get question limit from settings (Default to 10)
@@ -38,7 +51,8 @@ class ExamManager:
             username=self.app.username,
             age=self.app.age,
             age_group=self.app.age_group,
-            questions=questions_to_use
+            questions=questions_to_use,
+            user_id=user_id
         )
         self.session.start_exam()
         
@@ -563,6 +577,9 @@ class ExamManager:
                 except Exception as e:
                     logging.warning(f"Could not show satisfaction survey: {e}")
             
+            # Check for Crisis Alert Pattern (Issue #1332)
+            self._check_crisis_alert_after_exam()
+            
             # Determine Recommendations
             score_data = {"total_score": self.app.current_score} 
             # In future: fetch stress/energy from recent journal or specific question IDs
@@ -588,6 +605,8 @@ class ExamManager:
     
     def show_embedded_results(self, result_ids=None):
         """Show results embedded in the main window (Web-Style)"""
+        from app.services.exam_service import ExamSession
+        
         self.app.clear_screen()
         colors = self.app.colors
         
@@ -721,9 +740,21 @@ class ExamManager:
             btn.bind("<Leave>", lambda e: btn.configure(bg=colors.get(color_key, colors[color_key])))
             return btn
             
-        # Button: Take Another
-        # We need to use lambda to delay execution or bind properly
-        create_action_btn("🔄 Retake Assessment", self.start_test, "primary")
+        # Button: Take Another (only show if no completed assessment)
+        # Check retake restriction for current user
+        user_id = getattr(self.app, 'current_user_id', None)
+        is_allowed, _ = ExamSession.check_retake_eligibility(user_id)
+        
+        if is_allowed:
+            # We need to use lambda to delay execution or bind properly
+            create_action_btn("🔄 Retake Assessment", self.start_test, "primary")
+        else:
+            # Show message that assessment is already completed
+            tk.Label(action_frame, 
+                    text="✓ Assessment Completed (No retake allowed)",
+                    font=("Segoe UI", 11, "italic"),
+                    bg=colors["bg"], 
+                    fg=colors.get("success", "#10B981")).pack(side="left", padx=10)
         
         # Button: AI Analysis
         def show_ai_analysis():
@@ -813,3 +844,55 @@ class ExamManager:
         except Exception as e:
             logging.error(f"PDF Export failed: {e}")
             messagebox.showerror("Export Error", f"Failed to generate PDF:\n{str(e)}")
+    
+    def _check_crisis_alert_after_exam(self):
+        """
+        Check for crisis-level distress patterns after exam completion.
+        Shows intervention modal if extreme distress patterns are detected.
+        
+        This integrates Issue #1332: Crisis Alert Mode
+        """
+        try:
+            from app.services.crisis_detection_service import CrisisDetectionService
+            from app.ui.components.crisis_alert_modal import show_crisis_alert
+            
+            user_id = getattr(self.app, 'current_user_id', None)
+            username = getattr(self.app, 'current_username', 'user')
+            
+            if not user_id:
+                return
+            
+            # Check for crisis pattern
+            is_crisis, alert = CrisisDetectionService.check_crisis_pattern(user_id, username)
+            
+            if is_crisis and alert:
+                # Get support resources
+                resources = CrisisDetectionService.get_support_resources()
+                
+                # Show crisis alert modal
+                def on_alert_close(alert_id: int):
+                    CrisisDetectionService.acknowledge_alert(alert_id)
+                
+                crisis_colors = getattr(self.app, 'colors', {
+                    "bg": "#F8FAFC",
+                    "surface": "#E2E8F0",
+                    "primary": "#3B82F6",
+                    "text_primary": "#1E293B",
+                    "text_secondary": "#64748B"
+                })
+                
+                modal = show_crisis_alert(
+                    self.root,
+                    user_id=user_id,
+                    alert_id=alert.id,
+                    severity=alert.severity,
+                    resources=resources,
+                    on_close=on_alert_close,
+                    colors=crisis_colors
+                )
+                
+                logging.info(f"Crisis alert modal shown for user {username} (severity: {alert.severity})")
+        
+        except Exception as e:
+            # Log but don't interrupt exam flow
+            logging.error(f"Error checking crisis pattern after exam: {e}")

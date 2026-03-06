@@ -8,7 +8,7 @@ import logging
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.db import get_session, update_user_settings, get_user_settings
-from app.models import User, UserSettings
+from backend.fastapi.api.root_models import User, UserSettings
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)

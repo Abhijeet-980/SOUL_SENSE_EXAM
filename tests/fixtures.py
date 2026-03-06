@@ -28,7 +28,7 @@ from unittest.mock import Mock, MagicMock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.models import (
+from backend.fastapi.api.root_models import (
     Base, User, UserSettings, MedicalProfile, PersonalProfile,
     UserStrengths, UserEmotionalPatterns, Score, Response,
     Question, QuestionCategory, JournalEntry, SatisfactionRecord,
@@ -209,6 +209,7 @@ class ScoreFactory:
         is_inconsistent: bool = False,
         reflection_text: Optional[str] = None,
         timestamp: Optional[str] = None,
+        session_id: Optional[str] = None,
         commit: bool = True
     ) -> Score:
         """Create a test score record.
@@ -240,7 +241,8 @@ class ScoreFactory:
             is_rushed=is_rushed,
             is_inconsistent=is_inconsistent,
             reflection_text=reflection_text or "Test reflection text.",
-            timestamp=timestamp or datetime.utcnow().isoformat()
+            timestamp=timestamp or datetime.utcnow().isoformat(),
+            session_id=session_id
         )
         
         if session:
@@ -305,6 +307,7 @@ class ResponseFactory:
         username: str = "test_user",
         question_id: int = 1,
         response_value: int = 3,
+        session_id: Optional[str] = None,
         age_group: str = "adult",
         detailed_age_group: str = "Young Adult (18-25)",
         timestamp: Optional[str] = None,
@@ -313,11 +316,11 @@ class ResponseFactory:
         """Create a test response record."""
         response = Response(
             username=user.username if user else username,
-            user_id=user.id if user else None,
             question_id=question_id,
             response_value=response_value,
             age_group=age_group,
             detailed_age_group=detailed_age_group,
+            session_id=session_id,
             timestamp=timestamp or datetime.utcnow().isoformat()
         )
         

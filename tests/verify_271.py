@@ -1,5 +1,5 @@
 from app.db import get_session
-from app.models import User, UserStrengths
+from backend.fastapi.api.root_models import User, UserStrengths
 import json
 import time
 

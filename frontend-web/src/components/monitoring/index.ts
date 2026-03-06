@@ -1,0 +1,1 @@
+export { WebVitalsMonitor } from './WebVitalsMonitor';

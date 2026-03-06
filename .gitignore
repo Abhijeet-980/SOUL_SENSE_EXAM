@@ -10,6 +10,7 @@ __pycache__/
 # =========================
 .env
 .env.*
+!.env.example
 .envrc
 .venv
 venv/
@@ -80,6 +81,10 @@ coverage.xml
 *.cover
 *.py.cover
 
+# Test result files containing sensitive data
+full_api_test_results.json
+*_test_results.json
+
 # =========================
 # Logs
 # =========================
@@ -93,6 +98,7 @@ db/*.db
 *.sqlite
 *.sqlite3
 soulsense_db
+soulsense_db.db
 
 # =========================
 # Cache / Runtime files

@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
+  // Optimize images
   images: {
     unoptimized: true,
     remotePatterns: [
@@ -17,23 +17,36 @@ const nextConfig = {
         hostname: 'github.com',
       },
     ],
+    formats: ['image/webp', 'image/avif'],
   },
+
+  // Enable SWC minification for faster builds
+  swcMinify: true,
+
+  // Performance optimizations
+  experimental: {
+    // optimizeCss: true, // Only available for "pages" directory
+  },
+
+  // Headers for better caching and security
   async headers() {
     return [
       {
-        source: '/(.*)',
+        source: '/:all*(svg|jpg|jpeg|png|ico|webp)',
+        locale: false,
         headers: [
           {
-            key: 'X-Frame-Options',
-            value: 'DENY',
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
           },
+        ],
+      },
+      {
+        source: '/static/:path*',
+        headers: [
           {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'origin-when-cross-origin',
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
           },
         ],
       },
@@ -41,4 +54,10 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+// Wrap with bundle analyzer if ANALYZE=true
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+  openAnalyzer: false,
+});
+
+module.exports = withBundleAnalyzer(nextConfig);

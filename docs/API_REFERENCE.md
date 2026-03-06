@@ -38,7 +38,7 @@ You can check the current API version in several ways:
    ```json
    {
      "status": "healthy",
-     "timestamp": "2023-01-15T12:00:00Z",
+     "timestamp": "2026-02-15T12:00:00Z",
      "version": "1.0.0"
    }
    ```
@@ -79,6 +79,28 @@ Authorization: Bearer <your_jwt_token>
 Tokens expire after a configurable period (default: 24 hours).
 
 ## API Endpoints
+
+### Root Endpoint
+
+**Endpoint:** `GET /`
+
+**Description:** Returns API metadata including available versions and documentation path.
+
+**Response:**
+```json
+{
+  "name": "SoulSense API",
+  "versions": [
+    {
+      "version": "v1",
+      "status": "current",
+      "path": "/api/v1"
+    }
+  ],
+  "documentation": "/docs"
+}
+
+
 
 ### Authentication
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from backend.fastapi.api.main import app
-from app.models import User, Score, AssessmentResult
+from backend.fastapi.api.root_models import User, Score, AssessmentResult
 from app.auth.auth import AuthManager
 from backend.fastapi.api.services.deep_dive_service import DeepDiveService
 
