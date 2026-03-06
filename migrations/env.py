@@ -22,6 +22,13 @@ try:
 except ImportError:
     INDEX_POLICY_AVAILABLE = False
 
+# Import backfill job registry
+try:
+    from app.infra.backfill_job_registry import get_backfill_registry
+    BACKFILL_REGISTRY_AVAILABLE = True
+except ImportError:
+    BACKFILL_REGISTRY_AVAILABLE = False
+
 # Import your models
 try:
     from backend.fastapi.api.models import Base
@@ -100,12 +107,29 @@ def log_index_policy_info(database_url: str) -> None:
         pass  # Graceful degradation
 
 
+def log_backfill_registry_status() -> None:
+    """Log backfill job registry availability and recent jobs."""
+    if not BACKFILL_REGISTRY_AVAILABLE:
+        return
+    
+    try:
+        import logging
+        log = logging.getLogger(__name__)
+        
+        registry = get_backfill_registry()
+        log.info("✓ Backfill Job Registry: Available for migration observability")
+    except Exception:
+        pass  # Graceful degradation
+
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     verify_migration_integrity()
     
     url = DATABASE_URL # Use app config
     log_index_policy_info(url)
+    log_backfill_registry_status()
     
     context.configure(
         url=url,
@@ -143,8 +167,9 @@ def run_migrations_online() -> None:
         # It's the default, so use App Config
         target_url = DATABASE_URL
     
-    # Log index policy information for target database
+    # Log index policy and backfill registry information
     log_index_policy_info(target_url)
+    log_backfill_registry_status()
         
     from sqlalchemy import create_engine
     connect_args = {}
