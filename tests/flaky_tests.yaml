@@ -1,0 +1,12 @@
+quarantined_tests:
+- name: tests/test_race_condition_mitigation.py::test_concurrent_updates
+  created_date: '2026-03-07'
+  failure_rate: 0.45
+  root_cause: Race condition on high-load CI servers
+  assigned_to: team-member
+  priority: medium
+needs_investigation: []
+metadata:
+  last_updated: '2026-03-07'
+  total_quarantined: 1
+  total_investigation: 0
