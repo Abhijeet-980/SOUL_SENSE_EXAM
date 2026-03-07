@@ -3,11 +3,9 @@ from fastapi import APIRouter
 from ...routers import (
     auth, users, profiles, assessments, 
     settings_sync, community, contact, exams, export, deep_dive,
-    goals
-    questions, analytics, journal, health,
-    settings_sync, community, contact, exams, export, deep_dive,
-    gamification, goals,
-    gamification, audit, tasks, consent, surveys, advanced_analytics, archival, notifications, flags, search, team_vision,
+    goals, questions, analytics, journal, health,
+    gamification, audit, tasks, consent, surveys, advanced_analytics, 
+    archival, notifications, flags, search, team_vision,
     api_keys, tamper_evident_audit, dlq
 )
 
