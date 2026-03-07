@@ -6,6 +6,16 @@ from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator, mo
 
 from ..utils.sanitization import sanitize_string, clean_identifier
 
+# Import pagination schemas
+from .pagination import (
+    PaginationParams,
+    CursorPaginatedResponse,
+    OffsetPaginatedResponse,
+    HybridPaginatedResponse,
+    CursorValidationError,
+    PaginationMetadata,
+)
+
 
 class ServiceStatus(BaseModel):
     """Status of an individual service."""
@@ -343,11 +353,26 @@ class AssessmentResponse(BaseModel):
 
 
 class AssessmentListResponse(BaseModel):
-    """Schema for paginated assessment list."""
+    """Schema for paginated assessment list.
+    
+    Supports both offset and cursor-based pagination.
+    """
     total: int
     assessments: List[AssessmentResponse]
+    # Offset-based fields (legacy)
     page: int
     page_size: int
+    # Cursor-based fields (preferred)
+    next_cursor: Optional[str] = Field(
+        None,
+        description="Cursor token for next page"
+    )
+    has_more: bool = Field(
+        False,
+        description="Whether more items are available"
+    )
+    
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AssessmentDetailResponse(BaseModel):
@@ -446,11 +471,26 @@ class QuestionResponse(BaseModel):
 
 
 class QuestionListResponse(BaseModel):
-    """Schema for paginated question list."""
+    """Schema for paginated question list.
+    
+    Supports both offset and cursor-based pagination.
+    """
     total: int
     questions: List[QuestionResponse]
+    # Offset-based fields (legacy)
     page: int
     page_size: int
+    # Cursor-based fields (preferred)
+    next_cursor: Optional[str] = Field(
+        None,
+        description="Cursor token for next page"
+    )
+    has_more: bool = Field(
+        False,
+        description="Whether more items are available"
+    )
+    
+    model_config = ConfigDict(from_attributes=True)
 
 
 class QuestionCategoryResponse(BaseModel):
@@ -1218,11 +1258,28 @@ class JournalResponse(BaseModel):
 
 
 class JournalListResponse(BaseModel):
-    """Schema for paginated journal entry list."""
+    """Schema for paginated journal entry list.
+    
+    Supports both offset and cursor-based pagination for backward compatibility.
+    New clients should use cursor fields (next_cursor, has_more).
+    Legacy clients can continue using page fields.
+    """
     total: int
     entries: List[JournalResponse]
+    # Offset-based fields (legacy)
     page: int
     page_size: int
+    # Cursor-based fields (preferred)
+    next_cursor: Optional[str] = Field(
+        None,
+        description="Cursor token for fetching the next page (preferred navigation method)"
+    )
+    has_more: bool = Field(
+        False,
+        description="Whether more items are available"
+    )
+    
+    model_config = ConfigDict(from_attributes=True)
 
 
 class JournalCursorResponse(BaseModel):
@@ -1230,6 +1287,10 @@ class JournalCursorResponse(BaseModel):
     data: List[JournalResponse]
     next_cursor: Optional[str] = None
     has_more: bool
+    total: Optional[int] = Field(
+        None,
+        description="Total count (may be null if expensive to compute)"
+    )
 
 
 class JournalAnalytics(BaseModel):
@@ -1639,7 +1700,6 @@ class GoalResponse(GoalBase):
     
     model_config = ConfigDict(from_attributes=True)
 
-class GoalListResponse(BaseModel):
 # ============================================================================
 # Gamification Schemas
 # ============================================================================
@@ -1799,11 +1859,26 @@ class AuditLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class AuditLogListResponse(BaseModel):
-    """Response schema for paginated audit log lists."""
+    """Response schema for paginated audit log lists.
+    
+    Supports both offset and cursor-based pagination.
+    """
     logs: List[AuditLogResponse]
     total_count: int
+    # Offset-based fields (legacy)
     page: int
     per_page: int
+    # Cursor-based fields (preferred)
+    next_cursor: Optional[str] = Field(
+        None,
+        description="Cursor token for next page"
+    )
+    has_more: bool = Field(
+        False,
+        description="Whether more items are available"
+    )
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class AuditExportResponse(BaseModel):
     """Response schema for audit log exports."""
