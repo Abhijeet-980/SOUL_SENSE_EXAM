@@ -662,6 +662,10 @@ def create_app() -> FastAPI:
     # Register Health endpoints at root level for orchestration
     app.include_router(health_router, tags=["Health"])
 
+    # Register TTL Management Router (#1413: Row-level TTL archival partitioning)
+    from .routers.ttl_management import router as ttl_router
+    app.include_router(ttl_router, prefix="/api/v1")
+
     from .exceptions import APIException
     from .constants.errors import ErrorCode
 
