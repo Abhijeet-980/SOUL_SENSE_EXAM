@@ -10,7 +10,28 @@ permissions:
   contents: read
 
 jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.detect.outputs.modules }}
+      run_all: ${{ steps.detect.outputs.run_all }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect changed modules
+        id: detect
+        run: |
+          python -m pip install --upgrade pip > /dev/null 2>&1
+          OUTPUT=$(python scripts/detect_changed_paths.py --base origin/main --head HEAD)
+          MODULES=$(echo "$OUTPUT" | python -c "import sys, json; print(json.load(sys.stdin)['modules'])")
+          RUN_ALL=$(echo "$OUTPUT" | python -c "import sys, json; print(str(json.load(sys.stdin)['run_all']).lower())")
+          echo "modules=$MODULES" >> $GITHUB_OUTPUT
+          echo "run_all=$RUN_ALL" >> $GITHUB_OUTPUT
+          echo "Changed modules: $MODULES"
+
   build:
+    needs: detect-changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -85,6 +106,7 @@ jobs:
 
       - name: Test Root App (Unit + Integration)
         timeout-minutes: 20
+        if: ${{ needs.detect-changes.outputs.run_all == 'true' || contains('["app", "all"]', needs.detect-changes.outputs.modules) }}
         env:
           DISPLAY: ":0.0"
         run: |
@@ -98,6 +120,7 @@ jobs:
 
       - name: Test Backend App
         timeout-minutes: 10
+        if: ${{ needs.detect-changes.outputs.run_all == 'true' || contains('["backend", "all"]', needs.detect-changes.outputs.modules) }}
         run: |
           mkdir -p ../../data
           nohup python start_server.py --host 127.0.0.1 --port 8000 --no-reload --y > server.log 2>&1 &
