@@ -29,6 +29,13 @@ try:
 except ImportError:
     BACKFILL_REGISTRY_AVAILABLE = False
 
+# Import shadow table swap validator
+try:
+    from app.infra.shadow_table_swap_validator import ShadowTableSwapValidator
+    SHADOW_VALIDATOR_AVAILABLE = True
+except ImportError:
+    SHADOW_VALIDATOR_AVAILABLE = False
+
 # Import schema rollback rehearsal pipeline
 try:
     from app.infra.schema_rollback_rehearsal import RollbackRehearsalPipeline
@@ -129,6 +136,19 @@ def log_backfill_registry_status() -> None:
         pass  # Graceful degradation
 
 
+def log_shadow_table_validator_status() -> None:
+    """Log shadow table swap validator availability."""
+    if not SHADOW_VALIDATOR_AVAILABLE:
+        return
+    
+    try:
+        import logging
+        log = logging.getLogger(__name__)
+        log.info("✓ Shadow Table Swap Validator: Available for zero-downtime migrations")
+    except Exception:
+        pass  # Graceful degradation
+
+
 def log_rollback_rehearsal_status() -> None:
     """Log schema rollback rehearsal pipeline status."""
     if not ROLLBACK_REHEARSAL_AVAILABLE:
@@ -149,7 +169,6 @@ def log_rollback_rehearsal_status() -> None:
         pass  # Graceful degradation
 
 
-
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     verify_migration_integrity()
@@ -157,6 +176,7 @@ def run_migrations_offline() -> None:
     url = DATABASE_URL # Use app config
     log_index_policy_info(url)
     log_backfill_registry_status()
+    log_shadow_table_validator_status()
     log_rollback_rehearsal_status()
     
     context.configure(
@@ -198,6 +218,7 @@ def run_migrations_online() -> None:
     # Log index policy and backfill registry information
     log_index_policy_info(target_url)
     log_backfill_registry_status()
+    log_shadow_table_validator_status()
     log_rollback_rehearsal_status()
         
     from sqlalchemy import create_engine
