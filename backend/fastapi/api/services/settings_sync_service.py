@@ -166,7 +166,10 @@ class SettingsSyncService:
         settings: List[Dict[str, Any]]
     ) -> Tuple[List[UserSyncSetting], List[str]]:
         """
-        Batch upsert settings. Continues on conflict, recording conflicting keys (Async).
+        Batch upsert settings with atomic transaction boundary.
+        
+        All settings are committed atomically - if any setting fails validation
+        (version conflict), the entire batch is rolled back to maintain data consistency.
         
         Args:
             user_id: User ID
@@ -174,11 +177,20 @@ class SettingsSyncService:
             
         Returns:
             Tuple of (successful settings, list of conflicting keys)
+            - successful: List of all settings if transaction succeeds
+            - conflicts: List of keys that had version conflicts (causes rollback)
+            
+        Raises:
+            Exception: Re-raises any unexpected error after rollback
         """
-        """Batch upsert settings."""
+        if not settings:
+            return [], []
+        
         successful = []
         conflicts = []
         
+        # Phase 1: Pre-validate all settings before starting transaction
+        # This detects version conflicts without making any changes
         for setting_data in settings:
             key = setting_data.get('key')
             value = setting_data.get('value')
@@ -187,19 +199,60 @@ class SettingsSyncService:
             if not key:
                 continue
             
-            setting, success, error = await self.upsert_setting(
-                user_id=user_id,
-                key=key,
-                value=value,
-                expected_version=expected_version
-            )
-            
-            if success:
-                successful.append(setting)
-            else:
-                conflicts.append(key)
+            # Check for version conflict without committing
+            existing = await self.get_setting(user_id, key)
+            if expected_version is not None and existing:
+                if existing.version != expected_version:
+                    conflicts.append(key)
         
-        return successful, conflicts
+        # If there are conflicts, abort before starting transaction
+        if conflicts:
+            return [], conflicts
+        
+        # Phase 2: Execute all updates within a single atomic transaction
+        try:
+            for setting_data in settings:
+                key = setting_data.get('key')
+                value = setting_data.get('value')
+                
+                if not key:
+                    continue
+                
+                existing = await self.get_setting(user_id, key)
+                serialized_value = self._serialize_value(value)
+                now_iso = datetime.now(UTC).isoformat()
+                
+                if existing:
+                    existing.value = serialized_value
+                    existing.version += 1
+                    existing.updated_at = now_iso
+                else:
+                    new_setting = UserSyncSetting(
+                        user_id=user_id,
+                        key=key,
+                        value=serialized_value,
+                        version=1,
+                        updated_at=now_iso
+                    )
+                    self.db.add(new_setting)
+            
+            # Single atomic commit for all settings
+            await self.db.commit()
+            
+            # Refresh all objects after commit
+            for setting_data in settings:
+                key = setting_data.get('key')
+                if key:
+                    setting = await self.get_setting(user_id, key)
+                    if setting:
+                        successful.append(setting)
+            
+            return successful, []
+            
+        except Exception as e:
+            # Rollback entire batch on any error
+            await self.db.rollback()
+            raise
     
     async def delete_all_settings(self, user_id: int) -> int:
         """

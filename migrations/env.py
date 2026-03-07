@@ -35,6 +35,19 @@ try:
     CROSS_REGION_AVAILABLE = True
 except ImportError:
     CROSS_REGION_AVAILABLE = False
+# Import shadow table swap validator
+try:
+    from app.infra.shadow_table_swap_validator import ShadowTableSwapValidator
+    SHADOW_VALIDATOR_AVAILABLE = True
+except ImportError:
+    SHADOW_VALIDATOR_AVAILABLE = False
+
+# Import schema rollback rehearsal pipeline
+try:
+    from app.infra.schema_rollback_rehearsal import RollbackRehearsalPipeline
+    ROLLBACK_REHEARSAL_AVAILABLE = True
+except ImportError:
+    ROLLBACK_REHEARSAL_AVAILABLE = False
 
 # Import your models
 try:
@@ -132,6 +145,9 @@ def log_backfill_registry_status() -> None:
 def log_cross_region_sequencer_status() -> None:
     """Log cross-region migration sequencer availability."""
     if not CROSS_REGION_AVAILABLE:
+def log_shadow_table_validator_status() -> None:
+    """Log shadow table swap validator availability."""
+    if not SHADOW_VALIDATOR_AVAILABLE:
         return
     
     try:
@@ -140,6 +156,27 @@ def log_cross_region_sequencer_status() -> None:
         
         registry = get_cross_region_registry()
         log.info("✓ Cross-Region Migration Sequencer: Available for multi-region migrations")
+        log.info("✓ Shadow Table Swap Validator: Available for zero-downtime migrations")
+    except Exception:
+        pass  # Graceful degradation
+
+
+def log_rollback_rehearsal_status() -> None:
+    """Log schema rollback rehearsal pipeline status."""
+    if not ROLLBACK_REHEARSAL_AVAILABLE:
+        return
+    
+    try:
+        import logging
+        log = logging.getLogger(__name__)
+        
+        pipeline = RollbackRehearsalPipeline()
+        migrations = pipeline.discover_pending_migrations()
+        
+        if migrations:
+            log.info(f"✓ Schema Rollback Rehearsal: {len(migrations)} migrations ready for validation")
+        else:
+            log.info("✓ Schema Rollback Rehearsal: Available (no pending migrations)")
     except Exception:
         pass  # Graceful degradation
 
@@ -152,6 +189,8 @@ def run_migrations_offline() -> None:
     log_index_policy_info(url)
     log_backfill_registry_status()
     log_cross_region_sequencer_status()
+    log_shadow_table_validator_status()
+    log_rollback_rehearsal_status()
     
     context.configure(
         url=url,
@@ -193,6 +232,8 @@ def run_migrations_online() -> None:
     log_index_policy_info(target_url)
     log_backfill_registry_status()
     log_cross_region_sequencer_status()
+    log_shadow_table_validator_status()
+    log_rollback_rehearsal_status()
         
     from sqlalchemy import create_engine
     connect_args = {}
